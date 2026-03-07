@@ -85,7 +85,7 @@ function stopIntervals() {
 
 export function startServer(port = +(process.env.MAW_PORT || 3456)) {
 
-  Bun.serve({
+  const server = Bun.serve({
     port,
     fetch(req, server) {
       const url = new URL(req.url);
