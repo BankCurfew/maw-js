@@ -40,7 +40,7 @@ const clients = new Set<ServerWebSocket<WSData>>();
 async function pushCapture(ws: ServerWebSocket<WSData>) {
   if (!ws.data.target) return;
   try {
-    const content = await capture(ws.data.target, 30);
+    const content = await capture(ws.data.target, 80);
     ws.send(JSON.stringify({ type: "capture", target: ws.data.target, content }));
   } catch (e: any) {
     ws.send(JSON.stringify({ type: "error", error: e.message }));

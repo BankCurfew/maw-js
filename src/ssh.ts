@@ -53,8 +53,12 @@ export function findWindow(sessions: Session[], query: string): string | null {
   return null;
 }
 
-export async function capture(target: string, lines = 25, host?: string): Promise<string> {
-  // -e preserves ANSI escape sequences (colors)
+export async function capture(target: string, lines = 80, host?: string): Promise<string> {
+  // -e preserves ANSI escape sequences (colors), -S captures scroll-back
+  if (lines > 50) {
+    // Grab full visible pane + some scrollback
+    return ssh(`tmux capture-pane -t '${target}' -e -p -S -${lines} 2>/dev/null`, host);
+  }
   return ssh(`tmux capture-pane -t '${target}' -e -p 2>/dev/null | tail -${lines}`, host);
 }
 

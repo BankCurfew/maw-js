@@ -8,87 +8,83 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #0a0a0f; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 14px; }
 
-  .header { padding: 12px 20px; border-bottom: 1px solid #1a1a2e; display: flex; align-items: center; gap: 12px; }
+  .header { padding: 10px 20px; border-bottom: 1px solid #1a1a2e; display: flex; align-items: center; gap: 12px; }
   .header h1 { font-size: 16px; color: #64b5f6; font-weight: 500; }
+  .header .target-name { font-size: 13px; color: #888; }
   .header .status { font-size: 12px; margin-left: auto; }
   .header .status.online { color: #4caf50; }
   .header .status.offline { color: #f44336; }
 
-  .container { display: flex; height: calc(100vh - 49px); }
+  .container { display: flex; height: calc(100vh - 45px); }
 
-  .sidebar { width: 240px; border-right: 1px solid #1a1a2e; overflow-y: auto; flex-shrink: 0; }
-  .session { margin: 6px 0; }
-  .session-name { padding: 5px 16px; font-size: 11px; text-transform: uppercase; color: #555; letter-spacing: 1px; }
+  .sidebar { width: 220px; border-right: 1px solid #1a1a2e; overflow-y: auto; flex-shrink: 0; }
+  .session { margin: 4px 0; }
+  .session-name { padding: 5px 16px; font-size: 10px; text-transform: uppercase; color: #444; letter-spacing: 1px; }
   .window {
-    padding: 8px 16px 8px 20px; cursor: pointer; display: flex; align-items: center; gap: 8px;
-    transition: all 0.15s; border-left: 3px solid transparent; margin: 1px 0;
+    padding: 6px 12px 6px 16px; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: all 0.1s; border-left: 3px solid transparent; margin: 1px 0;
   }
   .window:hover { background: #1a1a2e; border-left-color: #333; }
   .window.selected { background: #1a1a3e; border-left-color: #64b5f6; }
-  .window .idx { color: #555; font-size: 12px; width: 18px; text-align: right; }
-  .window .name { color: #ccc; font-size: 13px; }
+  .window .idx { color: #555; font-size: 11px; width: 16px; text-align: right; }
+  .window .name { color: #999; font-size: 12px; }
   .window:hover .name { color: #fff; }
   .window.selected .name { color: #64b5f6; font-weight: bold; }
-  .window .dot { width: 7px; height: 7px; border-radius: 50%; background: #222; margin-left: auto; flex-shrink: 0; }
+  .window .dot { width: 6px; height: 6px; border-radius: 50%; background: #222; margin-left: auto; flex-shrink: 0; }
   .window .dot.active { background: #4caf50; box-shadow: 0 0 4px #4caf50; }
 
-  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-
-  .preview {
-    flex: 1; padding: 12px 16px; overflow-y: auto;
-    background: #05050a; font-size: 13px; line-height: 1.5;
+  /* Terminal pane — the whole right side */
+  .term {
+    flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative;
+    cursor: text;
+  }
+  .term:focus { outline: none; }
+  .term-output {
+    flex: 1; padding: 8px 12px; overflow-y: auto;
+    background: #0a0a0f; font-size: 13px; line-height: 1.45;
     white-space: pre-wrap; word-break: break-all; color: #aaa;
   }
-  .preview .placeholder { color: #333; text-align: center; margin-top: 40%; }
+  .term-output .placeholder { color: #333; text-align: center; margin-top: 30vh; font-size: 14px; }
 
-  .input-area {
-    padding: 10px 16px; border-top: 1px solid #1a1a2e;
-    display: flex; gap: 8px; align-items: center;
+  /* Typing indicator at bottom */
+  .term-input-line {
+    padding: 6px 12px; border-top: 1px solid #1a1a2e; background: #0d0d14;
+    font-size: 13px; min-height: 28px; display: flex; align-items: center;
+    color: #64b5f6;
   }
-  .target-label { color: #64b5f6; font-size: 12px; white-space: nowrap; }
-  .input-area input {
-    flex: 1; background: #111; border: 1px solid #2a2a3e; color: #e0e0e0;
-    padding: 8px 12px; border-radius: 4px; font-family: inherit; font-size: 14px;
-    outline: none;
+  .term-input-line .prompt { color: #555; margin-right: 6px; }
+  .term-input-line .text { color: #e0e0e0; }
+  .term-input-line .cursor {
+    display: inline-block; width: 7px; height: 15px; background: #64b5f6;
+    animation: blink 1s step-end infinite; vertical-align: middle; margin-left: 1px;
   }
-  .input-area input:focus { border-color: #64b5f6; }
-  .input-area button {
-    background: #64b5f6; color: #0a0a0f; border: none; padding: 8px 16px;
-    border-radius: 4px; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 13px;
-  }
-  .input-area button:hover { background: #90caf9; }
-  .input-area button:disabled { background: #333; color: #666; cursor: not-allowed; }
+  .term-input-line.empty .cursor { background: #333; }
+  @keyframes blink { 50% { opacity: 0; } }
 
   .toast {
     position: fixed; bottom: 20px; right: 20px; background: #1a3a1a;
-    color: #4caf50; padding: 10px 16px; border-radius: 6px; font-size: 13px;
+    color: #4caf50; padding: 8px 14px; border-radius: 6px; font-size: 12px;
     opacity: 0; transition: opacity 0.3s; pointer-events: none;
   }
   .toast.error { background: #3a1a1a; color: #f44336; }
   .toast.show { opacity: 1; }
-
-  .sent-log { padding: 0 16px 6px; max-height: 100px; overflow-y: auto; border-top: 1px solid #111; }
-  .sent-item { font-size: 11px; color: #555; padding: 2px 0; }
-  .sent-item .time { color: #444; }
-  .sent-item .msg { color: #7a7; }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>maw</h1>
+  <h1>maw <span style="color:#555;font-weight:400;font-size:12px">by cat lab</span></h1>
+  <span class="target-name" id="targetName"></span>
   <span class="status offline" id="status">connecting...</span>
 </div>
 
 <div class="container">
   <div class="sidebar" id="sidebar"></div>
-  <div class="main">
-    <div class="preview" id="preview"><div class="placeholder">select a window</div></div>
-    <div class="sent-log" id="sentLog"></div>
-    <div class="input-area">
-      <span class="target-label" id="targetLabel">no target</span>
-      <input type="text" id="msgInput" placeholder="type message and press Enter..." disabled />
-      <button id="sendBtn" disabled>Send</button>
+  <div class="term" id="term" tabindex="0">
+    <div class="term-output" id="output"><div class="placeholder">select a window &larr;</div></div>
+    <div class="term-input-line empty" id="inputLine">
+      <span class="prompt">&gt;</span>
+      <span class="text" id="inputText"></span><span class="cursor"></span>
     </div>
   </div>
 </div>
@@ -96,203 +92,164 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ANSI color map
-const ANSI_COLORS = [
-  '#000','#c00','#0a0','#c50','#00c','#c0c','#0cc','#ccc',  // 0-7
-  '#555','#f55','#5f5','#ff5','#55f','#f5f','#5ff','#fff',  // 8-15 bright
-];
-
-function ansi256(n) {
-  if (n < 16) return ANSI_COLORS[n];
-  if (n < 232) { // 6x6x6 cube
-    n -= 16;
-    const b = (n % 6) * 51, g = (Math.floor(n/6) % 6) * 51, r = Math.floor(n/36) * 51;
-    return `rgb(${r},${g},${b})`;
-  }
-  const v = (n - 232) * 10 + 8; // grayscale
-  return `rgb(${v},${v},${v})`;
+// ANSI
+const AC = ['#000','#c00','#0a0','#c50','#00c','#c0c','#0cc','#ccc','#555','#f55','#5f5','#ff5','#55f','#f5f','#5ff','#fff'];
+function a256(n) {
+  if (n < 16) return AC[n];
+  if (n < 232) { n -= 16; return `rgb(${Math.floor(n/36)*51},${Math.floor(n/6)%6*51},${n%6*51})`; }
+  const v = (n-232)*10+8; return `rgb(${v},${v},${v})`;
 }
-
-function ansiToHtml(text) {
-  let html = '';
-  let fg = null, bg = null, bold = false, dim = false, italic = false, underline = false, strike = false;
-  const parts = text.split(/(\x1b\[[0-9;]*m)/);
-
-  for (const part of parts) {
-    const m = part.match(/^\x1b\[([0-9;]*)m$/);
-    if (!m) { html += esc(part); continue; }
-
-    // Close previous span if any style was active
-    if (fg || bg || bold || dim || italic || underline || strike) html += '</span>';
-
+function ansi(text) {
+  let h='',fg=null,bg=null,b=0,d=0,i=0,u=0,s=0,open=0;
+  for (const p of text.split(/(\x1b\[[0-9;]*m)/)) {
+    const m = p.match(/^\x1b\[([0-9;]*)m$/);
+    if (!m) { h += esc(p); continue; }
+    if (open) { h += '</span>'; open = 0; }
     const codes = m[1] ? m[1].split(';').map(Number) : [0];
-    for (let i = 0; i < codes.length; i++) {
-      const c = codes[i];
-      if (c === 0) { fg = bg = null; bold = dim = italic = underline = strike = false; }
-      else if (c === 1) bold = true;
-      else if (c === 2) dim = true;
-      else if (c === 3) italic = true;
-      else if (c === 4) underline = true;
-      else if (c === 9) strike = true;
-      else if (c === 22) { bold = false; dim = false; }
-      else if (c === 23) italic = false;
-      else if (c === 24) underline = false;
-      else if (c === 29) strike = false;
-      else if (c >= 30 && c <= 37) fg = ANSI_COLORS[c - 30];
-      else if (c === 38 && codes[i+1] === 5) { fg = ansi256(codes[i+2]); i += 2; }
-      else if (c === 38 && codes[i+1] === 2) { fg = `rgb(${codes[i+2]},${codes[i+3]},${codes[i+4]})`; i += 4; }
-      else if (c === 39) fg = null;
-      else if (c >= 40 && c <= 47) bg = ANSI_COLORS[c - 40];
-      else if (c === 48 && codes[i+1] === 5) { bg = ansi256(codes[i+2]); i += 2; }
-      else if (c === 48 && codes[i+1] === 2) { bg = `rgb(${codes[i+2]},${codes[i+3]},${codes[i+4]})`; i += 4; }
-      else if (c === 49) bg = null;
-      else if (c >= 90 && c <= 97) fg = ANSI_COLORS[c - 90 + 8];
-      else if (c >= 100 && c <= 107) bg = ANSI_COLORS[c - 100 + 8];
+    for (let j=0; j<codes.length; j++) {
+      const c=codes[j];
+      if (!c) { fg=bg=null; b=d=i=u=s=0; }
+      else if (c===1) b=1; else if (c===2) d=1; else if (c===3) i=1;
+      else if (c===4) u=1; else if (c===9) s=1;
+      else if (c===22) b=d=0; else if (c===23) i=0; else if (c===24) u=0; else if (c===29) s=0;
+      else if (c>=30&&c<=37) fg=AC[c-30];
+      else if (c===38&&codes[j+1]===5) { fg=a256(codes[j+2]); j+=2; }
+      else if (c===38&&codes[j+1]===2) { fg=`rgb(${codes[j+2]},${codes[j+3]},${codes[j+4]})`; j+=4; }
+      else if (c===39) fg=null;
+      else if (c>=40&&c<=47) bg=AC[c-40];
+      else if (c===48&&codes[j+1]===5) { bg=a256(codes[j+2]); j+=2; }
+      else if (c===48&&codes[j+1]===2) { bg=`rgb(${codes[j+2]},${codes[j+3]},${codes[j+4]})`; j+=4; }
+      else if (c===49) bg=null;
+      else if (c>=90&&c<=97) fg=AC[c-82];
+      else if (c>=100&&c<=107) bg=AC[c-92];
     }
-
-    // Open new span if any style active
-    const styles = [];
-    if (fg) styles.push(`color:${fg}`);
-    if (bg) styles.push(`background:${bg}`);
-    if (bold) styles.push('font-weight:bold');
-    if (dim) styles.push('opacity:0.6');
-    if (italic) styles.push('font-style:italic');
-    if (underline) styles.push('text-decoration:underline');
-    if (strike) styles.push('text-decoration:line-through');
-    if (styles.length) html += `<span style="${styles.join(';')}">`;
+    const st=[];
+    if (fg) st.push('color:'+fg); if (bg) st.push('background:'+bg);
+    if (b) st.push('font-weight:bold'); if (d) st.push('opacity:0.6');
+    if (i) st.push('font-style:italic');
+    if (u||s) st.push('text-decoration:'+(u?'underline':'')+(u&&s?' ':'')+(s?'line-through':''));
+    if (st.length) { h += `<span style="${st.join(';')}">`; open=1; }
   }
-  if (fg || bg || bold || dim || italic || underline || strike) html += '</span>';
-  return html;
+  if (open) h += '</span>';
+  return h;
 }
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-let ws = null;
-let selectedTarget = null;
-let reconnectTimer = null;
+// State
+let ws = null, selectedTarget = null, inputBuf = '', lastSessions = '';
 
+// WebSocket
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws`);
-
   ws.onopen = () => {
-    document.getElementById('status').textContent = 'live';
-    document.getElementById('status').className = 'status online';
+    el('status').textContent = 'live';
+    el('status').className = 'status online';
     if (selectedTarget) ws.send(JSON.stringify({ type: 'subscribe', target: selectedTarget }));
   };
-
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
-
-    if (data.type === 'sessions') {
-      renderSidebar(data.sessions);
-    } else if (data.type === 'capture') {
-      const el = document.getElementById('preview');
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
-      el.innerHTML = ansiToHtml(data.content || '(empty)');
-      if (atBottom) el.scrollTop = el.scrollHeight;
-    } else if (data.type === 'sent') {
-      showToast(`sent to ${data.target}`);
-      logSent(data.text);
-    } else if (data.type === 'error') {
-      showToast(data.error, true);
+    if (data.type === 'sessions') renderSidebar(data.sessions);
+    else if (data.type === 'capture') {
+      const out = el('output');
+      const atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 60;
+      out.innerHTML = ansi(data.content || '(empty)');
+      if (atBottom) out.scrollTop = out.scrollHeight;
     }
+    else if (data.type === 'sent') showToast('sent');
+    else if (data.type === 'error') showToast(data.error, true);
   };
-
   ws.onclose = () => {
-    document.getElementById('status').textContent = 'reconnecting...';
-    document.getElementById('status').className = 'status offline';
-    reconnectTimer = setTimeout(connect, 1000);
+    el('status').textContent = 'reconnecting...';
+    el('status').className = 'status offline';
+    setTimeout(connect, 1000);
   };
-
   ws.onerror = () => ws.close();
 }
 
-let lastSessionsJson = '';
+function el(id) { return document.getElementById(id); }
+
+// Sidebar
 function renderSidebar(sessions) {
   const json = JSON.stringify(sessions);
-  // Only update active dots and selection without full re-render
-  if (lastSessionsJson === json) {
-    document.querySelectorAll('.window').forEach(el => {
-      el.classList.toggle('selected', el.dataset.target === selectedTarget);
-    });
+  if (lastSessions === json) {
+    document.querySelectorAll('.window').forEach(e => e.classList.toggle('selected', e.dataset.target === selectedTarget));
     return;
   }
-  lastSessionsJson = json;
-
-  const sb = document.getElementById('sidebar');
-  sb.innerHTML = sessions.map(s => `
-    <div class="session">
-      <div class="session-name">${esc(s.name)}</div>
-      ${s.windows.map(w => {
-        const target = s.name + ':' + w.index;
-        return `
-        <div class="window ${selectedTarget === target ? 'selected' : ''}"
-             data-target="${target}" data-name="${esc(w.name)}">
-          <span class="idx">${w.index}</span>
-          <span class="name">${esc(w.name)}</span>
-          <span class="dot ${w.active ? 'active' : ''}"></span>
-        </div>`;
-      }).join('')}
-    </div>
-  `).join('');
-
-  sb.querySelectorAll('.window').forEach(el => {
-    el.addEventListener('click', () => selectWindow(el.dataset.target, el.dataset.name));
-  });
+  lastSessions = json;
+  const sb = el('sidebar');
+  sb.innerHTML = sessions.map(s => `<div class="session">
+    <div class="session-name">${esc(s.name)}</div>
+    ${s.windows.map(w => {
+      const t = s.name+':'+w.index;
+      return `<div class="window ${selectedTarget===t?'selected':''}" data-target="${t}" data-name="${esc(w.name)}">
+        <span class="idx">${w.index}</span><span class="name">${esc(w.name)}</span>
+        <span class="dot ${w.active?'active':''}"></span></div>`;
+    }).join('')}</div>`).join('');
+  sb.querySelectorAll('.window').forEach(e => e.addEventListener('click', () => selectWindow(e.dataset.target, e.dataset.name)));
 }
 
 function selectWindow(target, name) {
   selectedTarget = target;
-  document.getElementById('targetLabel').textContent = target + ' ' + name;
-  document.getElementById('msgInput').disabled = false;
-  document.getElementById('sendBtn').disabled = false;
-  document.getElementById('msgInput').focus();
-  document.getElementById('preview').textContent = 'loading...';
+  inputBuf = '';
+  updateInputLine();
+  el('targetName').textContent = name;
+  el('output').innerHTML = '<div class="placeholder">connecting...</div>';
+  document.querySelectorAll('.window').forEach(e => e.classList.toggle('selected', e.dataset.target === target));
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'subscribe', target }));
+  el('term').focus();
+}
 
-  document.querySelectorAll('.window').forEach(el => {
-    el.classList.toggle('selected', el.dataset.target === target);
-  });
+// Keyboard → tmux
+function updateInputLine() {
+  el('inputText').textContent = inputBuf;
+  el('inputLine').classList.toggle('empty', !inputBuf && !selectedTarget);
+}
 
-  // Subscribe via WebSocket
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ type: 'subscribe', target }));
+el('term').addEventListener('keydown', (e) => {
+  if (!selectedTarget || !ws || ws.readyState !== 1) return;
+
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (inputBuf) {
+      ws.send(JSON.stringify({ type: 'send', target: selectedTarget, text: inputBuf }));
+      inputBuf = '';
+      updateInputLine();
+    }
+  } else if (e.key === 'Backspace') {
+    e.preventDefault();
+    inputBuf = inputBuf.slice(0, -1);
+    updateInputLine();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    inputBuf = '';
+    updateInputLine();
+  } else if (e.key === 'Tab') {
+    // Send tab to tmux
+    e.preventDefault();
+    ws.send(JSON.stringify({ type: 'send', target: selectedTarget, text: inputBuf + '\t' }));
+    inputBuf = '';
+    updateInputLine();
+  } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    inputBuf += e.key;
+    updateInputLine();
   }
-}
-
-function sendMessage() {
-  const input = document.getElementById('msgInput');
-  const text = input.value.trim();
-  if (!text || !selectedTarget || !ws) return;
-
-  ws.send(JSON.stringify({ type: 'send', target: selectedTarget, text }));
-  input.value = '';
-  input.focus();
-}
-
-function logSent(msg) {
-  const log = document.getElementById('sentLog');
-  const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const item = document.createElement('div');
-  item.className = 'sent-item';
-  item.innerHTML = `<span class="time">${now}</span> &rarr; <span class="msg">${esc(msg)}</span>`;
-  log.prepend(item);
-  if (log.children.length > 20) log.lastChild.remove();
-}
-
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-function showToast(msg, error = false) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show' + (error ? ' error' : '');
-  setTimeout(() => t.className = 'toast', 2000);
-}
-
-document.getElementById('sendBtn').addEventListener('click', sendMessage);
-document.getElementById('msgInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') sendMessage();
 });
 
+// Keep focus on term
+el('term').addEventListener('click', () => el('term').focus());
+
+function showToast(msg, error = false) {
+  const t = el('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (error ? ' error' : '');
+  setTimeout(() => t.className = 'toast', 1500);
+}
+
 connect();
+// Auto-focus
+setTimeout(() => el('term').focus(), 100);
 </script>
 </body>
 </html>
