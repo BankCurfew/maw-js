@@ -36,12 +36,18 @@ type WSData = { target: string | null };
 
 const clients = new Set<ServerWebSocket<WSData>>();
 
-// Push capture to a specific client
+// Push capture to a specific client (only if changed)
+const lastContent = new Map<ServerWebSocket<WSData>, string>();
+
 async function pushCapture(ws: ServerWebSocket<WSData>) {
   if (!ws.data.target) return;
   try {
     const content = await capture(ws.data.target, 80);
-    ws.send(JSON.stringify({ type: "capture", target: ws.data.target, content }));
+    const prev = lastContent.get(ws);
+    if (content !== prev) {
+      lastContent.set(ws, content);
+      ws.send(JSON.stringify({ type: "capture", target: ws.data.target, content }));
+    }
   } catch (e: any) {
     ws.send(JSON.stringify({ type: "error", error: e.message }));
   }
@@ -63,10 +69,10 @@ let sessionInterval: ReturnType<typeof setInterval> | null = null;
 
 function startIntervals() {
   if (captureInterval) return;
-  // Capture every 500ms for real-time feel
+  // Capture every 50ms for real-time feel
   captureInterval = setInterval(() => {
     for (const ws of clients) pushCapture(ws);
-  }, 500);
+  }, 50);
   // Sessions every 5s
   sessionInterval = setInterval(broadcastSessions, 5000);
 }
@@ -77,8 +83,7 @@ function stopIntervals() {
   if (sessionInterval) { clearInterval(sessionInterval); sessionInterval = null; }
 }
 
-// Always start — import.meta.main is false under PM2
-{
+export function startServer(port = +(process.env.MAW_PORT || 3456)) {
   const port = +(process.env.MAW_PORT || 3456);
 
   Bun.serve({
@@ -118,10 +123,17 @@ function stopIntervals() {
       },
       close(ws: ServerWebSocket<WSData>) {
         clients.delete(ws);
+        lastContent.delete(ws);
         stopIntervals();
       },
     },
   });
 
   console.log(`maw serve → http://localhost:${port} (ws://localhost:${port}/ws)`);
+  return server;
+}
+
+// Auto-start for PM2 (import.meta.main is false under PM2)
+if (import.meta.main || process.env.PM2_HOME || process.env.MAW_PORT) {
+  startServer();
 }
