@@ -47,3 +47,8 @@ export function startServer(port = 3456) {
   console.log(`maw serve → http://localhost:${server.port}`);
   return server;
 }
+
+// Auto-start when run directly
+if (import.meta.main) {
+  startServer(+(process.env.MAW_PORT || 3456));
+}
