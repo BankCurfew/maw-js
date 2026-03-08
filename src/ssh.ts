@@ -67,9 +67,16 @@ export async function selectWindow(target: string, host?: string): Promise<void>
 }
 
 export async function sendKeys(target: string, text: string, host?: string): Promise<void> {
-  // Raw escape → send as tmux key name (no Enter appended)
-  if (text === "\x1b") {
-    await ssh(`tmux send-keys -t '${target}' Escape`, host);
+  // Special keys → send as tmux key names (no Enter appended)
+  const SPECIAL_KEYS: Record<string, string> = {
+    "\x1b": "Escape",
+    "\x1b[A": "Up",
+    "\x1b[B": "Down",
+    "\x1b[C": "Right",
+    "\x1b[D": "Left",
+  };
+  if (SPECIAL_KEYS[text]) {
+    await ssh(`tmux send-keys -t '${target}' ${SPECIAL_KEYS[text]}`, host);
     return;
   }
   if (text.startsWith("/")) {

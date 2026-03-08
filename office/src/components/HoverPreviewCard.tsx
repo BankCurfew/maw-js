@@ -308,12 +308,33 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
         )}
       </div>
 
-      <div
-        ref={termRef}
-        className="flex-1 px-3 py-2 overflow-y-auto font-mono text-[10px] leading-[1.4] text-[#cdd6f4] whitespace-pre-wrap break-all"
-        style={{ background: "#08080c" }}
-        dangerouslySetInnerHTML={{ __html: ansiToHtml(trimCapture(content)) }}
-      />
+      <div className="relative flex-1" style={{ background: "#08080c" }}>
+        <div
+          ref={termRef}
+          className="absolute inset-0 px-3 py-2 overflow-y-auto font-mono text-[10px] leading-[1.4] text-[#cdd6f4] whitespace-pre-wrap break-all"
+          dangerouslySetInnerHTML={{ __html: ansiToHtml(trimCapture(content)) }}
+        />
+        {pinned && send && (
+          <div className="absolute bottom-3 right-3 flex flex-col gap-1 z-10">
+            <button
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); send({ type: "send", target: agent.target, text: "\x1b[A" }); inputRef.current?.focus(); }}
+              className="w-9 h-8 rounded-lg bg-black/70 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:bg-white/10 cursor-pointer flex items-center justify-center transition-colors"
+              title="Up → tmux"
+            >
+              <svg width={12} height={8} viewBox="0 0 12 8"><path d="M1 7L6 1L11 7" stroke="currentColor" strokeWidth={1.5} fill="none" strokeLinecap="round" /></svg>
+            </button>
+            <button
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); send({ type: "send", target: agent.target, text: "\x1b[B" }); inputRef.current?.focus(); }}
+              className="w-9 h-8 rounded-lg bg-black/70 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:bg-white/10 cursor-pointer flex items-center justify-center transition-colors"
+              title="Down → tmux"
+            >
+              <svg width={12} height={8} viewBox="0 0 12 8"><path d="M1 1L6 7L11 1" stroke="currentColor" strokeWidth={1.5} fill="none" strokeLinecap="round" /></svg>
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Bottom: input when pinned, preview text when hovering */}
       {pinned && send ? (
