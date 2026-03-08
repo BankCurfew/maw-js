@@ -176,11 +176,12 @@ export const MissionControl = memo(function MissionControl({
     [calcCardPos, send]
   );
 
-  // Fullscreen → close pin, open modal
+  // Fullscreen → close pin first, then open modal (so focus transfers cleanly)
   const onPinnedFullscreen = useCallback(() => {
     if (pinnedPreview) {
-      onSelectAgent(pinnedPreview.agent);
+      const agent = pinnedPreview.agent;
       setPinnedPreview(null);
+      setTimeout(() => onSelectAgent(agent), 100);
     }
   }, [pinnedPreview, onSelectAgent]);
 
