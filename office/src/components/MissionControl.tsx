@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useCallback } from "react";
+import { memo, useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { AgentAvatar } from "./AgentAvatar";
 import { roomStyle } from "../lib/constants";
 import type { AgentState, Session } from "../lib/types";
@@ -19,10 +19,48 @@ export const MissionControl = memo(function MissionControl({
   onSelectAgent,
 }: MissionControlProps) {
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const busyCount = agents.filter((a) => a.status === "busy").length;
   const readyCount = agents.filter((a) => a.status === "ready").length;
   const idleCount = agents.filter((a) => a.status === "idle").length;
+
+  // Mouse wheel zoom
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom((z) => Math.max(0.5, Math.min(3, z + delta)));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Pan with middle mouse or drag
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 1 || e.button === 0 && e.shiftKey) {
+      e.preventDefault();
+      setIsPanning(true);
+      panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    }
+  }, [pan]);
+
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning) return;
+    const dx = e.clientX - panStart.current.x;
+    const dy = e.clientY - panStart.current.y;
+    setPan({ x: panStart.current.panX + dx / zoom, y: panStart.current.panY + dy / zoom });
+  }, [isPanning, zoom]);
+
+  const onMouseUp = useCallback(() => setIsPanning(false), []);
+
+  const resetView = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, []);
 
   // Group agents by session
   const sessionAgents = useMemo(() => {
@@ -61,13 +99,27 @@ export const MissionControl = memo(function MissionControl({
     [onSelectAgent]
   );
 
+  // Compute viewBox based on zoom and pan
+  const vbW = 1200 / zoom;
+  const vbH = 1000 / zoom;
+  const vbX = (1200 - vbW) / 2 - pan.x;
+  const vbY = (1000 - vbH) / 2 - pan.y;
+
   return (
-    <div className="relative w-full h-screen overflow-hidden" style={{ background: "#020208" }}>
+    <div
+      ref={containerRef}
+      className="relative w-full overflow-hidden"
+      style={{ background: "#020208", height: "calc(100vh - 60px)", cursor: isPanning ? "grabbing" : "default" }}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+    >
       {/* SVG Mission Control */}
       <svg
-        viewBox="0 0 1200 1000"
+        viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         className="w-full h-full"
-        style={{ maxHeight: "100vh" }}
+        preserveAspectRatio="xMidYMid meet"
       >
         <defs>
           <radialGradient id="mc-bg-glow" cx="50%" cy="50%" r="50%">
@@ -221,6 +273,18 @@ export const MissionControl = memo(function MissionControl({
           );
         })}
       </svg>
+
+      {/* Zoom controls */}
+      <div className="absolute bottom-4 right-6 flex flex-col items-center gap-1">
+        <button onClick={() => setZoom((z) => Math.min(3, z + 0.2))}
+          className="w-8 h-8 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-white/10 text-lg font-bold cursor-pointer">+</button>
+        <button onClick={resetView}
+          className="w-8 h-6 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-[9px] text-white/50 hover:text-white hover:bg-white/10 cursor-pointer font-mono">
+          {Math.round(zoom * 100)}%
+        </button>
+        <button onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}
+          className="w-8 h-8 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-white/10 text-lg font-bold cursor-pointer">−</button>
+      </div>
 
       {/* Bottom stats */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6 px-6 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/[0.04]">
