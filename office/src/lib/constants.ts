@@ -10,6 +10,7 @@ export const ROOM_COLORS: Record<string, { accent: string; floor: string; wall: 
   "4-watchers": { accent: "#4caf50", floor: "#142818", wall: "#0e2010", label: "Watchers" },
   "5-tools":    { accent: "#ef5350", floor: "#281418", wall: "#200e12", label: "Tools" },
   "6-solar":    { accent: "#fdd835", floor: "#282814", wall: "#20200e", label: "Solar" },
+  "7-hermes":   { accent: "#26a69a", floor: "#142824", wall: "#0e201a", label: "Hermes" },
 };
 
 const FALLBACK_ROOMS = [
