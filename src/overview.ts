@@ -1,8 +1,5 @@
 import { listSessions, ssh } from "./ssh";
 import type { Session } from "./ssh";
-import { dirname, join } from "path";
-
-const MIRROR_SH = join(dirname(import.meta.path), "mirror.sh");
 
 export interface OverviewTarget {
   session: string;
@@ -50,9 +47,21 @@ export function paneTitle(t: OverviewTarget): string {
   return `${t.oracle} (${t.session}:${t.window})`;
 }
 
+export function processMirror(raw: string, lines: number): string {
+  const sep = '─'.repeat(60);
+  const filtered = raw
+    .replace(/[─━]{6,}/g, sep)
+    .split('\n')
+    .filter(l => l.trim() !== '');
+  const visible = filtered.slice(-lines);
+  const pad = Math.max(0, lines - visible.length);
+  return '\n'.repeat(pad) + visible.join('\n');
+}
+
 export function mirrorCmd(t: OverviewTarget): string {
-  const target = `${t.session}:${t.window}`;
-  return `watch --color -t -n0.5 "${MIRROR_SH} '${target}'"`;
+  const target = encodeURIComponent(`${t.session}:${t.window}`);
+  const port = process.env.MAW_PORT || "3456";
+  return `watch --color -t -n0.5 'curl -s "http://localhost:${port}/api/mirror?target=${target}&lines=\\$(tput lines)"'`;
 }
 
 export function pickLayout(count: number): string {

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
 import { listSessions, capture, sendKeys, selectWindow } from "./ssh";
+import { processMirror } from "./overview";
 import type { ServerWebSocket } from "bun";
 
 const app = new Hono();
@@ -14,6 +15,14 @@ app.get("/api/capture", async (c) => {
   const target = c.req.query("target");
   if (!target) return c.json({ error: "target required" }, 400);
   return c.json({ content: await capture(target) });
+});
+
+app.get("/api/mirror", async (c) => {
+  const target = c.req.query("target");
+  if (!target) return c.text("target required", 400);
+  const lines = +(c.req.query("lines") || "40");
+  const raw = await capture(target);
+  return c.text(processMirror(raw, lines));
 });
 
 app.post("/api/send", async (c) => {

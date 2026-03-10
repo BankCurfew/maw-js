@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { buildTargets, mirrorCmd, paneTitle, pickLayout, chunkTargets, PANES_PER_PAGE } from "../src/overview";
+import { buildTargets, mirrorCmd, paneTitle, pickLayout, chunkTargets, processMirror, PANES_PER_PAGE } from "../src/overview";
 import type { Session } from "../src/ssh";
 
 const MOCK_SESSIONS: Session[] = [
@@ -121,15 +121,58 @@ describe("paneTitle", () => {
   });
 });
 
-describe("mirrorCmd", () => {
-  test("uses watch --color for flicker-free ANSI display", () => {
-    const cmd = mirrorCmd({ session: "2-hermes", window: 2, windowName: "hermes-oracle", oracle: "hermes" });
-    expect(cmd).toContain("watch --color -t -n0.5");
-    expect(cmd).toContain("mirror.sh");
+describe("processMirror", () => {
+  test("strips blank lines from content", () => {
+    const result = processMirror("hello\n\n\nworld\n\n", 2);
+    expect(result).toBe("hello\nworld");
   });
 
-  test("does not echo input (watch handles this)", () => {
+  test("shortens long separators", () => {
+    const long = '━'.repeat(100);
+    const result = processMirror(`above\n${long}\nbelow`, 10);
+    expect(result).toContain('─'.repeat(60));
+    expect(result).not.toContain('━');
+  });
+
+  test("bottom-aligns with newline padding", () => {
+    const result = processMirror("line1\nline2", 5);
+    const lines = result.split('\n');
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe('');
+    expect(lines[1]).toBe('');
+    expect(lines[2]).toBe('');
+    expect(lines[3]).toBe('line1');
+    expect(lines[4]).toBe('line2');
+  });
+
+  test("preserves ANSI codes", () => {
+    const ansi = "\x1b[32mgreen\x1b[0m";
+    const result = processMirror(ansi, 5);
+    expect(result).toContain("\x1b[32mgreen\x1b[0m");
+  });
+
+  test("takes last N lines when content exceeds lines", () => {
+    const input = Array.from({ length: 20 }, (_, i) => `line${i}`).join('\n');
+    const result = processMirror(input, 5);
+    const lines = result.split('\n');
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe('line15');
+    expect(lines[4]).toBe('line19');
+  });
+});
+
+describe("mirrorCmd", () => {
+  test("uses curl to localhost API", () => {
+    const cmd = mirrorCmd({ session: "2-hermes", window: 2, windowName: "hermes-oracle", oracle: "hermes" });
+    expect(cmd).toContain("watch --color -t -n0.5");
+    expect(cmd).toContain("curl -s");
+    expect(cmd).toContain("/api/mirror");
+    expect(cmd).toContain("target=2-hermes");
+  });
+
+  test("does not reference mirror.sh", () => {
     const cmd = mirrorCmd({ session: "1-neo", window: 1, windowName: "neo-oracle", oracle: "neo" });
+    expect(cmd).not.toContain("mirror.sh");
     expect(cmd).toMatch(/^watch /);
   });
 });
