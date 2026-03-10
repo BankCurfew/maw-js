@@ -146,7 +146,7 @@ async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; pr
         console.log(`\x1b[33m⚡\x1b[0m '${windowName}' exists, sending prompt`);
         await ssh(`tmux select-window -t '${session}:${windowName}'`);
         const escaped = opts.prompt.replace(/'/g, "'\\''");
-        await ssh(`tmux send-keys -t '${session}:${windowName}' "claude -p '${escaped}' --dangerously-skip-permissions" Enter`);
+        await ssh(`tmux send-keys -t '${session}:${windowName}' "claude -p '${escaped}' --dangerously-skip-permissions && claude --continue --dangerously-skip-permissions" Enter`);
         return `${session}:${windowName}`;
       }
       console.log(`\x1b[33m⚡\x1b[0m '${windowName}' already running in ${session}`);
@@ -160,7 +160,7 @@ async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; pr
   await new Promise(r => setTimeout(r, 300));
   if (opts.prompt) {
     const escaped = opts.prompt.replace(/'/g, "'\\''");
-    await ssh(`tmux send-keys -t '${session}:${windowName}' "claude -p '${escaped}' --dangerously-skip-permissions" Enter`);
+    await ssh(`tmux send-keys -t '${session}:${windowName}' "claude -p '${escaped}' --dangerously-skip-permissions && claude --continue --dangerously-skip-permissions" Enter`);
   } else {
     await ssh(`tmux send-keys -t '${session}:${windowName}' 'claude' Enter`);
   }
