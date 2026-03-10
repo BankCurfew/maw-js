@@ -86,43 +86,101 @@ export const FleetGrid = memo(function FleetGrid({
 }: FleetGridProps) {
   const fps = useFps();
   const observe = useVisibleTargets(send);
-  const [pinnedAgent, setPinnedAgent] = useState<{ agent: AgentState; accent: string; label: string } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // --- Hover preview (near mouse, non-pinned) ---
+  type PreviewInfo = { agent: AgentState; accent: string; label: string; pos: { x: number; y: number } };
+  const [hoverPreview, setHoverPreview] = useState<PreviewInfo | null>(null);
+  const hoverTimeout = useRef<ReturnType<typeof setTimeout>>();
+
+  const showPreview = useCallback((agent: AgentState, accent: string, label: string, rowEl: HTMLElement) => {
+    if (pinnedPreview) return;
+    clearTimeout(hoverTimeout.current);
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    const rowRect = rowEl.getBoundingClientRect();
+    if (!containerRect) return;
+    const cardW = 420;
+    // Position to the right of the row, or left if no space
+    let x = rowRect.right - containerRect.left + 16;
+    if (x + cardW > containerRect.width) x = rowRect.left - containerRect.left - cardW - 16;
+    const y = rowRect.top - containerRect.top - 40;
+    setHoverPreview({ agent, accent, label, pos: { x: Math.max(8, x), y: Math.max(8, y) } });
+  }, []);
+
+  const hidePreview = useCallback(() => {
+    hoverTimeout.current = setTimeout(() => setHoverPreview(null), 300);
+  }, []);
+
+  const keepPreview = useCallback(() => {
+    clearTimeout(hoverTimeout.current);
+  }, []);
+
+  // --- Pinned preview (click → animate to center) ---
+  type PinnedInfo = PreviewInfo;
+  const [pinnedPreview, setPinnedPreview] = useState<PinnedInfo | null>(null);
+  const [pinnedAnimPos, setPinnedAnimPos] = useState<{ left: number; top: number } | null>(null);
   const pinnedRef = useRef<HTMLDivElement>(null);
   const [inputBufs, setInputBufs] = useState<Record<string, string>>({});
+  const getInputBuf = useCallback((target: string) => inputBufs[target] || "", [inputBufs]);
+  const setInputBuf = useCallback((target: string, val: string) => {
+    setInputBufs(prev => ({ ...prev, [target]: val }));
+  }, []);
 
-  // Click agent row → pin preview card (or go fullscreen if already pinned)
-  const onAgentClick = useCallback((agent: AgentState, accent: string, label: string) => {
-    if (pinnedAgent?.agent.target === agent.target) {
-      // Already pinned — open fullscreen terminal
-      setPinnedAgent(null);
-      onSelectAgent(agent);
+  // Click agent row → pin preview card
+  const onAgentClick = useCallback((agent: AgentState, accent: string, label: string, rowEl: HTMLElement) => {
+    if (pinnedPreview) {
+      // Already pinned — ignore clicks on other agents
       return;
     }
-    setPinnedAgent({ agent, accent, label });
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    const rowRect = rowEl.getBoundingClientRect();
+    if (!containerRect) return;
+    const cardW = 420;
+    let x = rowRect.right - containerRect.left + 16;
+    if (x + cardW > containerRect.width) x = rowRect.left - containerRect.left - cardW - 16;
+    const y = rowRect.top - containerRect.top - 40;
+    const pos = { x: Math.max(8, x), y: Math.max(8, y) };
+    setPinnedPreview({ agent, accent, label, pos });
+    setHoverPreview(null);
     send({ type: "subscribe", target: agent.target });
-  }, [pinnedAgent, onSelectAgent, send]);
+  }, [pinnedPreview, send]);
+
+  // Animate pinned card from hover position to center
+  useEffect(() => {
+    if (pinnedPreview) {
+      setPinnedAnimPos({ left: pinnedPreview.pos.x, top: pinnedPreview.pos.y });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const containerW = containerRef.current?.getBoundingClientRect().width || 800;
+          setPinnedAnimPos({ left: (containerW - 420) / 2, top: 20 });
+        });
+      });
+    } else {
+      setPinnedAnimPos(null);
+    }
+  }, [pinnedPreview]);
 
   const onPinnedFullscreen = useCallback(() => {
-    if (pinnedAgent) {
-      const agent = pinnedAgent.agent;
-      setPinnedAgent(null);
+    if (pinnedPreview) {
+      const agent = pinnedPreview.agent;
+      setPinnedPreview(null);
       setTimeout(() => onSelectAgent(agent), 150);
     }
-  }, [pinnedAgent, onSelectAgent]);
+  }, [pinnedPreview, onSelectAgent]);
 
-  const onPinnedClose = useCallback(() => setPinnedAgent(null), []);
+  const onPinnedClose = useCallback(() => setPinnedPreview(null), []);
 
   // Click outside pinned card to close
   useEffect(() => {
-    if (!pinnedAgent) return;
+    if (!pinnedPreview) return;
     const handler = (e: MouseEvent) => {
       if (pinnedRef.current && !pinnedRef.current.contains(e.target as Node)) {
-        setPinnedAgent(null);
+        setPinnedPreview(null);
       }
     };
     const t = setTimeout(() => document.addEventListener("mousedown", handler), 50);
     return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
-  }, [pinnedAgent]);
+  }, [pinnedPreview]);
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggle = (name: string) => setCollapsed(prev => {
@@ -181,7 +239,7 @@ export const FleetGrid = memo(function FleetGrid({
   const idleCount = agents.length - busyCount - readyCount;
 
   return (
-    <div className="relative w-full min-h-screen" style={{ background: "#0a0a12" }}>
+    <div ref={containerRef} className="relative w-full min-h-screen" style={{ background: "#0a0a12" }}>
       {/* Summary */}
       <div className="max-w-5xl mx-auto flex items-center justify-between px-8 py-5 border-b border-white/[0.06]">
         <div className="flex items-center gap-4 text-sm font-mono">
@@ -290,13 +348,19 @@ export const FleetGrid = memo(function FleetGrid({
                         borderBottom: !isLast ? `1px solid rgba(255,255,255,0.04)` : "none",
                         background: isBusy ? `${style.accent}06` : "transparent",
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = `${style.accent}10`; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = isBusy ? `${style.accent}06` : "transparent"; }}
-                      onClick={() => onAgentClick(agent, style.accent, vr.label)}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = `${style.accent}10`;
+                        showPreview(agent, style.accent, vr.label, e.currentTarget);
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = isBusy ? `${style.accent}06` : "transparent";
+                        hidePreview();
+                      }}
+                      onClick={(e) => onAgentClick(agent, style.accent, vr.label, e.currentTarget)}
                       role="button"
                       tabIndex={0}
                       aria-label={`${agent.name} - ${agent.status}`}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAgentClick(agent, style.accent, vr.label); } }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAgentClick(agent, style.accent, vr.label, e.currentTarget as HTMLElement); } }}
                     >
                       {/* Avatar */}
                       <div className="w-14 h-14 flex-shrink-0" style={{ overflow: "visible" }}>
@@ -308,7 +372,7 @@ export const FleetGrid = memo(function FleetGrid({
                             preview={agent.preview}
                             accent={style.accent}
                             saiyan={isSaiyan}
-                            onClick={() => onAgentClick(agent, style.accent, vr.label)}
+                            onClick={() => {}}
                           />
                         </svg>
                       </div>
@@ -375,29 +439,52 @@ export const FleetGrid = memo(function FleetGrid({
 
       <BottomStats agents={agents} eventLog={eventLog} />
 
-      {/* Pinned HoverPreviewCard — same component as Mission Control */}
-      {pinnedAgent && (
+      {/* Hover Preview Card — appears near row on hover (hidden when pinned) */}
+      {hoverPreview && !pinnedPreview && (
         <div
-          className="fixed inset-0 z-40 flex items-start justify-center pt-16 bg-black/60 backdrop-blur-sm"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setPinnedAgent(null);
+          className="absolute z-30 pointer-events-auto"
+          style={{
+            left: hoverPreview.pos.x,
+            top: hoverPreview.pos.y,
+            maxWidth: 420,
+            animation: "fadeSlideIn 0.15s ease-out",
+          }}
+          onMouseEnter={keepPreview}
+          onMouseLeave={hidePreview}
+        >
+          <HoverPreviewCard
+            agent={hoverPreview.agent}
+            roomLabel={hoverPreview.label}
+            accent={hoverPreview.accent}
+          />
+        </div>
+      )}
+
+      {/* Pinned Preview Card — slides from hover position to center */}
+      {pinnedPreview && pinnedAnimPos && (
+        <div
+          ref={pinnedRef}
+          className="absolute z-40 pointer-events-auto"
+          style={{
+            left: pinnedAnimPos.left,
+            top: pinnedAnimPos.top,
+            maxWidth: 420,
+            transition: "left 0.3s ease-out, top 0.3s ease-out",
           }}
         >
-          <div ref={pinnedRef} style={{ maxWidth: 420 }}>
-            <HoverPreviewCard
-              agent={pinnedAgent.agent}
-              roomLabel={pinnedAgent.label}
-              accent={pinnedAgent.accent}
-              pinned
-              send={send}
-              onFullscreen={onPinnedFullscreen}
-              onClose={onPinnedClose}
-              eventLog={eventLog}
-              addEvent={addEvent}
-              externalInputBuf={inputBufs[pinnedAgent.agent.target] || ""}
-              onInputBufChange={(val) => setInputBufs(prev => ({ ...prev, [pinnedAgent.agent.target]: val }))}
-            />
-          </div>
+          <HoverPreviewCard
+            agent={pinnedPreview.agent}
+            roomLabel={pinnedPreview.label}
+            accent={pinnedPreview.accent}
+            pinned
+            send={send}
+            onFullscreen={onPinnedFullscreen}
+            onClose={onPinnedClose}
+            eventLog={eventLog}
+            addEvent={addEvent}
+            externalInputBuf={getInputBuf(pinnedPreview.agent.target)}
+            onInputBufChange={(val) => setInputBuf(pinnedPreview.agent.target, val)}
+          />
         </div>
       )}
     </div>
