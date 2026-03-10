@@ -83,7 +83,7 @@ async function detectSession(oracle: string): Promise<string | null> {
 
 // --- Commands ---
 
-async function cmdWake(oracle: string, opts: { task?: string; newWt?: string }): Promise<string> {
+async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; prompt?: string }): Promise<string> {
   const { repoPath, repoName, parentDir } = await resolveOracle(oracle);
 
   // Detect or create tmux session
@@ -134,10 +134,15 @@ async function cmdWake(oracle: string, opts: { task?: string; newWt?: string }):
     }
   } catch { /* session might be fresh */ }
 
-  // Create window + start claude
+  // Create window + start claude (or claude -p with prompt)
   await ssh(`tmux new-window -t '${session}' -n '${windowName}' -c '${targetPath}'`);
   await new Promise(r => setTimeout(r, 300));
-  await ssh(`tmux send-keys -t '${session}:${windowName}' 'claude' Enter`);
+  if (opts.prompt) {
+    const escaped = opts.prompt.replace(/'/g, "'\\''");
+    await ssh(`tmux send-keys -t '${session}:${windowName}' "claude -p '${escaped}' --dangerously-skip-permissions" Enter`);
+  } else {
+    await ssh(`tmux send-keys -t '${session}:${windowName}' 'claude' Enter`);
+  }
 
   console.log(`\x1b[32m✅\x1b[0m woke '${windowName}' in ${session} → ${targetPath}`);
   return `${session}:${windowName}`;
@@ -171,7 +176,7 @@ async function cmdPulseAdd(title: string, opts: { oracle?: string; priority?: st
 
   // 3. Wake oracle if specified
   if (opts.oracle) {
-    const wakeOpts: { task?: string; newWt?: string } = {};
+    const wakeOpts: { task?: string; newWt?: string; prompt?: string } = {};
     if (opts.worktree) {
       // Auto-generate worktree name from title slug
       const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
@@ -179,12 +184,19 @@ async function cmdPulseAdd(title: string, opts: { oracle?: string; priority?: st
     } else if (opts.wt) {
       wakeOpts.task = opts.wt;
     }
-    const target = await cmdWake(opts.oracle, wakeOpts);
+    const prompt = [
+      `Implement: ${title}`,
+      `Issue: ${issueUrl}`,
+      `Read the issue for full context.`,
+      `When done: commit your work, push the branch, and comment on the issue with:`,
+      `- Commit hash(es)`,
+      `- Files changed`,
+      `- Brief summary of what was done`,
+    ].join("\n");
+    wakeOpts.prompt = prompt;
 
-    // 4. Send issue link to oracle via maw hey
-    await new Promise(r => setTimeout(r, 2000)); // Wait for claude to boot
-    await sendKeys(target, `Implement ${issueUrl} — ${title}`);
-    console.log(`\x1b[32msent\x1b[0m → ${target}: issue #${issueNum}`);
+    const target = await cmdWake(opts.oracle, wakeOpts);
+    console.log(`\x1b[32m🚀\x1b[0m ${target}: claude -p running autonomously`);
   }
 }
 
