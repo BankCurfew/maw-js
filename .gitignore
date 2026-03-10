@@ -3,3 +3,5 @@ dist-office/
 
 # Bun global link artifacts
 ~/
+fleet/*.json
+!fleet/*.example.json
