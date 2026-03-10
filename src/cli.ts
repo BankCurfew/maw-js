@@ -205,15 +205,7 @@ async function cmdPulseAdd(title: string, opts: { oracle?: string; priority?: st
     } else if (opts.wt) {
       wakeOpts.task = opts.wt;
     }
-    const prompt = [
-      `Implement: ${title}`,
-      `Issue: ${issueUrl}`,
-      `Read the issue for full context.`,
-      ``,
-      `When done:`,
-      `1. Commit your work and push the branch`,
-      `2. Comment on the issue (gh issue comment) with: commit hash, files changed, brief summary`,
-    ].join("\n");
+    const prompt = `Implement: ${title}. Issue: ${issueUrl} — Read the issue for full context. When done: (1) commit and push the branch, (2) comment on the issue via gh issue comment with commit hash, files changed, and brief summary.`;
     wakeOpts.prompt = prompt;
 
     const target = await cmdWake(opts.oracle, wakeOpts);
