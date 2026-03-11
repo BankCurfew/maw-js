@@ -247,7 +247,7 @@ export const FleetGrid = memo(function FleetGrid({
     const recentGone = [...recentByName.values()]
       .filter(e => !seenNames.has(e.name))
       .sort((a, b) => b.lastBusy - a.lastBusy)
-      .slice(0, 10)
+      .slice(0, 6)
       .map(e => agentMap.get(e.target) || e);
 
     // Active first, then recently-gone

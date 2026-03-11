@@ -110,7 +110,7 @@ export class MawEngine {
     this.pruneRecent();
     return [...this.recentAgents.values()]
       .sort((a, b) => b.lastBusy - a.lastBusy)
-      .slice(0, 10);
+      .slice(0, 6);
   }
 
   private async updateRecentFromSessions(sessions: { name: string; windows: { index: number; name: string; active: boolean }[] }[]) {
