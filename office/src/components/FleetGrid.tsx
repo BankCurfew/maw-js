@@ -2,7 +2,6 @@ import { memo, useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { HoverPreviewCard } from "./HoverPreviewCard";
 import { StageSection } from "./StageSection";
 import { AgentRow } from "./AgentRow";
-import { SpeechOverlay } from "./SpeechOverlay";
 import { roomStyle, PREVIEW_CARD } from "../lib/constants";
 import { BottomStats } from "./BottomStats";
 import { useFps } from "./FpsCounter";
@@ -82,12 +81,6 @@ export const FleetGrid = memo(function FleetGrid({
   const fps = useFps();
   const observe = useVisibleTargets(send);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // --- Mic popup (walkie-talkie) ---
-  const [micTarget, setMicTarget] = useState<string | null>(null);
-  const onMicClick = useCallback((target: string) => {
-    setMicTarget(prev => prev === target ? null : target);
-  }, []);
 
   // --- Zustand store ---
   const { recentMap, markBusy, pruneRecent, sortMode, setSortMode, grouped, toggleGrouped, collapsed, toggleCollapsed } = useFleetStore();
@@ -292,7 +285,7 @@ export const FleetGrid = memo(function FleetGrid({
                     saiyan={saiyanTargets.has(entry.target)} isLast={i === recentlyActive.length - 1}
                     agoLabel={agoLabel}
                     observe={observe} showPreview={showPreview} hidePreview={hidePreview} onAgentClick={onAgentClick}
-                    onMicClick={onMicClick} isMicActive={micTarget === entry.target} />
+                    send={send} />
                 );
               })}
             </div>
@@ -325,7 +318,7 @@ export const FleetGrid = memo(function FleetGrid({
                     <AgentRow key={agent.target} agent={agent} accent={style.accent} roomLabel={vr.label}
                       saiyan={saiyanTargets.has(agent.target)} isLast={i === vr.agents.length - 1}
                       observe={observe} showPreview={showPreview} hidePreview={hidePreview} onAgentClick={onAgentClick}
-                      onMicClick={onMicClick} isMicActive={micTarget === agent.target} />
+                      send={send} />
                   ))}
                 </div>
               )}
@@ -371,19 +364,6 @@ export const FleetGrid = memo(function FleetGrid({
         </div>
       )}
 
-      {/* Mic send popup */}
-      {micTarget && (() => {
-        const agent = agents.find(a => a.target === micTarget);
-        return (
-          <SpeechOverlay
-            target={micTarget}
-            agentName={agent?.name}
-            agentSession={agent?.session}
-            send={send}
-            onClose={() => setMicTarget(null)}
-          />
-        );
-      })()}
     </div>
   );
 });
