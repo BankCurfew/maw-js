@@ -3,6 +3,7 @@ import { AgentAvatar } from "./AgentAvatar";
 import { MiniMonitor } from "./MiniMonitor";
 import type { AgentState } from "../lib/types";
 import type { FeedLogEntry } from "./FleetGrid";
+import { guessCommand } from "../lib/constants";
 
 const isTouch = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
 
@@ -177,23 +178,51 @@ export const AgentRow = memo(function AgentRow({
           )}
         </div>
 
-        {/* Mic button */}
+        {/* Agent controls */}
         {send && (
-          <button
-            className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 cursor-pointer transition-all active:scale-90"
-            style={{
-              background: inputOpen ? accent : `${accent}20`,
-              boxShadow: inputOpen ? `0 0 16px ${accent}80` : "none",
-            }}
-            onClick={handleMic}
-            aria-label={`Talk to ${displayName}`}
-          >
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
-              stroke={inputOpen ? "#000" : accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <rect x={9} y={1} width={6} height={11} rx={3} />
-              <path d="M19 10v1a7 7 0 01-14 0v-1M12 18v4M8 22h8" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Sleep — Ctrl+C */}
+            <button
+              className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-90"
+              style={{ background: "rgba(251,191,36,0.12)" }}
+              onClick={(e) => { e.stopPropagation(); send({ type: "sleep", target: agent.target }); }}
+              title="Sleep (Ctrl+C)"
+              aria-label={`Sleep ${displayName}`}
+            >
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="#fbbf24">
+                <rect x={6} y={5} width={4} height={14} rx={1} />
+                <rect x={14} y={5} width={4} height={14} rx={1} />
+              </svg>
+            </button>
+            {/* Wake — restart command */}
+            <button
+              className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-90"
+              style={{ background: "rgba(34,197,94,0.12)" }}
+              onClick={(e) => { e.stopPropagation(); send({ type: "wake", target: agent.target, command: guessCommand(agent.name) }); }}
+              title="Wake (restart)"
+              aria-label={`Wake ${displayName}`}
+            >
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="#22c55e">
+                <polygon points="8,5 19,12 8,19" />
+              </svg>
+            </button>
+            {/* Mic button */}
+            <button
+              className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-all active:scale-90"
+              style={{
+                background: inputOpen ? accent : `${accent}20`,
+                boxShadow: inputOpen ? `0 0 16px ${accent}80` : "none",
+              }}
+              onClick={handleMic}
+              aria-label={`Talk to ${displayName}`}
+            >
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
+                stroke={inputOpen ? "#000" : accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <rect x={9} y={1} width={6} height={11} rx={3} />
+                <path d="M19 10v1a7 7 0 01-14 0v-1M12 18v4M8 22h8" />
+              </svg>
+            </button>
+          </div>
         )}
       </div>
 

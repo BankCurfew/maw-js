@@ -3,8 +3,9 @@ import { HoverPreviewCard } from "./HoverPreviewCard";
 import { MiniPreview } from "./MiniPreview";
 import { StageSection } from "./StageSection";
 import { AgentRow } from "./AgentRow";
-import { roomStyle, PREVIEW_CARD } from "../lib/constants";
+import { roomStyle, PREVIEW_CARD, guessCommand } from "../lib/constants";
 import { BottomStats } from "./BottomStats";
+import { SpawnDialog } from "./SpawnDialog";
 import { useFps } from "./FpsCounter";
 import { useFleetStore, RECENT_TTL_MS, type RecentEntry } from "../lib/store";
 import type { AgentState, Session, AgentEvent } from "../lib/types";
@@ -113,6 +114,9 @@ export const FleetGrid = memo(function FleetGrid({
     setInputBufs(prev => ({ ...prev, [target]: val }));
   }, []);
 
+  // Spawn dialog
+  const [spawnSession, setSpawnSession] = useState<string | null>(null);
+
   // --- Hover/click callbacks ---
   const showPreview = useCallback((agent: AgentState, accent: string, label: string, e: React.MouseEvent) => {
     if (pinnedPreview) return;
@@ -165,6 +169,18 @@ export const FleetGrid = memo(function FleetGrid({
     for (const a of agents) { const arr = map.get(a.session) || []; arr.push(a); map.set(a.session, arr); }
     return map;
   }, [agents]);
+
+  // Room actions
+  const sleepRoom = useCallback((roomKey: string) => {
+    const ra = sessionAgents.get(roomKey) || [];
+    for (const a of ra) send({ type: "sleep", target: a.target });
+  }, [sessionAgents, send]);
+
+  const stopRoom = useCallback((roomKey: string) => {
+    if (!confirm(`Stop all agents in this room?`)) return;
+    const ra = sessionAgents.get(roomKey) || [];
+    for (const a of ra) send({ type: "stop", target: a.target });
+  }, [sessionAgents, send]);
 
   const sorted = useMemo(() => sortRooms(sessions, sessionAgents, sortMode), [sessions, sessionAgents, sortMode]);
 
@@ -347,6 +363,22 @@ export const FleetGrid = memo(function FleetGrid({
                 <h3 className="text-base font-bold tracking-[4px] uppercase" style={{ color: style.accent }}>{vr.label}</h3>
                 <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-md" style={{ background: `${style.accent}20`, color: style.accent }}>{vr.agents.length}</span>
                 {vr.hasBusy && <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-md bg-amber-400/15 text-amber-400">{vr.busyCount} busy</span>}
+                {/* Room controls */}
+                <div className="flex items-center gap-1.5 ml-2">
+                  <button title="Spawn agent" onClick={(e) => { e.stopPropagation(); setSpawnSession(vr.key); }}
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-[13px] font-bold cursor-pointer transition-all active:scale-90"
+                    style={{ background: "rgba(34,197,94,0.12)", color: "#22c55e" }}>+</button>
+                  <button title="Sleep all (Ctrl+C)" onClick={(e) => { e.stopPropagation(); sleepRoom(vr.key); }}
+                    className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer transition-all active:scale-90"
+                    style={{ background: "rgba(251,191,36,0.12)" }}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="#fbbf24"><rect x={6} y={5} width={4} height={14} rx={1} /><rect x={14} y={5} width={4} height={14} rx={1} /></svg>
+                  </button>
+                  <button title="Stop room" onClick={(e) => { e.stopPropagation(); stopRoom(vr.key); }}
+                    className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer transition-all active:scale-90"
+                    style={{ background: "rgba(239,68,68,0.12)" }}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="#ef4444"><rect x={5} y={5} width={14} height={14} rx={2} /></svg>
+                  </button>
+                </div>
                 <svg width={16} height={16} viewBox="0 0 16 16" fill="none" className="ml-auto flex-shrink-0 transition-transform duration-200"
                   style={{ transform: isCollapsed(vr.key) ? "rotate(-90deg)" : "rotate(0deg)" }}>
                   <path d="M4 6l4 4 4-4" stroke={style.accent} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.5} />
@@ -405,6 +437,16 @@ export const FleetGrid = memo(function FleetGrid({
             externalInputBuf={getInputBuf(pinnedPreview.agent.target)}
             onInputBufChange={(val) => setInputBuf(pinnedPreview.agent.target, val)} />
         </div>
+      )}
+
+      {/* Spawn Dialog */}
+      {spawnSession && (
+        <SpawnDialog
+          sessions={sessions.map(s => s.name)}
+          defaultSession={spawnSession}
+          send={send}
+          onClose={() => setSpawnSession(null)}
+        />
       )}
 
     </div>

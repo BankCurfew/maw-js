@@ -86,3 +86,10 @@ export const PREVIEW_CARD = {
   width: 540,
   maxHeight: 760,
 } as const;
+
+/** Guess launch command from agent/window name */
+export function guessCommand(agentName: string): string {
+  if (agentName.startsWith("codex-")) return "codex --dangerously-auto-approve";
+  if (agentName.startsWith("claude-") || agentName.endsWith("-oracle")) return "claude";
+  return ""; // empty = just press Enter (restart shell)
+}

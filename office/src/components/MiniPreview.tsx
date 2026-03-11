@@ -1,4 +1,4 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import { ansiToHtml, processCapture } from "../lib/ansi";
 
 interface MiniPreviewProps {
@@ -15,6 +15,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export const MiniPreview = memo(function MiniPreview({ agent, accent, roomLabel }: MiniPreviewProps) {
   const [content, setContent] = useState("");
+  const termRef = useRef<HTMLDivElement>(null);
   const displayName = agent.name.replace(/-oracle$/, "").replace(/-/g, " ");
   const statusColor = STATUS_COLORS[agent.status] || "#666";
 
@@ -26,6 +27,11 @@ export const MiniPreview = memo(function MiniPreview({ agent, accent, roomLabel 
       .catch(() => {});
     return () => { active = false; };
   }, [agent.target]);
+
+  // Scroll to bottom when content loads
+  useEffect(() => {
+    if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight;
+  }, [content]);
 
   return (
     <div
@@ -48,7 +54,8 @@ export const MiniPreview = memo(function MiniPreview({ agent, accent, roomLabel 
 
       {/* Terminal snippet — 8 lines max */}
       <div
-        className="px-2.5 py-2 font-mono text-[9px] leading-[1.35] text-[#cdd6f4] whitespace-pre-wrap break-all overflow-hidden"
+        ref={termRef}
+        className="px-2.5 py-2 font-mono text-[9px] leading-[1.35] text-[#cdd6f4] whitespace-pre-wrap break-all overflow-y-auto"
         style={{ maxHeight: 120, background: "#08080c" }}
         dangerouslySetInnerHTML={{ __html: ansiToHtml(processCapture(content)) }}
       />

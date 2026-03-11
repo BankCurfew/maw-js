@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
-import { listSessions, capture, sendKeys, selectWindow } from "./ssh";
+import { listSessions, capture, sendKeys, selectWindow, ssh } from "./ssh";
 import { processMirror } from "./overview";
 import { FeedTailer } from "./feed-tail";
 import type { ServerWebSocket } from "bun";
@@ -332,6 +332,34 @@ export function startServer(port = +(process.env.MAW_PORT || 3456)) {
                 ws.send(JSON.stringify({ type: "sent", ok: true, target: data.target, text: data.text }));
                 // Push capture after short delay to show result
                 setTimeout(() => pushCapture(ws), 300);
+              })
+              .catch(e => ws.send(JSON.stringify({ type: "error", error: e.message })));
+          } else if (data.type === "sleep") {
+            // Ctrl+C to interrupt current task
+            sendKeys(data.target, "\x03")
+              .then(() => ws.send(JSON.stringify({ type: "action-ok", action: "sleep", target: data.target })))
+              .catch(e => ws.send(JSON.stringify({ type: "error", error: e.message })));
+          } else if (data.type === "stop") {
+            // Kill the tmux window
+            ssh(`tmux kill-window -t '${data.target}'`)
+              .then(() => ws.send(JSON.stringify({ type: "action-ok", action: "stop", target: data.target })))
+              .catch(e => ws.send(JSON.stringify({ type: "error", error: e.message })));
+          } else if (data.type === "wake") {
+            // Send command to restart agent
+            const cmd = data.command || "claude";
+            sendKeys(data.target, cmd + "\r")
+              .then(() => ws.send(JSON.stringify({ type: "action-ok", action: "wake", target: data.target })))
+              .catch(e => ws.send(JSON.stringify({ type: "error", error: e.message })));
+          } else if (data.type === "spawn") {
+            // Create new window in existing session
+            const session = data.session;
+            const name = data.name;
+            const cwd = data.cwd || process.cwd();
+            const cmd = data.command || "claude";
+            ssh(`tmux new-window -t '${session}' -n '${name}' -c '${cwd}'`)
+              .then(async () => {
+                if (cmd) await sendKeys(`${session}:${name}`, cmd + "\r");
+                ws.send(JSON.stringify({ type: "action-ok", action: "spawn", target: `${session}:${name}` }));
               })
               .catch(e => ws.send(JSON.stringify({ type: "error", error: e.message })));
           }
