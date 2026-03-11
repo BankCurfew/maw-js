@@ -128,11 +128,11 @@ export const AgentRow = memo(function AgentRow({
       >
         {/* Avatar — 2x when featured, pulse when saiyan */}
         <div
-          className="flex-shrink-0 cursor-pointer"
+          className="flex-shrink-0 cursor-pointer flex items-center justify-center"
           style={{
             overflow: "visible",
-            width: featured ? 96 : 56, height: featured ? 96 : 56,
-            transition: "width 0.3s, height 0.3s",
+            width: 96, height: featured ? 96 : 56,
+            transition: "height 0.3s",
             animation: saiyan ? "saiyanPulse 1.5s ease-in-out infinite" : "none",
           }}
           onMouseEnter={isTouch ? undefined : (e) => showPreview(agent, accent, roomLabel, e)}
