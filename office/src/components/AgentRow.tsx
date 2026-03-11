@@ -46,9 +46,8 @@ export const AgentRow = memo(function AgentRow({
       return;
     }
     setInputOpen(true);
-    // iOS needs focus in same tick as user gesture
-    // Input renders via state, so use rAF as closest sync option
-    requestAnimationFrame(() => inputRef.current?.focus());
+    // iOS: focus synchronously in tap handler to trigger keyboard
+    inputRef.current?.focus();
   }, [inputOpen]);
 
   const handleSend = useCallback(() => {
@@ -158,52 +157,56 @@ export const AgentRow = memo(function AgentRow({
         )}
       </div>
 
-      {/* Inline input — expands below the row */}
-      {inputOpen && (
-        <div
-          className="flex items-center gap-2 px-6 py-3"
+      {/* Inline input — always in DOM for iOS keyboard sync focus */}
+      <div
+        className="flex items-center gap-2 px-6 overflow-hidden transition-all duration-200"
+        style={{
+          height: inputOpen ? 56 : 0,
+          opacity: inputOpen ? 1 : 0,
+          padding: inputOpen ? undefined : "0 24px",
+          background: `${accent}08`,
+          borderBottom: inputOpen && !isLast ? "1px solid rgba(255,255,255,0.04)" : "none",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") handleSend(); if (e.key === "Escape") { setInputOpen(false); } }}
+          onBlur={() => { if (!text.trim()) setTimeout(() => setInputOpen(false), 200); }}
+          placeholder={`Talk to ${displayName}...`}
+          className="flex-1 px-4 py-3 rounded-xl text-[15px] text-white outline-none placeholder:text-white/20 [&::-webkit-search-cancel-button]:hidden [&::-webkit-clear-button]:hidden [&::-ms-clear]:hidden"
           style={{
-            background: `${accent}08`,
-            borderBottom: !isLast ? "1px solid rgba(255,255,255,0.04)" : "none",
+            background: "rgba(255,255,255,0.06)",
+            border: `1px solid ${accent}20`,
+            WebkitAppearance: "none" as const,
           }}
-          onClick={e => e.stopPropagation()}
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") handleSend(); if (e.key === "Escape") { setInputOpen(false); } }}
-            placeholder={`Talk to ${displayName}...`}
-            className="flex-1 px-4 py-3 rounded-xl text-[15px] text-white outline-none placeholder:text-white/20 [&::-webkit-search-cancel-button]:hidden [&::-webkit-clear-button]:hidden [&::-ms-clear]:hidden"
+          enterKeyHint="send"
+          autoComplete="off"
+          autoCorrect="off"
+          tabIndex={inputOpen ? 0 : -1}
+        />
+        {sent ? (
+          <span className="text-[12px] font-mono px-3 py-2 rounded-lg" style={{ background: "#22C55E20", color: "#22C55E" }}>✓</span>
+        ) : (
+          <button
+            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer active:scale-90"
             style={{
-              background: "rgba(255,255,255,0.06)",
-              border: `1px solid ${accent}20`,
-              WebkitAppearance: "none" as const,
+              background: text.trim() ? accent : `${accent}20`,
             }}
-            enterKeyHint="send"
-            autoComplete="off"
-            autoCorrect="off"
-          />
-          {sent ? (
-            <span className="text-[12px] font-mono px-3 py-2 rounded-lg" style={{ background: "#22C55E20", color: "#22C55E" }}>✓</span>
-          ) : (
-            <button
-              className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer active:scale-90"
-              style={{
-                background: text.trim() ? accent : `${accent}20`,
-              }}
-              onClick={handleSend}
-            >
-              <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
-                stroke={text.trim() ? "#000" : `${accent}50`}
-                strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 19V5M5 12l7-7 7 7" />
-              </svg>
-            </button>
-          )}
-        </div>
-      )}
+            onClick={handleSend}
+            tabIndex={inputOpen ? 0 : -1}
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
+              stroke={text.trim() ? "#000" : `${accent}50`}
+              strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </button>
+        )}
+      </div>
     </div>
   );
 });
