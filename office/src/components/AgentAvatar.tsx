@@ -27,6 +27,7 @@ export const AgentAvatar = memo(function AgentAvatar({ name, target, status, pre
 
   const displayName = name.replace(/-oracle$/, "").replace(/-/g, " ");
   const shortName = displayName.length > 10 ? displayName.slice(0, 10) + ".." : displayName;
+  const isCompacting = preview.toLowerCase().includes("compact");
 
   // Deterministic features from name hash
   let h = 0;
@@ -131,8 +132,8 @@ export const AgentAvatar = memo(function AgentAvatar({ name, target, status, pre
         fill={status === "idle" ? "#333" : fx.color}
         opacity={status === "idle" ? 0.3 : 0.2} />
 
-      {/* Chibi body group — spins when busy */}
-      <g style={fx.typing ? { animation: "chibi-spin 3s ease-in-out infinite", transformOrigin: "0 0" } : {}}>
+      {/* Chibi body group — spins when busy or compacting */}
+      <g style={(fx.typing || isCompacting) ? { animation: "chibi-spin 3s ease-in-out infinite", transformOrigin: "0 0" } : {}}>
 
       {/* === CHIBI BODY (small hoodie) === */}
       <rect x={-12} y={6} width={24} height={18} rx={8}
