@@ -50,6 +50,18 @@ export class Tmux {
     return sessions;
   }
 
+  /** List all windows across all sessions in a single tmux call. */
+  async listAll(): Promise<TmuxSession[]> {
+    const raw = await this.run("list-windows", "-a", "-F", "#{session_name}:#{window_index}:#{window_name}:#{window_active}");
+    const map = new Map<string, TmuxWindow[]>();
+    for (const line of raw.split("\n").filter(Boolean)) {
+      const [session, idx, name, active] = line.split(":");
+      if (!map.has(session)) map.set(session, []);
+      map.get(session)!.push({ index: +idx, name, active: active === "1" });
+    }
+    return [...map.entries()].map(([name, windows]) => ({ name, windows }));
+  }
+
   async hasSession(name: string): Promise<boolean> {
     try {
       await this.run("has-session", "-t", name);

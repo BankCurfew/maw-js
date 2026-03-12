@@ -36,7 +36,7 @@ interface FleetStore {
 
 const RECENT_TTL = 30 * 60 * 1000; // 30 minutes
 
-// --- Server-side storage adapter (cross-device persistence) ---
+// --- Hybrid storage: localStorage for instant hydration + server for cross-device sync ---
 
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingWrite: string | null = null;
@@ -52,19 +52,32 @@ function flushWrite() {
   }).catch(() => {}); // fire-and-forget
 }
 
-const serverStorage: StateStorage = {
-  getItem: async (_name) => {
-    try {
-      const res = await fetch("/api/ui-state");
-      if (!res.ok) return null;
-      const data = await res.json();
-      if (!data || Object.keys(data).length === 0) return null;
-      return JSON.stringify({ state: data, version: 2 });
-    } catch {
-      return null;
+/** Sync server state into localStorage, then rehydrate Zustand. */
+function syncFromServer(name: string) {
+  fetch("/api/ui-state").then(async (res) => {
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data || Object.keys(data).length === 0) return;
+    const value = JSON.stringify({ state: data, version: 2 });
+    const existing = localStorage.getItem(name);
+    if (value !== existing) {
+      localStorage.setItem(name, value);
+      useFleetStore.persist.rehydrate();
     }
+  }).catch(() => {});
+}
+
+const hybridStorage: StateStorage = {
+  getItem: (name) => {
+    // Return localStorage synchronously → instant hydration
+    // Then background-sync from server for cross-device updates
+    setTimeout(() => syncFromServer(name), 0);
+    return localStorage.getItem(name);
   },
-  setItem: async (_name, value) => {
+  setItem: (name, value) => {
+    // Write to localStorage immediately (instant on next refresh)
+    localStorage.setItem(name, value);
+    // Debounced write to server (cross-device sync)
     try {
       const { state } = JSON.parse(value);
       pendingWrite = JSON.stringify(state);
@@ -72,14 +85,13 @@ const serverStorage: StateStorage = {
       writeTimer = setTimeout(flushWrite, 1000);
     } catch {}
   },
-  removeItem: async (_name) => {
-    try {
-      await fetch("/api/ui-state", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-    } catch {}
+  removeItem: (name) => {
+    localStorage.removeItem(name);
+    fetch("/api/ui-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    }).catch(() => {});
   },
 };
 
@@ -138,7 +150,7 @@ export const useFleetStore = create<FleetStore>()(
     {
       name: "maw.fleet",
       version: 2,
-      storage: serverStorage,
+      storage: hybridStorage,
       partialize: (s) => ({
         recentMap: s.recentMap,
         sortMode: s.sortMode,

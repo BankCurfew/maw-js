@@ -24,11 +24,8 @@ const STATUS_DOT: Record<string, string> = {
 
 export function TerminalModal({ agent, send, onClose, onNavigate, onSelectSibling, siblings }: TerminalModalProps) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="w-[90vw] max-w-[900px] h-[80vh] bg-[#0a0a0f] border border-white/[0.06] rounded-xl flex flex-col overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a0f]">
+      <div className="flex flex-col h-full">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-2 bg-[#0e0e18] border-b border-white/[0.06]">
           <div className="flex gap-1.5 shrink-0">

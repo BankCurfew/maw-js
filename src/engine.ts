@@ -1,18 +1,16 @@
-import { listSessions, capture } from "./ssh";
+import { capture } from "./ssh";
+import { tmux } from "./tmux";
 import { registerBuiltinHandlers } from "./handlers";
 import type { FeedTailer } from "./feed-tail";
-import type { MawWS, Handler, RecentAgent } from "./types";
-
-const BUSY_PATTERNS = /[∴✢⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◑◒◓⣾⣽⣻⢿⡿⣟⣯⣷]|● \w+\(|\b(Read|Edit|Write|Bash|Grep|Glob|Agent)\b/;
-const RECENT_TTL = 30 * 60 * 1000; // 30 minutes
+import type { MawWS, Handler } from "./types";
 
 export class MawEngine {
   private clients = new Set<MawWS>();
   private handlers = new Map<string, Handler>();
   private lastContent = new Map<MawWS, string>();
   private lastPreviews = new Map<MawWS, Map<string, string>>();
-  private recentAgents = new Map<string, RecentAgent>();
   private lastSessionsJson = "";
+  private cachedSessions: { name: string; windows: { index: number; name: string; active: boolean }[] }[] = [];
   private captureInterval: ReturnType<typeof setInterval> | null = null;
   private sessionInterval: ReturnType<typeof setInterval> | null = null;
   private previewInterval: ReturnType<typeof setInterval> | null = null;
@@ -34,10 +32,15 @@ export class MawEngine {
   handleOpen(ws: MawWS) {
     this.clients.add(ws);
     this.startIntervals();
-    listSessions().then(s => {
-      ws.send(JSON.stringify({ type: "sessions", sessions: s }));
-      ws.send(JSON.stringify({ type: "recent", agents: this.getRecentList() }));
-    }).catch(() => {});
+    if (this.cachedSessions.length > 0) {
+      ws.send(JSON.stringify({ type: "sessions", sessions: this.cachedSessions }));
+    } else {
+      // Cold start: fetch and send directly to this client
+      tmux.listAll().then(sessions => {
+        this.cachedSessions = sessions;
+        ws.send(JSON.stringify({ type: "sessions", sessions }));
+      }).catch(() => {});
+    }
     ws.send(JSON.stringify({ type: "feed-history", events: this.feedTailer.getRecent(50) }));
   }
 
@@ -97,54 +100,14 @@ export class MawEngine {
     }
   }
 
-  // --- Recent agent tracking ---
-
-  private pruneRecent() {
-    const cutoff = Date.now() - RECENT_TTL;
-    for (const [k, v] of this.recentAgents) {
-      if (v.lastBusy < cutoff) this.recentAgents.delete(k);
-    }
-  }
-
-  private getRecentList(): RecentAgent[] {
-    this.pruneRecent();
-    return [...this.recentAgents.values()]
-      .sort((a, b) => b.lastBusy - a.lastBusy)
-      .slice(0, 6);
-  }
-
-  private async updateRecentFromSessions(sessions: { name: string; windows: { index: number; name: string; active: boolean }[] }[]) {
-    const now = Date.now();
-    const checks: Promise<void>[] = [];
-
-    for (const s of sessions) {
-      for (const w of s.windows) {
-        const target = `${s.name}:${w.index}`;
-        checks.push(
-          capture(`${s.name}:${w.name}`, 5).then(content => {
-            const lines = content.split("\n").filter(l => l.trim());
-            const bottom = lines.slice(-5).join("\n");
-            if (BUSY_PATTERNS.test(bottom)) {
-              this.recentAgents.set(target, { target, name: w.name, session: s.name, lastBusy: now });
-            }
-          }).catch(() => {})
-        );
-      }
-    }
-    await Promise.allSettled(checks);
-  }
-
   // --- Broadcast ---
 
   private async broadcastSessions() {
     if (this.clients.size === 0) return;
     try {
-      const sessions = await listSessions();
+      const sessions = await tmux.listAll();
+      this.cachedSessions = sessions;
       const json = JSON.stringify(sessions);
-
-      await this.updateRecentFromSessions(sessions);
-      const recentMsg = JSON.stringify({ type: "recent", agents: this.getRecentList() });
-      for (const ws of this.clients) ws.send(recentMsg);
 
       if (json === this.lastSessionsJson) return;
       this.lastSessionsJson = json;
