@@ -189,6 +189,8 @@ export class Tmux {
       // Buffer method — reliable for multiline/long content
       await this.loadBuffer(text);
       await this.pasteBuffer(target);
+      // Claude Code needs time to process paste event before Enter (#16)
+      await new Promise(r => setTimeout(r, 150));
       await this.sendKeys(target, "Enter");
     } else {
       // Direct send-keys for short single-line
