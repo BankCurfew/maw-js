@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 process.env.MAW_CLI = "1";
 
-import { listSessions, findWindow, capture, sendKeys } from "./ssh";
+import { listSessions, findWindow, capture, sendKeys, getPaneCommand } from "./ssh";
 import { cmdOverview } from "./overview";
 import { cmdWake, fetchIssuePrompt } from "./wake";
 import { cmdPulseAdd, cmdPulseLs } from "./pulse";
@@ -50,10 +50,22 @@ async function cmdPeek(query?: string) {
   console.log(content);
 }
 
-async function cmdSend(query: string, message: string) {
+async function cmdSend(query: string, message: string, force = false) {
   const sessions = await listSessions();
   const target = findWindow(sessions, query);
   if (!target) { console.error(`window not found: ${query}`); process.exit(1); }
+
+  // Detect active Claude session (#17)
+  if (!force) {
+    const cmd = await getPaneCommand(target);
+    const isAgent = /claude|codex|node/i.test(cmd);
+    if (!isAgent) {
+      console.error(`\x1b[31merror\x1b[0m: no active Claude session in ${target} (running: ${cmd})`);
+      console.error(`\x1b[33mhint\x1b[0m:  run \x1b[36mmaw wake ${query}\x1b[0m first, or use \x1b[36m--force\x1b[0m to send anyway`);
+      process.exit(1);
+    }
+  }
+
   await sendKeys(target, message);
   console.log(`\x1b[32msent\x1b[0m → ${target}: ${message}`);
 }
@@ -118,8 +130,10 @@ if (!cmd || cmd === "--help" || cmd === "-h") {
 } else if (cmd === "peek" || cmd === "see") {
   await cmdPeek(args[1]);
 } else if (cmd === "hey" || cmd === "send" || cmd === "tell") {
-  if (!args[1] || !args[2]) { console.error("usage: maw hey <agent> <message>"); process.exit(1); }
-  await cmdSend(args[1], args.slice(2).join(" "));
+  const force = args.includes("--force");
+  const msgArgs = args.slice(2).filter(a => a !== "--force");
+  if (!args[1] || !msgArgs.length) { console.error("usage: maw hey <agent> <message> [--force]"); process.exit(1); }
+  await cmdSend(args[1], msgArgs.join(" "), force);
 } else if (cmd === "fleet" && args[1] === "init") {
   await cmdFleetInit();
 } else if (cmd === "fleet" && args[1] === "ls") {
@@ -226,7 +240,9 @@ if (!cmd || cmd === "--help" || cmd === "-h") {
   // Default: agent name
   if (args.length >= 2) {
     // maw neo what's up → send
-    await cmdSend(args[0], args.slice(1).join(" "));
+    const f = args.includes("--force");
+    const m = args.slice(1).filter(a => a !== "--force");
+    await cmdSend(args[0], m.join(" "), f);
   } else {
     // maw neo → peek
     await cmdPeek(args[0]);

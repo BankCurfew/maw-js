@@ -128,6 +128,12 @@ export class Tmux {
 
   // --- Panes ---
 
+  /** Get the command running in a pane (e.g. "claude", "zsh") */
+  async getPaneCommand(target: string): Promise<string> {
+    const raw = await this.run("list-panes", "-t", target, "-F", "#{pane_current_command}");
+    return raw.split("\n")[0] || "";
+  }
+
   async capture(target: string, lines = 80): Promise<string> {
     if (lines > 50) {
       return this.run("capture-pane", "-t", target, "-e", "-p", "-S", -lines);

@@ -1,4 +1,4 @@
-import { sendKeys, selectWindow, ssh } from "./ssh";
+import { sendKeys, selectWindow, ssh, getPaneCommand } from "./ssh";
 import { buildCommand } from "./config";
 import type { MawWS, Handler, MawEngine } from "./types";
 
@@ -28,7 +28,17 @@ const select: Handler = (_ws, data) => {
   selectWindow(data.target).catch(() => {});
 };
 
-const send: Handler = (ws, data, engine) => {
+const send: Handler = async (ws, data, engine) => {
+  // Check for active Claude session before sending (#17)
+  if (!data.force) {
+    try {
+      const cmd = await getPaneCommand(data.target);
+      if (!/claude|codex|node/i.test(cmd)) {
+        ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${data.target} (running: ${cmd})` }));
+        return;
+      }
+    } catch { /* pane check failed, proceed anyway */ }
+  }
   sendKeys(data.target, data.text)
     .then(() => {
       ws.send(JSON.stringify({ type: "sent", ok: true, target: data.target, text: data.text }));
