@@ -147,7 +147,7 @@ export const FleetGrid = memo(function FleetGrid({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // --- Zustand store ---
-  const { recentMap, markBusy, pruneRecent, sortMode, setSortMode, grouped, toggleGrouped, collapsed, toggleCollapsed, sleptTargets } = useFleetStore();
+  const { recentMap, markBusy, pruneRecent, sortMode, setSortMode, collapsed, toggleCollapsed, sleptTargets } = useFleetStore();
   const isCollapsed = useCallback((key: string) => collapsed.includes(key), [collapsed]);
 
   // Sync busy agents to store
@@ -239,26 +239,11 @@ export const FleetGrid = memo(function FleetGrid({
 
   type VRoom = { key: string; label: string; accent: string; floor: string; agents: AgentState[]; hasBusy: boolean; busyCount: number };
   const visualRooms = useMemo((): VRoom[] => {
-    if (!grouped) {
-      return sorted.map(s => {
-        const st = roomStyle(s.name); const ra = sessionAgents.get(s.name) || []; const ba = ra.filter(a => a.status === "busy");
-        return { key: s.name, label: s.name, accent: st.accent, floor: st.floor, agents: ra, hasBusy: ba.length > 0, busyCount: ba.length };
-      });
-    }
-    const multi: VRoom[] = []; const soloAgents: AgentState[] = [];
-    for (const s of sorted) {
+    return sorted.map(s => {
       const st = roomStyle(s.name); const ra = sessionAgents.get(s.name) || []; const ba = ra.filter(a => a.status === "busy");
-      if (ra.length <= 1) soloAgents.push(...ra);
-      else multi.push({ key: s.name, label: s.name, accent: st.accent, floor: st.floor, agents: ra, hasBusy: ba.length > 0, busyCount: ba.length });
-    }
-    const result: VRoom[] = [];
-    if (soloAgents.length > 0) {
-      const sb = soloAgents.filter(a => a.status === "busy");
-      result.push({ key: "_oracles", label: "Oracles", accent: "#7e57c2", floor: "#1a1428", agents: soloAgents, hasBusy: sb.length > 0, busyCount: sb.length });
-    }
-    result.push(...multi);
-    return result;
-  }, [sorted, sessionAgents, grouped]);
+      return { key: s.name, label: s.name, accent: st.accent, floor: st.floor, agents: ra, hasBusy: ba.length > 0, busyCount: ba.length };
+    });
+  }, [sorted, sessionAgents]);
 
   // Resolve per-agent feed log — primary oracle + worktree windows
   const getAgentFeedLog = useCallback((agentName: string): FeedLogEntry[] | null => {
@@ -414,17 +399,6 @@ export const FleetGrid = memo(function FleetGrid({
             </section>
           );
         })}
-      </div>
-
-      {/* Group toggle */}
-      <div className="max-w-5xl mx-auto flex justify-center py-4">
-        <button className="text-[11px] font-mono px-4 py-2 rounded-lg border cursor-pointer transition-colors duration-150"
-          style={{ background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)", color: "#94A3B8" }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
-          onClick={toggleGrouped}>
-          {grouped ? "Show all rooms" : "Group solo oracles"}
-        </button>
       </div>
 
       <BottomStats agents={agents} eventLog={eventLog} />
