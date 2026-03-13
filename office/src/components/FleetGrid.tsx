@@ -5,7 +5,6 @@ import { StageSection } from "./StageSection";
 import { AgentRow } from "./AgentRow";
 import { roomStyle, PREVIEW_CARD, guessCommand } from "../lib/constants";
 import { BottomStats } from "./BottomStats";
-import { SpawnDialog } from "./SpawnDialog";
 import { useFps } from "./FpsCounter";
 import { useFleetStore, RECENT_TTL_MS, type RecentEntry } from "../lib/store";
 import type { AgentState, Session, AgentEvent } from "../lib/types";
@@ -170,9 +169,6 @@ export const FleetGrid = memo(function FleetGrid({
   const setInputBuf = useCallback((target: string, val: string) => {
     setInputBufs(prev => ({ ...prev, [target]: val }));
   }, []);
-
-  // Spawn dialog
-  const [spawnSession, setSpawnSession] = useState<string | null>(null);
 
   // --- Hover/click callbacks ---
   const showPreview = useCallback((agent: AgentState, accent: string, label: string, e: React.MouseEvent) => {
@@ -386,9 +382,6 @@ export const FleetGrid = memo(function FleetGrid({
                 {vr.hasBusy && <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-md bg-amber-400/15 text-amber-400">{vr.busyCount} busy</span>}
                 {/* Room controls */}
                 <div className="flex items-center gap-1.5 ml-2">
-                  <button title="Spawn agent" onClick={(e) => { e.stopPropagation(); setSpawnSession(vr.key); }}
-                    className="w-7 h-7 rounded-md flex items-center justify-center text-[13px] font-bold cursor-pointer transition-all active:scale-90"
-                    style={{ background: "rgba(34,197,94,0.12)", color: "#22c55e" }}>+</button>
                   <button title="Sleep all (Ctrl+C)" onClick={(e) => { e.stopPropagation(); sleepRoom(vr.key); }}
                     className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer transition-all active:scale-90"
                     style={{ background: "rgba(251,191,36,0.12)" }}>
@@ -459,16 +452,6 @@ export const FleetGrid = memo(function FleetGrid({
             externalInputBuf={getInputBuf(pinnedPreview.agent.target)}
             onInputBufChange={(val) => setInputBuf(pinnedPreview.agent.target, val)} />
         </div>
-      )}
-
-      {/* Spawn Dialog */}
-      {spawnSession && (
-        <SpawnDialog
-          sessions={sessions.map(s => s.name)}
-          defaultSession={spawnSession}
-          send={send}
-          onClose={() => setSpawnSession(null)}
-        />
       )}
 
     </div>

@@ -13,26 +13,39 @@ interface FleetSession {
   skip_command?: boolean;
 }
 
-// Default grouping: oracle name → session group
+// Default grouping: oracle name → session (1:1, no more shared sessions)
 const GROUPS: Record<string, { session: string; order: number }> = {
-  // Own sessions — each oracle gets a dedicated tmux session
-  homekeeper: { session: "homekeeper", order: 1 },
-  nexus: { session: "nexus", order: 2 },
-  hermes: { session: "hermes", order: 3 },
-  neo: { session: "neo", order: 4 },
-  pulse: { session: "pulse", order: 5 },
-  calliope: { session: "calliope", order: 6 },
-  volt: { session: "volt", order: 7 },
-  mother: { session: "mother", order: 8 },
-  odin: { session: "odin", order: 9 },
-  // Merged groups — related oracles share a session
-  arthur: { session: "arra", order: 10 },
-  dustboy: { session: "arra", order: 10 },
-  floodboy: { session: "arra", order: 10 },
-  fireman: { session: "arra", order: 10 },
-  xiaoer: { session: "brewing", order: 11 },
-  maeon: { session: "brewing", order: 11 },
-  landing: { session: "landing", order: 12 },
+  // Command layer (01-04) — always on
+  pulse: { session: "pulse", order: 1 },
+  hermes: { session: "hermes", order: 2 },
+  neo: { session: "neo", order: 3 },
+  homekeeper: { session: "homekeeper", order: 4 },
+  // Project layer (05-10) — on demand
+  volt: { session: "volt", order: 5 },
+  floodboy: { session: "floodboy", order: 6 },
+  fireman: { session: "fireman", order: 7 },
+  dustboy: { session: "dustboy", order: 8 },
+  dustboychain: { session: "dustboychain", order: 9 },
+  arthur: { session: "arthur", order: 10 },
+  // Knowledge layer (11-14) — on demand
+  calliope: { session: "calliope", order: 11 },
+  odin: { session: "odin", order: 12 },
+  mother: { session: "mother", order: 13 },
+  nexus: { session: "nexus", order: 14 },
+  // Brewing (15)
+  xiaoer: { session: "xiaoer", order: 15 },
+  // Dormant (20+)
+  lake: { session: "lake", order: 20 },
+  sea: { session: "sea", order: 21 },
+  phukhao: { session: "phukhao", order: 22 },
+  shrimp: { session: "shrimp", order: 23 },
+  tworivers: { session: "tworivers", order: 24 },
+  brewsboy: { session: "brewsboy", order: 25 },
+  natsbrain: { session: "natsbrain", order: 26 },
+  opensourcenatbrain: { session: "opensourcenatbrain", order: 27 },
+  maeoncraft: { session: "maeoncraft", order: 28 },
+  maeon: { session: "maeoncraft", order: 28 },
+  landing: { session: "landing", order: 29 },
 };
 
 export async function cmdFleetInit() {

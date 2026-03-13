@@ -5,9 +5,8 @@ import { listSessions, findWindow, capture, sendKeys } from "./ssh";
 import { cmdOverview } from "./overview";
 import { cmdWake, fetchIssuePrompt } from "./wake";
 import { cmdPulseAdd, cmdPulseLs } from "./pulse";
-import { cmdSpawn } from "./spawn";
-import { cmdOracleList } from "./oracle";
-import { cmdWakeAll, cmdSleep, cmdFleetLs, cmdFleetRenumber, cmdFleetValidate } from "./fleet";
+import { cmdOracleList, cmdOracleAbout } from "./oracle";
+import { cmdWakeAll, cmdSleep, cmdFleetLs, cmdFleetRenumber, cmdFleetValidate, cmdFleetSync } from "./fleet";
 import { cmdFleetInit } from "./fleet-init";
 
 const args = process.argv.slice(2);
@@ -71,9 +70,10 @@ function usage() {
   maw fleet ls                List fleet configs with conflict detection
   maw fleet renumber          Fix numbering conflicts (sequential)
   maw fleet validate          Check for problems (dupes, orphans, missing repos)
+  maw fleet sync              Add unregistered windows to fleet configs
   maw wake all [--kill]       Wake entire fleet from fleet/*.json
   maw stop                    Stop all fleet sessions
-  maw spawn <oracle> [opts]   Create tmux session from worktrees
+  maw about <oracle>           Oracle profile — session, worktrees, fleet
   maw oracle ls               Fleet status (awake/sleeping/worktrees)
   maw overview              War-room: all oracles in split panes
   maw overview neo hermes   Only specific oracles
@@ -96,16 +96,10 @@ function usage() {
   maw pulse add "Fix bug" --oracle neo
   maw pulse add "task" --oracle neo --wt oracle-v2
 
-\x1b[33mSpawn options:\x1b[0m
-  --name <session>            Custom tmux session name
-  --continue, -c              Auto-start claude --continue in all windows
-
 \x1b[33mEnv:\x1b[0m
   MAW_HOST=white.local        SSH target (default: white.local)
 
 \x1b[33mExamples:\x1b[0m
-  maw spawn hermes            Create session from hermes + worktrees
-  maw spawn hermes -c         Create + auto-continue all agents
   maw wake neo --new bitkub   Create worktree + start claude
   maw pulse add "Fix IME" --oracle neo --priority P1
   maw hey neo what is your status
@@ -131,6 +125,8 @@ if (!cmd || cmd === "--help" || cmd === "-h") {
   await cmdFleetRenumber();
 } else if (cmd === "fleet" && args[1] === "validate") {
   await cmdFleetValidate();
+} else if (cmd === "fleet" && args[1] === "sync") {
+  await cmdFleetSync();
 } else if (cmd === "fleet" && !args[1]) {
   await cmdFleetLs();
 } else if (cmd === "stop" || cmd === "sleep" || cmd === "rest") {
@@ -178,6 +174,9 @@ if (!cmd || cmd === "--help" || cmd === "-h") {
   }
 } else if (cmd === "overview" || cmd === "warroom" || cmd === "ov") {
   await cmdOverview(args.slice(1));
+} else if (cmd === "about" || cmd === "info") {
+  if (!args[1]) { console.error("usage: maw about <oracle>"); process.exit(1); }
+  await cmdOracleAbout(args[1]);
 } else if (cmd === "oracle" || cmd === "oracles") {
   const subcmd = args[1]?.toLowerCase();
   if (!subcmd || subcmd === "ls" || subcmd === "list") {
@@ -186,14 +185,6 @@ if (!cmd || cmd === "--help" || cmd === "-h") {
     console.error("usage: maw oracle ls");
     process.exit(1);
   }
-} else if (cmd === "spawn") {
-  if (!args[1]) { console.error("usage: maw spawn <oracle> [--name <session>] [-c|--continue]"); process.exit(1); }
-  const spawnOpts: { name?: string; continue?: boolean } = {};
-  for (let i = 2; i < args.length; i++) {
-    if (args[i] === "--name" && args[i + 1]) { spawnOpts.name = args[++i]; }
-    else if (args[i] === "-c" || args[i] === "--continue") { spawnOpts.continue = true; }
-  }
-  await cmdSpawn(args[1], spawnOpts);
 } else if (cmd === "serve") {
   const { startServer } = await import("./server");
   startServer(args[1] ? +args[1] : 3456);

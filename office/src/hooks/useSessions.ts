@@ -210,7 +210,7 @@ export function useSessions() {
       });
     } else if (data.type === "action-ok") {
       if (data.action === "sleep") markSlept(data.target);
-      else if (data.action === "wake" || data.action === "spawn") clearSlept(data.target);
+      else if (data.action === "wake") clearSlept(data.target);
     }
   }, []);
 

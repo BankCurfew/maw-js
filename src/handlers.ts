@@ -62,18 +62,6 @@ const restart: Handler = (ws, data) => {
   });
 };
 
-const spawn: Handler = (ws, data) => {
-  const session = data.session;
-  const name = data.name;
-  const cwd = data.cwd || process.cwd();
-  const cmd = data.command || buildCommand(name);
-  const target = `${session}:${name}`;
-  runAction(ws, "spawn", target, async () => {
-    await ssh(`tmux new-window -t '${session}' -n '${name}' -c '${cwd}'`);
-    if (cmd) await sendKeys(target, cmd + "\r");
-  });
-};
-
 /** Register all built-in WebSocket handlers on the engine */
 export function registerBuiltinHandlers(engine: MawEngine) {
   engine.on("subscribe", subscribe);
@@ -84,5 +72,4 @@ export function registerBuiltinHandlers(engine: MawEngine) {
   engine.on("stop", stop);
   engine.on("wake", wake);
   engine.on("restart", restart);
-  engine.on("spawn", spawn);
 }
