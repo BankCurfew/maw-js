@@ -94,6 +94,9 @@ function usage() {
   maw overview --kill       Tear down overview
   maw done <window>            Clean up finished worktree window
   maw pulse add "task" [opts] Create issue + wake oracle
+  maw view <agent> [window]   Grouped tmux session (interactive attach)
+  maw create-view <agent> [w] Alias for view
+  maw view <agent> --clean    Hide status bar (full screen)
   maw <agent> <msg...>        Shorthand for hey
   maw <agent>                 Shorthand for peek
   maw serve [port]            Start web UI (default: 3456)
@@ -209,7 +212,7 @@ if (!cmd || cmd === "--help" || cmd === "-h") {
   // Internal: used by shell completion scripts
   const sub = args[1];
   if (sub === "commands") {
-    console.log("ls peek hey wake fleet stop done overview about oracle pulse serve");
+    console.log("ls peek hey wake fleet stop done overview about oracle pulse view create-view serve");
   } else if (sub === "oracles" || sub === "windows") {
     const { readdirSync, readFileSync } = await import("fs");
     const { join } = await import("path");
@@ -233,6 +236,75 @@ if (!cmd || cmd === "--help" || cmd === "-h") {
   } else if (sub === "pulse") {
     console.log("add ls list");
   }
+} else if (cmd === "view" || cmd === "create-view" || cmd === "attach") {
+  if (!args[1]) { console.error("usage: maw view <agent> [window] [--clean]"); process.exit(1); }
+  const clean = args.includes("--clean");
+  const viewArgs = args.slice(1).filter(a => a !== "--clean");
+  const agent = viewArgs[0];
+  const windowHint = viewArgs[1]; // optional: window name or index
+
+  // Find the session
+  const sessions = await listSessions();
+  const allWindows = sessions.flatMap(s => s.windows.map(w => ({ session: s.name, ...w })));
+
+  // Resolve agent → session
+  let sessionName: string | null = null;
+  for (const s of sessions) {
+    if (s.name.endsWith(`-${agent}`) || s.name === agent) { sessionName = s.name; break; }
+    if (s.windows.some(w => w.name.toLowerCase().includes(agent.toLowerCase()))) { sessionName = s.name; break; }
+  }
+  if (!sessionName) { console.error(`session not found for: ${agent}`); process.exit(1); }
+
+  // Generate unique view name
+  const viewName = `${agent}-view${windowHint ? `-${windowHint}` : ""}`;
+
+  // Kill existing view with same name
+  const { Tmux } = await import("./tmux");
+  const t = new Tmux();
+  await t.killSession(viewName);
+
+  // Create grouped session
+  await t.newGroupedSession(sessionName, viewName, { cols: 200, rows: 50 });
+  console.log(`\x1b[36mcreated\x1b[0m → ${viewName} (grouped with ${sessionName})`);
+
+  // Select specific window if requested
+  if (windowHint) {
+    const win = allWindows.find(w =>
+      w.session === sessionName && (
+        w.name === windowHint ||
+        w.name.includes(windowHint) ||
+        String(w.index) === windowHint
+      )
+    );
+    if (win) {
+      await t.selectWindow(`${viewName}:${win.index}`);
+      console.log(`\x1b[36mwindow\x1b[0m  → ${win.name} (${win.index})`);
+    } else {
+      console.error(`\x1b[33mwarn\x1b[0m: window '${windowHint}' not found, using default`);
+    }
+  }
+
+  // Hide status bar if --clean
+  if (clean) {
+    await t.set(viewName, "status", "off");
+  }
+
+  // Attach interactively
+  const { loadConfig: lc } = await import("./config");
+  const host = process.env.MAW_HOST || lc().host || "white.local";
+  const isLocal = host === "local" || host === "localhost";
+  const attachArgs = isLocal
+    ? ["tmux", "attach-session", "-t", viewName]
+    : ["ssh", "-tt", host, `tmux attach-session -t '${viewName}'`];
+  console.log(`\x1b[36mattach\x1b[0m  → ${viewName}${clean ? " (clean)" : ""}`);
+  const proc = Bun.spawn(attachArgs, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+  const exitCode = await proc.exited;
+
+  // Cleanup: kill grouped session after detach
+  await t.killSession(viewName);
+  console.log(`\x1b[90mcleaned\x1b[0m → ${viewName}`);
+  process.exit(exitCode);
+
 } else if (cmd === "serve") {
   const { startServer } = await import("./server");
   startServer(args[1] ? +args[1] : 3456);
