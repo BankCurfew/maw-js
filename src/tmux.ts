@@ -214,6 +214,12 @@ export class Tmux {
     }
   }
 
+  // --- Environment ---
+
+  async setEnvironment(session: string, key: string, value: string): Promise<void> {
+    await this.run("set-environment", "-t", session, key, value);
+  }
+
   // --- Options ---
 
   async setOption(target: string, option: string, value: string): Promise<void> {
