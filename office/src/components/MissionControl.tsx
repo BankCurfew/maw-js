@@ -7,6 +7,17 @@ import { BottomStats } from "./BottomStats";
 import { FpsCounter } from "./FpsCounter";
 import { roomStyle, PREVIEW_CARD } from "../lib/constants";
 import type { AgentState, Session, AgentEvent } from "../lib/types";
+
+interface RoomConfig {
+  id: string; label: string; emoji: string; description: string;
+  lead: string; members: string[]; accent: string; floor: string; wall: string;
+}
+
+function matchAgentToRoom(agent: AgentState, memberName: string): boolean {
+  const a = agent.name.toLowerCase();
+  const m = memberName.toLowerCase();
+  return a === m || a === m.replace(/-oracle$/, "") || `${a}-oracle` === m;
+}
 interface MissionControlProps {
   sessions: Session[];
   agents: AgentState[];
@@ -27,6 +38,12 @@ export const MissionControl = memo(function MissionControl({
   addEvent,
 }: MissionControlProps) {
   const [groupSolo, setGroupSolo] = useState(true);
+  const [roomsConfig, setRoomsConfig] = useState<RoomConfig[]>([]);
+  useEffect(() => {
+    fetch("/api/rooms").then(r => r.json()).then(d => {
+      if (d.rooms?.length > 0) setRoomsConfig(d.rooms);
+    }).catch(() => {});
+  }, []);
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{ agent: AgentState; room: { label: string; accent: string }; pos: { x: number; y: number } } | null>(null);
   const [pinnedPreview, setPinnedPreview] = useState<{ agent: AgentState; room: { label: string; accent: string }; pos: { x: number; y: number }; svgX: number; svgY: number } | null>(null);
@@ -138,7 +155,7 @@ export const MissionControl = memo(function MissionControl({
     setPan(p => ({ x: p.x + dx, y: p.y + dy }));
   }, []);
 
-  // Group agents by session
+  // Group agents by session (fallback)
   const sessionAgents = useMemo(() => {
     const map = new Map<string, AgentState[]>();
     for (const a of agents) {
@@ -149,33 +166,63 @@ export const MissionControl = memo(function MissionControl({
     return map;
   }, [agents]);
 
-  // Layout: optionally merge solo rooms into "Oracles" cluster, arrange in circle
+  // Layout: use rooms config if available, else group by tmux session
   const layout = useMemo(() => {
-    const sessionList = sessions.map((s) => ({
-      session: s,
-      agents: sessionAgents.get(s.name) || [],
-      style: roomStyle(s.name),
-    }));
+    type LayoutItem = {
+      session: { name: string; windows: any[] };
+      agents: AgentState[];
+      style: { accent: string; floor: string; wall: string; label: string };
+    };
 
-    type LayoutItem = typeof sessionList[0];
     let virtual: LayoutItem[];
 
-    if (groupSolo) {
-      // Separate multi-agent rooms from solo rooms
-      const multi = sessionList.filter(s => s.agents.length > 1);
-      const soloAgents = sessionList.filter(s => s.agents.length === 1).flatMap(s => s.agents);
-
-      virtual = [];
-      if (soloAgents.length > 0) {
+    if (roomsConfig.length > 0) {
+      // Use rooms config for grouping
+      const assigned = new Set<string>();
+      virtual = roomsConfig.map(room => {
+        const roomAgents: AgentState[] = [];
+        for (const memberName of room.members) {
+          const agent = agents.find(a => matchAgentToRoom(a, memberName));
+          if (agent) { roomAgents.push(agent); assigned.add(agent.target); }
+        }
+        return {
+          session: { name: room.id, windows: [] },
+          agents: roomAgents,
+          style: { accent: room.accent, floor: room.floor, wall: room.wall, label: room.label },
+        };
+      });
+      // Unassigned agents
+      const unassigned = agents.filter(a => !assigned.has(a.target));
+      if (unassigned.length > 0) {
         virtual.push({
-          session: { name: "_oracles", windows: [] },
-          agents: soloAgents,
-          style: { accent: "#7e57c2", floor: "#1a1428", wall: "#120e1e", label: "Oracles" },
+          session: { name: "_unassigned", windows: [] },
+          agents: unassigned,
+          style: { accent: "#78909c", floor: "#1a1a1e", wall: "#121216", label: "Unassigned" },
         });
       }
-      virtual.push(...multi);
     } else {
-      virtual = sessionList;
+      // Fallback: group by tmux session
+      const sessionList = sessions.map((s) => ({
+        session: s,
+        agents: sessionAgents.get(s.name) || [],
+        style: roomStyle(s.name),
+      }));
+
+      if (groupSolo) {
+        const multi = sessionList.filter(s => s.agents.length > 1);
+        const soloAgents = sessionList.filter(s => s.agents.length === 1).flatMap(s => s.agents);
+        virtual = [];
+        if (soloAgents.length > 0) {
+          virtual.push({
+            session: { name: "_oracles", windows: [] },
+            agents: soloAgents,
+            style: { accent: "#7e57c2", floor: "#1a1428", wall: "#120e1e", label: "Oracles" },
+          });
+        }
+        virtual.push(...multi);
+      } else {
+        virtual = sessionList;
+      }
     }
 
     const cx = 640, cy = 460;
@@ -187,7 +234,7 @@ export const MissionControl = memo(function MissionControl({
       const y = cy + Math.sin(angle) * radius;
       return { ...s, x, y };
     });
-  }, [sessions, sessionAgents, groupSolo]);
+  }, [sessions, sessionAgents, groupSolo, roomsConfig, agents]);
 
   // Persistent input buffer per agent (survives pin/unpin)
   const [inputBufs, setInputBufs] = useState<Record<string, string>>({});
