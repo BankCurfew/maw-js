@@ -51,9 +51,9 @@
       "id": "aia-office",
       "label": "AIA Office",
       "emoji": "🏢",
-      "description": "AIA Thailand — Executive Secretary",
+      "description": "AIA Thailand — Insurance & Bot Operations",
       "lead": "AIA-Oracle",
-      "members": ["AIA-Oracle"],
+      "members": ["AIA-Oracle", "Admin-Oracle"],
       "accent": "#EC4899",
       "floor": "#281420",
       "wall": "#200e18"
