@@ -126,9 +126,33 @@ app.get("/api/oracle/stats", async (c) => {
   }
 });
 
-// --- UI State persistence (cross-device) ---
+// --- Rooms config (HR-managed) ---
 import { readdirSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync } from "fs";
 import { join, basename } from "path";
+
+const roomsPath = join(import.meta.dir, "../rooms.json");
+
+app.get("/api/rooms", (c) => {
+  try {
+    if (!existsSync(roomsPath)) return c.json({ rooms: [] });
+    return c.json(JSON.parse(readFileSync(roomsPath, "utf-8")));
+  } catch {
+    return c.json({ rooms: [] });
+  }
+});
+
+app.post("/api/rooms", async (c) => {
+  try {
+    const body = await c.req.json();
+    body.updatedAt = new Date().toISOString();
+    writeFileSync(roomsPath, JSON.stringify(body, null, 2), "utf-8");
+    return c.json({ ok: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+// --- UI State persistence (cross-device) ---
 
 const uiStatePath = join(import.meta.dir, "../ui-state.json");
 
@@ -157,7 +181,13 @@ const asksPath = join(import.meta.dir, "../asks.json");
 app.get("/api/asks", (c) => {
   try {
     if (!existsSync(asksPath)) return c.json([]);
-    return c.json(JSON.parse(readFileSync(asksPath, "utf-8")));
+    const asks = JSON.parse(readFileSync(asksPath, "utf-8"));
+    // Filter out stale "waiting for input" noise
+    const clean = asks.filter((a: any) => {
+      const msg = (a.message || "").toLowerCase();
+      return !msg.includes("waiting for input") && !msg.includes("waiting for your input");
+    });
+    return c.json(clean);
   } catch {
     return c.json([]);
   }
