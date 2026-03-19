@@ -1,0 +1,226 @@
+{
+  "enabled": true,
+  "loops": [
+    {
+      "id": "bob-oracle-monitor",
+      "oracle": "bob",
+      "tmux": "01-bob:0",
+      "schedule": "*/5 * * * *",
+      "prompt": "มี task ที่ยังไม่จบ — peek oracle ที่เกี่ยวข้องกับ task ล่าสุด แล้วสรุปสถานะ ถ้า stuck ให้ follow up",
+      "requireIdle": true,
+      "requireActiveOracles": true,
+      "enabled": true,
+      "description": "BoB peeks active oracles and follows up if stuck"
+    },
+    {
+      "id": "aia-epos-email",
+      "oracle": "aia",
+      "tmux": "08-aia:0",
+      "schedule": "0 10,12,14,17 * * *",
+      "prompt": "เช็ค ePOS Daily Report — ดึง Gmail เรื่อง EPOS ตั้งแต่รอบก่อนหน้า, สรุปผล, draft reply ถ้า urgent, report ผ่าน feed.log + maw hey bob + ส่ง email สรุปให้แบงค์ bankvuttipipat@gmail.com ด้วยทุกครั้ง",
+      "requireIdle": true,
+      "autoRestart": true,
+      "restartDir": "~/repos/github.com/BankCurfew/AIA-Oracle",
+      "enabled": true,
+      "description": "AIA checks ePOS emails from Gmail"
+    },
+    {
+      "id": "admin-bot-health",
+      "oracle": "admin",
+      "tmux": "10-admin:0",
+      "schedule": "0 9,13,17 * * *",
+      "prompt": "ตรวจ bot health — เช็ค webhook response, DB connectivity, bot uptime แล้ว report สถานะ ถ้ามีปัญหาให้ maw hey bob รายงาน",
+      "requireIdle": true,
+      "autoRestart": true,
+      "restartDir": "~/repos/github.com/BankCurfew/Admin-Oracle",
+      "enabled": true,
+      "description": "Admin checks bot health, webhooks, DB"
+    },
+    {
+      "id": "bob-weekly-review",
+      "oracle": "bob",
+      "tmux": "01-bob:0",
+      "schedule": "0 9 * * 1",
+      "prompt": "Weekly Review — สรุปงานสัปดาห์ที่ผ่านมา: check pulse board completion rate, git log ทุก oracle, ตรวจ overdue tasks, สร้าง weekly summary แล้ว report",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "BoB Monday weekly review"
+    },
+    {
+      "id": "hr-weekly-performance",
+      "oracle": "hr",
+      "tmux": "07-hr:0",
+      "schedule": "0 14 * * 5",
+      "prompt": "Weekly Performance Review — เช็ค commits ทุก oracle, response time, retros, compliance แล้วสรุป report ให้ BoB ผ่าน maw hey bob",
+      "requireIdle": true,
+      "autoRestart": true,
+      "restartDir": "~/repos/github.com/BankCurfew/HR-Oracle",
+      "enabled": true,
+      "description": "HR Friday performance review"
+    },
+    {
+      "id": "admin-bot-analytics",
+      "oracle": "admin",
+      "tmux": "10-admin:0",
+      "schedule": "0 10 * * 1",
+      "prompt": "Weekly Bot Analytics — สรุป bot interaction summary ของสัปดาห์ที่ผ่านมา, usage stats, error rates แล้ว report ให้ BoB",
+      "requireIdle": true,
+      "autoRestart": true,
+      "restartDir": "~/repos/github.com/BankCurfew/Admin-Oracle",
+      "enabled": true,
+      "description": "Admin Monday bot analytics"
+    },
+    {
+      "id": "think-cycle",
+      "oracle": "system",
+      "tmux": null,
+      "schedule": "0 9 * * *",
+      "command": "maw think",
+      "enabled": true,
+      "description": "Daily think cycle — ask oracles to propose ideas"
+    },
+    {
+      "id": "think-cycle-wed",
+      "oracle": "system",
+      "tmux": null,
+      "schedule": "0 14 * * 3",
+      "command": "maw think",
+      "enabled": true,
+      "description": "Wednesday bonus think cycle"
+    },
+    {
+      "id": "data-pipeline-status",
+      "oracle": "data",
+      "tmux": "09-data:0",
+      "schedule": "0 9,15 * * *",
+      "prompt": "ตรวจ pipeline status — เช็ค data freshness, row counts, ETL status แล้ว report ถ้ามีปัญหา maw hey bob",
+      "requireIdle": true,
+      "autoRestart": true,
+      "restartDir": "~/repos/github.com/BankCurfew/Data-Oracle",
+      "enabled": true,
+      "description": "Data checks pipeline status twice daily"
+    },
+    {
+      "id": "hr-workload-monitor",
+      "oracle": "hr",
+      "tmux": "07-hr:0",
+      "schedule": "0 11,16 * * *",
+      "prompt": "ตรวจ workload ทุก oracle — maw peek แล้วสรุปสถานะ ใครทำอะไร ใครว่าง ใคร overload",
+      "requireIdle": true,
+      "autoRestart": true,
+      "restartDir": "~/repos/github.com/BankCurfew/HR-Oracle",
+      "enabled": true,
+      "description": "HR monitors oracle workload twice daily"
+    },
+    {
+      "id": "discussion-monitor",
+      "oracle": "creator",
+      "tmux": "creator",
+      "schedule": "7 * * * *",
+      "prompt": "Check all 3 teaching repos in the-oracle-keeps-the-human-human org for new/unanswered discussions. Repos: oracle-step-by-step, oracle-skills-deep-dive, ai-that-remembers-you. Use gh api to check for comments not by @BankCurfew. If found, answer helpfully as Creator Oracle. Summary: Discussions checked: X new, Y answered",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Hourly discussion monitor — teaching org admin"
+    },
+    {
+      "id": "hr-hall-of-fame",
+      "oracle": "hr",
+      "tmux": "07-hr:0",
+      "schedule": "0 15 * * 5",
+      "prompt": "Hall of Fame Weekly — ประเมิน oracle ทุกตัวจาก git log --since=1week, commits, feat ratio, retros, learnings, QA PASS stamps, cross-oracle mentions, task completion. อัปเดต hall-of-fame/data.json + hall-of-fame/inductees.md + git push. FAME = 1 คน (สูงสุด), Inducted = exceptional only, ไม่ใช่ participation trophy. ประกาศผ่าน /talk-to bob + /talk-to ผู้ได้รางวัล.",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Friday Hall of Fame evaluation and award ceremony"
+    },
+    {
+      "id": "hr-daily-recognition",
+      "oracle": "hr",
+      "tmux": "07-hr:0",
+      "schedule": "0 16 * * 1-5",
+      "prompt": "Daily Recognition Check — ดู feed.log + git log ทุก oracle วันนี้ หา oracle ที่ทำผลงานเด่น (big commit, solved blocker, helped teammate, shipped feature) แล้ว /talk-to oracle นั้นชมเชยสั้นๆ + /talk-to bob cc: daily recognition update. บันทึกลง hall-of-fame/daily-notes.md สำหรับประเมินปลายสัปดาห์",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Weekday 16:00 — spot and recognize daily achievements"
+    },
+    {
+      "id": "hr-monday-kickoff",
+      "oracle": "hr",
+      "tmux": "07-hr:0",
+      "schedule": "0 9 * * 1",
+      "prompt": "Monday Kickoff — ประกาศ Hall of Fame ผลสัปดาห์ที่แล้ว /talk-to ทุก oracle แจ้งผล: ใครได้ Fame, Hall of Fame, Honorable Mention พร้อม citation ใหม่ + กระตุ้นทีมว่าสัปดาห์นี้จะวัดอะไร + /talk-to bob สรุป Monday Kickoff",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Monday 09:00 — announce last week awards + set this week goals"
+    },
+    {
+      "id": "hr-midweek-pulse",
+      "oracle": "hr",
+      "tmux": "07-hr:0",
+      "schedule": "0 13 * * 3",
+      "prompt": "Midweek Pulse — เช็คความคืบหน้ากลางสัปดาห์: git log --since=monday ทุก oracle, ดูว่าใครกำลัง lead ใครต้องกระตุ้น + /talk-to oracle ที่ active น้อย ถาม update + /talk-to oracle ที่ lead ให้กำลังใจ + update hall-of-fame/daily-notes.md + /talk-to bob cc: midweek pulse",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Wednesday 13:00 — midweek progress check and encouragement"
+    },
+    {
+      "id": "pa-morning-briefing",
+      "oracle": "pa",
+      "tmux": "17-pa:0",
+      "schedule": "0 7 * * *",
+      "prompt": "Morning Briefing — เช็ค Google Calendar วันนี้+พรุ่งนี้, scan Gmail urgent, ดู BoB Office status จาก maw peek, สรุป finance pending แล้วส่ง email briefing ให้แบงค์ bankvuttipipat@gmail.com ผ่าน DocCon review ก่อนส่ง",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Daily 07:00 — morning briefing email to แบงค์"
+    },
+    {
+      "id": "pa-email-check",
+      "oracle": "pa",
+      "tmux": "17-pa:0",
+      "schedule": "0 8,12,17 * * *",
+      "prompt": "Email Check — scan Gmail inbox ใหม่ จัดหมวด Urgent/Action/FYI สรุป email สำคัญ draft reply สำหรับ urgent flag email เกี่ยวกับเงินเข้า finance tracking",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "3x daily — scan Gmail, categorize, draft replies"
+    },
+    {
+      "id": "pa-calendar-check",
+      "oracle": "pa",
+      "tmux": "17-pa:0",
+      "schedule": "0 8,13 * * *",
+      "prompt": "Calendar Check — เช็ค Google Calendar นัดถัดไป แจ้งเตือนแบงค์ถ้ามีนัดใน 1 ชม. เช็ค conflict",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "2x daily — calendar check and reminders"
+    },
+    {
+      "id": "pa-evening-summary",
+      "oracle": "pa",
+      "tmux": "17-pa:0",
+      "schedule": "0 20 * * *",
+      "prompt": "Evening Summary — สรุปสิ่งที่เกิดขึ้นวันนี้: email handled, นัดที่ผ่านไป, office status, pending items พรุ่งนี้มีอะไร ส่ง email สรุปให้แบงค์",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Daily 20:00 — evening summary email"
+    },
+    {
+      "id": "pa-weekly-finance",
+      "oracle": "pa",
+      "tmux": "17-pa:0",
+      "schedule": "0 9 * * 0",
+      "prompt": "Weekly Finance — สรุปรายรับ-จ่ายสัปดาห์นี้จาก Gmail (AIA commission, ePOS, receipts, subscriptions) ทำตาราง + กำไรขาดทุน ส่ง email report ให้แบงค์",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Sunday 09:00 — weekly financial summary"
+    },
+    {
+      "id": "pa-monthly-report",
+      "oracle": "pa",
+      "tmux": "17-pa:0",
+      "schedule": "0 9 1 * *",
+      "prompt": "Monthly Finance Report — งบดุล + กระแสเงินสด + รายจ่ายตามหมวด + trend เปรียบเทียบเดือนก่อน ส่ง email report ให้แบงค์",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "1st of month — monthly financial report + cash flow"
+    }
+  ]
+}

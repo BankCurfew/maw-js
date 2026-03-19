@@ -1,4 +1,5 @@
 node_modules/
+node_modules_root/
 dist-office/
 maw.config.json
 ui-state.json
@@ -7,3 +8,18 @@ ui-state.json
 ~/
 fleet/*.json
 !fleet/*.example.json
+
+# Runtime data
+auth.json
+loops-log.json
+asks.json
+
+# Backups
+fleet.bak.*/
+fleet.rooms.*/
+
+# External tools
+gmail-mcp/
+
+# Psi (personal workspace)
+ψ/
