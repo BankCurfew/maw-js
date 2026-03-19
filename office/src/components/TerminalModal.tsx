@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { AgentState } from "../lib/types";
 
 const XTerminal = lazy(() => import("./XTerminal").then(m => ({ default: m.XTerminal })));
@@ -23,19 +23,37 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 export function TerminalModal({ agent, send, onClose, onNavigate, onSelectSibling, siblings }: TerminalModalProps) {
+  const [showTabs, setShowTabs] = useState(false);
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a0f]">
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-[#0a0a0f]"
+      style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)", touchAction: "none", overflow: "hidden", width: "100vw", height: "100vh", left: 0, top: 0 }}
+      onTouchMove={(e) => e.stopPropagation()}
+    >
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-2 bg-[#0e0e18] border-b border-white/[0.06]">
-          <div className="flex gap-1.5 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 px-2 sm:px-4 py-1.5 sm:py-2 bg-[#0e0e18] border-b border-white/[0.06] flex-shrink-0">
+          {/* Close button — traffic light on desktop, X on mobile */}
+          <div className="hidden sm:flex gap-1.5 shrink-0">
             <button onClick={onClose} className="w-3 h-3 rounded-full bg-[#ff5f57] hover:brightness-110 cursor-pointer" />
             <span className="w-3 h-3 rounded-full bg-[#febc2e]" />
             <span className="w-3 h-3 rounded-full bg-[#28c840]" />
           </div>
 
-          {/* Agent tab bar */}
-          <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-none mx-2">
+          {/* Mobile: back button + agent name */}
+          <button onClick={onClose} className="sm:hidden min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-white/50 active:scale-95" style={{ background: "rgba(255,255,255,0.06)" }}>
+            ←
+          </button>
+
+          {/* Current agent name (always visible) */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: STATUS_DOT[agent.status] || "#555" }} />
+            <span className="text-xs sm:text-sm font-mono text-white/80 truncate">{cleanName(agent.name)}</span>
+          </div>
+
+          {/* Desktop: inline tab bar */}
+          <div className="hidden sm:flex items-center gap-0.5 overflow-x-auto scrollbar-none mx-2 flex-1">
             {siblings.map((s, i) => {
               const active = s.target === agent.target;
               return (
@@ -61,11 +79,37 @@ export function TerminalModal({ agent, send, onClose, onNavigate, onSelectSiblin
             })}
           </div>
 
-          <div className="ml-auto flex items-center gap-2 shrink-0">
+          {/* Mobile: tab toggle + nav arrows */}
+          {siblings.length > 1 && (
+            <div className="sm:hidden flex items-center gap-1 ml-auto">
+              <button
+                onClick={() => onNavigate(-1)}
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-white/40 active:scale-95 active:text-white/80"
+                style={{ background: "rgba(255,255,255,0.04)" }}
+              >
+                ‹
+              </button>
+              <button
+                onClick={() => setShowTabs(!showTabs)}
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-[10px] font-mono text-white/40 active:scale-95"
+                style={{ background: showTabs ? "rgba(34,211,238,0.15)" : "rgba(255,255,255,0.04)" }}
+              >
+                {siblings.findIndex(s => s.target === agent.target) + 1}/{siblings.length}
+              </button>
+              <button
+                onClick={() => onNavigate(1)}
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-white/40 active:scale-95 active:text-white/80"
+                style={{ background: "rgba(255,255,255,0.04)" }}
+              >
+                ›
+              </button>
+            </div>
+          )}
+
+          <div className="ml-auto hidden sm:flex items-center gap-2 shrink-0">
             <button
               onClick={() => { if (confirm(`Restart ${agent.name}?`)) send({ type: "restart", target: agent.target }); }}
               className="px-2 py-0.5 rounded text-[10px] font-mono text-white/30 hover:text-orange-400 hover:bg-orange-400/10 border border-transparent hover:border-orange-400/20 transition-all cursor-pointer"
-              title="Restart agent (Ctrl+C → relaunch)"
             >
               restart
             </button>
@@ -78,8 +122,37 @@ export function TerminalModal({ agent, send, onClose, onNavigate, onSelectSiblin
           </div>
         </div>
 
+        {/* Mobile tab dropdown */}
+        {showTabs && (
+          <div className="sm:hidden flex flex-wrap gap-1.5 px-2 py-2 bg-[#0e0e18] border-b border-white/[0.06] flex-shrink-0">
+            {siblings.map((s) => {
+              const active = s.target === agent.target;
+              return (
+                <button
+                  key={s.target}
+                  onClick={() => { onSelectSibling(s); setShowTabs(false); }}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-mono whitespace-nowrap active:scale-95 transition-all ${
+                    active
+                      ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                      : "bg-white/[0.04] text-white/50 border border-white/[0.06]"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: STATUS_DOT[s.status] || "#555" }} />
+                  {cleanName(s.name)}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => { if (confirm(`Restart ${agent.name}?`)) send({ type: "restart", target: agent.target }); }}
+              className="px-3 py-2 rounded-lg text-xs font-mono text-orange-400/70 bg-orange-400/10 border border-orange-400/20 active:scale-95"
+            >
+              restart
+            </button>
+          </div>
+        )}
+
         {/* Terminal — xterm.js via PTY WebSocket */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0" style={{ overflow: "hidden", maxWidth: "100vw" }}>
           <Suspense fallback={
             <div className="flex items-center justify-center h-full text-white/30 text-sm font-mono">
               Loading terminal...

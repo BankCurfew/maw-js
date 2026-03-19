@@ -73,7 +73,7 @@ export const StageSection = memo(function StageSection({
   const hasBusy = activeAgents.length > 0;
 
   return (
-    <div className="max-w-5xl mx-auto px-6 lg:px-8 pt-6 pb-2">
+    <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-2">
       <div
         className="relative rounded-2xl overflow-hidden"
         style={{

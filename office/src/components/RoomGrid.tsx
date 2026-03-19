@@ -111,7 +111,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
   }, [roomsData, sessions, agents]);
 
   return (
-    <div className="max-w-[1200px] mx-auto px-6 pt-8 pb-12">
+    <div className="max-w-[1200px] mx-auto px-3 sm:px-4 md:px-6 pt-4 sm:pt-6 md:pt-8 pb-8 sm:pb-12">
       {/* Power bar */}
       <div className="flex items-center gap-3 mb-5 px-1">
         <span className="text-[10px] text-white/50 tracking-widest uppercase">Power Level</span>
@@ -184,7 +184,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
               <div className="h-[2px] opacity-50" style={{ background: room.accent }} />
 
               {/* Agent grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 p-5 min-h-[140px]">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 p-3 sm:p-4 md:p-5 min-h-[100px] sm:min-h-[140px]">
                 {room.agents.map((agent) => (
                   <AgentCard key={agent.target} agent={agent} accent={room.accent} onClick={() => onSelectAgent(agent)} />
                 ))}

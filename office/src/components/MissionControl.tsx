@@ -69,7 +69,8 @@ export const MissionControl = memo(function MissionControl({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const [zoom, setZoom] = useState(1.1);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 480;
+  const [zoom, setZoom] = useState(isMobile ? 1.6 : 1.1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
@@ -411,7 +412,7 @@ export const MissionControl = memo(function MissionControl({
                 x={s.x} y={s.y - clusterRadius - 12}
                 textAnchor="middle"
                 fill={s.style.accent}
-                fontSize={13}
+                fontSize={isMobile ? 16 : 13}
                 fontWeight="bold"
                 fontFamily="'SF Mono', monospace"
                 letterSpacing={3}
@@ -425,7 +426,7 @@ export const MissionControl = memo(function MissionControl({
                 x={s.x} y={s.y + clusterRadius + 18}
                 textAnchor="middle"
                 fill={s.style.accent}
-                fontSize={10}
+                fontSize={isMobile ? 13 : 10}
                 fontFamily="'SF Mono', monospace"
                 opacity={0.6}
               >
@@ -475,7 +476,7 @@ export const MissionControl = memo(function MissionControl({
                       y={28}
                       textAnchor="middle"
                       fill={isHovered ? s.style.accent : "#ffffff"}
-                      fontSize={isHovered ? 11 : 9}
+                      fontSize={isHovered ? (isMobile ? 14 : 11) : (isMobile ? 12 : 9)}
                       fontFamily="'SF Mono', monospace"
                       opacity={isHovered ? 1 : 0.7}
                       style={{ transition: "all 0.2s", cursor: "pointer" }}
@@ -510,7 +511,7 @@ export const MissionControl = memo(function MissionControl({
       </svg>
 
       {/* Controls — bottom right: pan + zoom + group toggle */}
-      <div className="absolute bottom-4 right-6 flex flex-col items-center gap-1">
+      <div className="absolute bottom-14 sm:bottom-4 right-3 sm:right-6 flex flex-col items-center gap-1">
         <button
           onClick={() => setGroupSolo(g => !g)}
           className="w-8 h-8 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-[9px] text-white/50 hover:text-white hover:bg-white/10 cursor-pointer font-mono"
@@ -552,15 +553,17 @@ export const MissionControl = memo(function MissionControl({
         </div>
       )}
 
-      {/* Pinned Preview Card — slides from hover position to center */}
+      {/* Pinned Preview Card — bottom sheet on mobile, slides to center on desktop */}
       {pinnedPreview && pinnedAnimPos && (
         <div
           ref={pinnedRef}
-          className="absolute z-40 pointer-events-auto"
+          className="fixed sm:absolute inset-x-0 bottom-0 sm:inset-auto z-40 pointer-events-auto sm:rounded-none rounded-t-2xl"
           style={{
-            left: pinnedAnimPos.left,
-            top: pinnedAnimPos.top,
-            maxWidth: PREVIEW_CARD.width,
+            left: isMobile ? 0 : pinnedAnimPos.left,
+            top: isMobile ? undefined : pinnedAnimPos.top,
+            maxWidth: isMobile ? "100%" : PREVIEW_CARD.width,
+            maxHeight: isMobile ? "85vh" : undefined,
+            overflowY: isMobile ? "auto" : undefined,
             transition: "left 0.3s ease-out, top 0.3s ease-out",
           }}
         >
@@ -583,7 +586,7 @@ export const MissionControl = memo(function MissionControl({
       {/* Search button — bottom left */}
       <button
         onClick={() => setShowSearch(true)}
-        className="absolute bottom-4 left-6 flex items-center gap-2 px-3 py-2 rounded-xl bg-black/50 backdrop-blur border border-white/10 text-white/50 hover:text-[#64b5f6] hover:border-[#64b5f6]/30 cursor-pointer transition-all z-20"
+        className="absolute bottom-14 sm:bottom-4 left-3 sm:left-6 flex items-center gap-2 px-3 py-2 rounded-xl bg-black/50 backdrop-blur border border-white/10 text-white/50 hover:text-[#64b5f6] hover:border-[#64b5f6]/30 cursor-pointer transition-all z-20"
         title="Search Oracle (⌘K)"
       >
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">

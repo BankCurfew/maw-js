@@ -50,24 +50,56 @@ export function XTerminal({ target, onClose, onNavigate, siblings, onSelectSibli
   useEffect(() => { siblingsRef.current = siblings; }, [siblings]);
   useEffect(() => { onSelectSiblingRef.current = onSelectSibling; }, [onSelectSibling]);
 
+  // Lock body scroll while terminal is open
+  useEffect(() => {
+    const origOverflow = document.body.style.overflow;
+    const origPosition = document.body.style.position;
+    const origTop = document.body.style.top;
+    const origWidth = document.body.style.width;
+    const scrollY = window.scrollY;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+
+    return () => {
+      document.body.style.overflow = origOverflow;
+      document.body.style.position = origPosition;
+      document.body.style.top = origTop;
+      document.body.style.width = origWidth;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    // Responsive font size — smaller on mobile
+    const isMobile = window.innerWidth < 640;
+    const fontSize = isMobile ? 10 : 13;
+
     const term = new Terminal({
       theme: THEME,
       fontFamily: "Monaco, 'Cascadia Code', 'Fira Code', monospace",
-      fontSize: 13,
-      lineHeight: 1.35,
+      fontSize,
+      lineHeight: isMobile ? 1.2 : 1.35,
       cursorBlink: true,
       cursorStyle: "bar",
+      scrollback: 5000,
+      convertEol: true,
     });
 
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(container);
-    fit.fit();
-    term.focus();
+
+    // Delay fit until container has real dimensions
+    const fitTimer = setTimeout(() => {
+      try { fit.fit(); } catch {}
+      term.focus();
+    }, 100);
 
     // Connect to PTY WebSocket
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -75,6 +107,8 @@ export function XTerminal({ target, onClose, onNavigate, siblings, onSelectSibli
     ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
+      // Re-fit now that WS is ready (container should have dimensions)
+      try { fit.fit(); } catch {}
       ws.send(JSON.stringify({
         type: "attach",
         target,
@@ -135,10 +169,10 @@ export function XTerminal({ target, onClose, onNavigate, siblings, onSelectSibli
     });
 
     // Auto-resize with debounce
-    let resizeTimer: ReturnType<typeof setTimeout>;
+    let resizeTimer2: ReturnType<typeof setTimeout>;
     const resizeObserver = new ResizeObserver(() => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
+      clearTimeout(resizeTimer2);
+      resizeTimer2 = setTimeout(() => {
         try {
           fit.fit();
           if (ws.readyState === WebSocket.OPEN) {
@@ -150,7 +184,8 @@ export function XTerminal({ target, onClose, onNavigate, siblings, onSelectSibli
     resizeObserver.observe(container);
 
     return () => {
-      clearTimeout(resizeTimer);
+      clearTimeout(fitTimer);
+      clearTimeout(resizeTimer2);
       resizeObserver.disconnect();
       dataSub.dispose();
       binSub.dispose();
@@ -159,5 +194,10 @@ export function XTerminal({ target, onClose, onNavigate, siblings, onSelectSibli
     };
   }, [target]);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height: "100%", overflow: "hidden", touchAction: "none", maxWidth: "100vw" }}
+    />
+  );
 }

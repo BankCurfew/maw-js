@@ -154,11 +154,23 @@ export function useSessions() {
 
     if (event.event === "Notification") {
       const msg = event.message.toLowerCase();
+      // Skip all generic "waiting for input" notifications — they're Claude idle noise
+      if (msg.includes("waiting for input") || msg.includes("waiting for your input")) return;
+
       let askType: AskType | null = null;
-      if (msg.includes("waiting for your input") || msg.includes("waiting for input")) askType = "input";
+      if (msg.includes("[proposal]")) askType = "plan";
+      else if (msg.includes("[handoff]")) askType = "handoff";
+      else if (msg.includes("[meeting]")) askType = "meeting";
+      else if (msg.includes("[report]") || msg.includes("report:")) askType = "report";
       else if (msg.includes("needs your attention") || msg.includes("attention")) askType = "attention";
       else if (msg.includes("needs your approval") || msg.includes("approval")) askType = "plan";
       if (askType) {
+        // For proposal/handoff/meeting/report, use the message directly — no Stop lookup needed
+        if (askType === "handoff" || askType === "meeting" || askType === "report" || msg.includes("[proposal]")) {
+          const cleanMsg = event.message.replace(/ ␤ /g, "\n");
+          addAsk({ oracle: oracleName, target: agent?.target || "", type: askType, message: cleanMsg });
+          return;
+        }
         // Find the real question: check ref first, then search feed history for last Stop from this oracle
         let stopMsg = lastStopMessage.current[oracleName];
         if (!stopMsg) {
@@ -223,6 +235,31 @@ export function useSessions() {
     } else if (data.type === "action-ok") {
       if (data.action === "sleep") markSlept(data.target);
       else if (data.action === "wake") clearSlept(data.target);
+    } else if (data.type === "board-data") {
+      const { setBoardItems, setBoardFields, setBoardLoading } = useFleetStore.getState();
+      setBoardItems(data.items || []);
+      setBoardFields(data.fields || []);
+      setBoardLoading(false);
+    } else if (data.type === "board-scan-results") {
+      useFleetStore.getState().setScanResults(data.results || []);
+    } else if (data.type === "board-scan-mine-results") {
+      useFleetStore.getState().setScanMineResults(data.results || []);
+    } else if (data.type === "board-timeline-data") {
+      const { setTimelineData, setBoardLoading } = useFleetStore.getState();
+      setTimelineData(data.timeline || []);
+      setBoardLoading(false);
+    } else if (data.type === "pulse-board-data") {
+      useFleetStore.getState().setPulseBoard(data);
+    } else if (data.type === "board-auto-assign-results") {
+      // Results are informational; board-data will follow
+    } else if (data.type === "task-log-data") {
+      useFleetStore.getState().setTaskActivities(data.activities || []);
+    } else if (data.type === "task-log-summaries-data") {
+      useFleetStore.getState().setTaskLogSummaries(data.summaries || {});
+    } else if (data.type === "task-log-new") {
+      useFleetStore.getState().addTaskActivity(data.activity);
+    } else if (data.type === "project-board-data") {
+      useFleetStore.getState().setProjectBoard(data);
     }
   }, []);
 

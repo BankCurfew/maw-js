@@ -8,7 +8,18 @@ export interface RecentEntry {
   lastBusy: number;
 }
 
-import type { AskItem } from "./types";
+import type { AskItem, BoardItem, BoardField, ScanResult, ScanMineResult, TimelineItem, PulseBoard, TaskActivity, TaskLogSummary, Project, ProjectTask } from "./types";
+
+export interface DispatchStatus {
+  step: "routing" | "done" | "error";
+  oracle?: string;
+  oracleName?: string;
+  target?: string;
+  message?: string;
+  error?: string;
+  task?: string;
+  ts: number;
+}
 
 interface FleetStore {
   // Recently active: target → agent metadata + timestamp
@@ -37,11 +48,56 @@ interface FleetStore {
   lastView: string;
   setLastView: (view: string) => void;
 
+  // Dispatch log (BoB task routing)
+  dispatchLog: DispatchStatus[];
+  addDispatchStatus: (status: Omit<DispatchStatus, "ts">) => void;
+
   // Inbox asks
   asks: AskItem[];
   addAsk: (ask: Omit<AskItem, "id" | "ts">) => void;
   dismissAsk: (id: string) => void;
   dismissByOracle: (oracle: string) => void;
+
+  // Board state (non-persisted)
+  boardItems: BoardItem[];
+  boardFields: BoardField[];
+  boardLoading: boolean;
+  boardFilter: string;
+  boardSubView: "board" | "timeline" | "scan" | "activity" | "pulse" | "projects";
+  scanResults: ScanResult[];
+  scanMineResults: ScanMineResult[];
+  timelineData: TimelineItem[];
+  setBoardItems: (items: BoardItem[]) => void;
+  setBoardFields: (fields: BoardField[]) => void;
+  setBoardLoading: (loading: boolean) => void;
+  setBoardFilter: (filter: string) => void;
+  setBoardSubView: (view: "board" | "timeline" | "scan" | "activity" | "pulse" | "projects") => void;
+  setScanResults: (results: ScanResult[]) => void;
+  setScanMineResults: (results: ScanMineResult[]) => void;
+  setTimelineData: (data: TimelineItem[]) => void;
+
+  // Pulse state (non-persisted)
+  pulseBoard: PulseBoard | null;
+  setPulseBoard: (data: PulseBoard) => void;
+
+  // Task log state (non-persisted)
+  selectedTaskId: string | null;
+  setSelectedTaskId: (id: string | null) => void;
+  taskActivities: TaskActivity[];
+  setTaskActivities: (activities: TaskActivity[]) => void;
+  addTaskActivity: (activity: TaskActivity) => void;
+  taskLogSummaries: Record<string, TaskLogSummary>;
+  setTaskLogSummaries: (summaries: Record<string, TaskLogSummary>) => void;
+
+  // Project state (non-persisted)
+  projectBoardProjects: (Project & { enrichedTasks: (ProjectTask & { boardItem?: BoardItem })[] })[];
+  projectBoardUnassigned: BoardItem[];
+  projectBoardFields: BoardField[];
+  setProjectBoard: (data: { projects: any[]; unassigned: BoardItem[]; fields?: BoardField[] }) => void;
+
+  // Supervisor state (non-persisted)
+  supervisorTracked: any[];
+  setSupervisorTracked: (tracked: any[]) => void;
 }
 
 const RECENT_TTL = 30 * 60 * 1000; // 30 minutes
@@ -173,6 +229,14 @@ export const useFleetStore = create<FleetStore>()(
       lastView: "office",
       setLastView: (view) => set({ lastView: view }),
 
+      // Dispatch log
+      dispatchLog: [],
+      addDispatchStatus: (status) => set((s) => {
+        const entry: DispatchStatus = { ...status, ts: Date.now() };
+        const next = [...s.dispatchLog, entry].slice(-20);
+        return { dispatchLog: next };
+      }),
+
       // Inbox asks
       asks: [],
       addAsk: (ask) => set((s) => {
@@ -203,6 +267,55 @@ export const useFleetStore = create<FleetStore>()(
         persistAsks(next);
         return { asks: next };
       }),
+
+      // Board state (non-persisted)
+      boardItems: [],
+      boardFields: [],
+      boardLoading: false,
+      boardFilter: "",
+      boardSubView: "board",
+      scanResults: [],
+      scanMineResults: [],
+      timelineData: [],
+      setBoardItems: (items) => set({ boardItems: items }),
+      setBoardFields: (fields) => set({ boardFields: fields }),
+      setBoardLoading: (loading) => set({ boardLoading: loading }),
+      setBoardFilter: (filter) => set({ boardFilter: filter }),
+      setBoardSubView: (view) => set({ boardSubView: view }),
+      setScanResults: (results) => set({ scanResults: results }),
+      setScanMineResults: (results) => set({ scanMineResults: results }),
+      setTimelineData: (data) => set({ timelineData: data }),
+
+      // Pulse state
+      pulseBoard: null,
+      setPulseBoard: (data) => set({ pulseBoard: data }),
+
+      // Task log state
+      selectedTaskId: null,
+      setSelectedTaskId: (id) => set({ selectedTaskId: id }),
+      taskActivities: [],
+      setTaskActivities: (activities) => set({ taskActivities: activities }),
+      addTaskActivity: (activity) => set((s) => ({
+        taskActivities: s.selectedTaskId === activity.taskId
+          ? [...s.taskActivities, activity]
+          : s.taskActivities,
+      })),
+      taskLogSummaries: {},
+      setTaskLogSummaries: (summaries) => set({ taskLogSummaries: summaries }),
+
+      // Project state
+      projectBoardProjects: [],
+      projectBoardUnassigned: [],
+      projectBoardFields: [],
+      setProjectBoard: (data) => set({
+        projectBoardProjects: data.projects || [],
+        projectBoardUnassigned: data.unassigned || [],
+        projectBoardFields: data.fields || [],
+      }),
+
+      // Supervisor state
+      supervisorTracked: [],
+      setSupervisorTracked: (tracked) => set({ supervisorTracked: tracked }),
     }),
     {
       name: "maw.fleet",

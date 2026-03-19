@@ -138,9 +138,9 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
     : "";
 
   return (
-    <div className="flex mx-4 sm:mx-6 mb-3 rounded-2xl overflow-hidden border border-white/[0.06]" style={{ height: "calc(100vh - 72px)" }}>
+    <div className="flex flex-col md:flex-row mx-2 sm:mx-4 md:mx-6 mb-3 rounded-xl sm:rounded-2xl overflow-hidden border border-white/[0.06]" style={{ height: "calc(100vh - 72px)" }}>
       {/* Sidebar */}
-      <div className="w-[220px] flex-shrink-0 flex flex-col border-r border-white/[0.06] overflow-y-auto" style={{ background: "#08080e" }}>
+      <div className="w-full md:w-[220px] flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-white/[0.06] max-h-[40vh] md:max-h-none overflow-y-auto" style={{ background: "#08080e" }}>
         {sessions.map(session => {
           const style = roomStyle(session.name);
           return (
@@ -200,8 +200,8 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
         {/* Output */}
         <div
           ref={outputRef}
-          className="flex-1 overflow-y-auto px-3 py-2 font-mono text-[13px] leading-[1.35]"
-          style={{ background: "#0a0a0f", whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#aaa" }}
+          className="flex-1 overflow-y-auto px-2 sm:px-3 py-2 font-mono text-[11px] sm:text-[13px] leading-[1.35]"
+          style={{ background: "#0a0a0f", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", color: "#aaa" }}
         >
           {captureHtml ? (
             <div dangerouslySetInnerHTML={{ __html: captureHtml }} />

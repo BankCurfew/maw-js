@@ -10,6 +10,9 @@ import { useFps } from "./FpsCounter";
 import { useFleetStore, RECENT_TTL_MS, type RecentEntry } from "../lib/store";
 import type { AgentState, Session, AgentEvent } from "../lib/types";
 import { describeActivity, type FeedEvent } from "../lib/feed";
+import { OracleSheet } from "./OracleSheet";
+
+const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
 
 export type FeedLogEntry = { text: string; ts: number; project?: string; eventType?: string };
 
@@ -309,7 +312,7 @@ export const FleetGrid = memo(function FleetGrid({
         />
       ) : (
         <>
-          <div className="max-w-5xl mx-auto px-6 lg:px-8 flex justify-end pt-4">
+          <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 flex justify-end pt-3 sm:pt-4">
             <button
               onClick={toggleStageMode}
               className="px-3 py-1 rounded-lg text-[11px] font-mono cursor-pointer hover:opacity-80 transition-opacity"
@@ -435,13 +438,27 @@ export const FleetGrid = memo(function FleetGrid({
         </div>
       )}
 
-      {/* Backdrop */}
-      {pinnedPreview && (
-        <div className="fixed inset-0" style={{ zIndex: 35, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }} onClick={onPinnedClose} />
+      {/* Mobile: OracleSheet bottom sheet */}
+      {pinnedPreview && isNarrow && (
+        <OracleSheet
+          agent={pinnedPreview.agent}
+          send={send}
+          onClose={onPinnedClose}
+          onFullscreen={onPinnedFullscreen}
+          siblings={agents.filter(a => a.session === pinnedPreview.agent.session)}
+          onSelectSibling={(a) => {
+            const style = roomStyle(a.session);
+            setPinnedPreview({ agent: a, accent: style.accent, label: style.label, pos: { x: 0, y: 0 } });
+            send({ type: "subscribe", target: a.target });
+          }}
+        />
       )}
 
-      {/* Pinned Preview */}
-      {pinnedPreview && pinnedAnimPos && (
+      {/* Desktop: Backdrop + Pinned Preview Card */}
+      {pinnedPreview && !isNarrow && (
+        <div className="fixed inset-0" style={{ zIndex: 35, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }} onClick={onPinnedClose} />
+      )}
+      {pinnedPreview && !isNarrow && pinnedAnimPos && (
         <div ref={pinnedRef} className="fixed pointer-events-auto" style={{ zIndex: 40, left: pinnedAnimPos.left, top: pinnedAnimPos.top, maxWidth: PREVIEW_CARD.width }}>
           <HoverPreviewCard key={pinnedPreview.agent.target} agent={pinnedPreview.agent} roomLabel={pinnedPreview.label} accent={pinnedPreview.accent}
             pinned send={send} onFullscreen={onPinnedFullscreen} onClose={onPinnedClose}

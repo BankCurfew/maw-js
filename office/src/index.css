@@ -5,14 +5,28 @@ body {
   color: #e0e0e0;
   font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
   overflow-x: hidden;
+  /* Safe area for notched devices */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  -webkit-text-size-adjust: 100%;
 }
 
-/* All clickable elements show hand cursor */
+/* All clickable elements show hand cursor + touch-friendly min size */
 button, [role="button"], a[href], summary { cursor: pointer; }
+@media (pointer: coarse) {
+  button, [role="button"] { min-height: 36px; }
+}
 
-::-webkit-scrollbar { width: 6px; }
+/* Scrollbar — thinner on mobile */
+::-webkit-scrollbar { width: 4px; }
+@media (min-width: 640px) { ::-webkit-scrollbar { width: 6px; } }
 ::-webkit-scrollbar-track { background: #020208; }
 ::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+
+/* Prevent horizontal overflow on mobile (skip fixed/absolute positioned elements) */
+body { overflow-x: hidden; }
 
 /* Shared */
 @keyframes agent-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
@@ -34,6 +48,10 @@ button, [role="button"], a[href], summary { cursor: pointer; }
   75% { transform: scaleX(0.15); }
   100% { transform: scaleX(1); }
 }
+
+/* Task detail overlay slide-in */
+@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.animate-slide-in-right { animation: slideInRight 0.2s ease-out; }
 
 /* Hover preview card */
 @keyframes fadeSlideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }

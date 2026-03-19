@@ -8,6 +8,8 @@ interface AgentCardProps {
   onClick: () => void;
 }
 
+const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
+
 export const AgentCard = memo(function AgentCard({ agent, accent, onClick }: AgentCardProps) {
   const [hovered, setHovered] = useState(false);
   const displayName = agent.name.replace(/-oracle$/, "").replace(/-/g, " ");
@@ -15,7 +17,7 @@ export const AgentCard = memo(function AgentCard({ agent, accent, onClick }: Age
     <div
       className="relative flex flex-col items-center gap-1 cursor-pointer"
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
+      onMouseEnter={() => !isNarrow && setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <svg width={100} height={85} viewBox="-55 -55 110 88" style={{ overflow: "visible" }}>

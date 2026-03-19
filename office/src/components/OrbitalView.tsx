@@ -155,7 +155,7 @@ export const OrbitalView = memo(function OrbitalView({ sessions, agents, connect
       </div>
 
       {/* Agent cards */}
-      <div className="max-w-[1050px] w-full mx-auto px-6 pb-16">
+      <div className="max-w-[1050px] w-full mx-auto px-3 sm:px-4 md:px-6 pb-8 sm:pb-16">
         {sessions.map(session => {
           const style = roomStyle(session.name);
           return (

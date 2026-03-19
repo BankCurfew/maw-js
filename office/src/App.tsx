@@ -14,8 +14,14 @@ import { TerminalView } from "./components/TerminalView";
 import { OrbitalView } from "./components/OrbitalView";
 import { InboxOverlay } from "./components/InboxView";
 import { WorktreeView } from "./components/WorktreeView";
+import { BoardView } from "./components/BoardView";
+import { LoopsView } from "./components/LoopsView";
+import { JarvisView } from "./components/JarvisView";
+import { HallOfFameView } from "./components/HallOfFameView";
+import { IPadDashboard } from "./components/iPadDashboard";
 import { ShortcutOverlay } from "./components/ShortcutOverlay";
 import { JumpOverlay } from "./components/JumpOverlay";
+import { OracleSheet } from "./components/OracleSheet";
 import { unlockAudio, isAudioUnlocked, setSoundMuted } from "./lib/sounds";
 import { useFleetStore } from "./lib/store";
 import type { AgentState } from "./lib/types";
@@ -126,6 +132,8 @@ export function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showJump, setShowJump] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
+  const [forceTerminal, setForceTerminal] = useState(false);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
   // "?" key opens shortcut overlay, "j" or Ctrl+K opens jump overlay
   useEffect(() => {
@@ -213,6 +221,7 @@ export function App() {
 
   const onCloseTerminal = useCallback(() => {
     setSelectedAgent(null);
+    setForceTerminal(false);
     // Remove agent name from hash, keep just the view
     const currentView = parseHash(window.location.hash.slice(1)).view;
     window.location.hash = currentView;
@@ -229,7 +238,18 @@ export function App() {
     onJump: () => setShowJump(true),
     onInbox: () => setShowInbox(true),
     terminalModal: selectedAgent ? (
-      <TerminalModal agent={selectedAgent} send={send} onClose={onCloseTerminal} onNavigate={onNavigate} onSelectSibling={onSelectAgent} siblings={siblings} />
+      (isMobile && !forceTerminal) ? (
+        <OracleSheet
+          agent={selectedAgent}
+          send={send}
+          onClose={onCloseTerminal}
+          onFullscreen={() => setForceTerminal(true)}
+          siblings={siblings}
+          onSelectSibling={onSelectAgent}
+        />
+      ) : (
+        <TerminalModal agent={selectedAgent} send={send} onClose={() => { setForceTerminal(false); onCloseTerminal(); }} onNavigate={onNavigate} onSelectSibling={onSelectAgent} siblings={siblings} />
+      )
     ) : null,
     showShortcuts,
     onCloseShortcuts: () => setShowShortcuts(false),
@@ -310,6 +330,42 @@ export function App() {
         <OrbitalView sessions={sessions} agents={agents} connected={connected} onSelectAgent={onSelectAgent} />
       </Layout>
     );
+  }
+
+  if (route === "board") {
+    return (
+      <Layout activeView="board" {...layoutProps}>
+        <BoardView connected={connected} send={send} agents={agents} />
+      </Layout>
+    );
+  }
+
+  if (route === "loops") {
+    return (
+      <Layout activeView="loops" {...layoutProps}>
+        <LoopsView connected={connected} />
+      </Layout>
+    );
+  }
+
+  if (route === "jarvis") {
+    return (
+      <Layout activeView="jarvis" {...layoutProps}>
+        <JarvisView />
+      </Layout>
+    );
+  }
+
+  if (route === "fame") {
+    return (
+      <Layout activeView="fame" {...layoutProps}>
+        <HallOfFameView />
+      </Layout>
+    );
+  }
+
+  if (route === "ipad") {
+    return <IPadDashboard />;
   }
 
   // Fallback → office
