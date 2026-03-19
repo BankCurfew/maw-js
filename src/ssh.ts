@@ -2,10 +2,15 @@ import { loadConfig } from "./config";
 
 const DEFAULT_HOST = process.env.MAW_HOST || loadConfig().host || "white.local";
 const IS_LOCAL = DEFAULT_HOST === "local" || DEFAULT_HOST === "localhost";
+// Windows Bun on WSL: "bash -c" resolves to MSYS bash which can't find tmux/claude.
+// Use wsl.exe to route commands through the real WSL shell.
+const IS_WINDOWS_BUN = process.platform === "win32";
 
 export async function ssh(cmd: string, host = DEFAULT_HOST): Promise<string> {
   const local = host === "local" || host === "localhost" || IS_LOCAL;
-  const args = local ? ["bash", "-c", cmd] : ["ssh", host, cmd];
+  const args = local
+    ? (IS_WINDOWS_BUN ? ["wsl.exe", "bash", "-lc", cmd] : ["bash", "-c", cmd])
+    : ["ssh", host, cmd];
   const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" });
   const text = await new Response(proc.stdout).text();
   const code = await proc.exited;

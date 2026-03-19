@@ -96,12 +96,19 @@ async function attach(ws: ServerWebSocket<any>, target: string, cols: number, ro
     args = ["ssh", "-tt", host, `TERM=xterm-256color tmux attach-session -t '${ptySessionName}'`];
   }
 
-  const proc = Bun.spawn(args, {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "ignore",
-    env: { ...process.env, TERM: "xterm-256color" },
-  });
+  let proc;
+  try {
+    proc = Bun.spawn(args, {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "ignore",
+      env: { ...process.env, TERM: "xterm-256color" },
+    });
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", message: `PTY spawn failed: ${e.message}` }));
+    tmux.killSession(ptySessionName);
+    return;
+  }
 
   session = { proc, target: safe, ptySessionName, viewers: new Set([ws]), cleanupTimer: null };
   sessions.set(safe, session);

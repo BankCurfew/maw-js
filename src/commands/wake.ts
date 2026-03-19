@@ -30,8 +30,13 @@ export async function fetchIssuePrompt(issueNum: number, repo?: string): Promise
 }
 
 export async function resolveOracle(oracle: string): Promise<{ repoPath: string; repoName: string; parentDir: string }> {
-  // 1. Try standard pattern: <oracle>-oracle
-  const ghqOut = await ssh(`ghq list --full-path | grep -i '/${oracle}-oracle$' | head -1`);
+  // 1. Try standard pattern: <oracle>-oracle (also match partial like "doc" → "DocCon-Oracle")
+  let ghqOut = "";
+  try { ghqOut = await ssh(`ghq list --full-path 2>/dev/null | grep -i '/${oracle}[^/]*-oracle$' | head -1`); } catch {}
+  if (!ghqOut?.trim()) {
+    // Fallback: direct ls in known repo dirs
+    try { ghqOut = await ssh(`ls -d $HOME/repos/github.com/BankCurfew/${oracle}*-Oracle $HOME/repos/github.com/BankCurfew/${oracle}*-oracle 2>/dev/null | head -1`); } catch {}
+  }
   if (ghqOut?.trim()) {
     const repoPath = ghqOut.trim();
     const repoName = repoPath.split("/").pop()!;
@@ -44,11 +49,34 @@ export async function resolveOracle(oracle: string): Promise<{ repoPath: string;
   try {
     for (const file of readdirSync(fleetDir).filter(f => f.endsWith(".json"))) {
       const config = JSON.parse(readFileSync(join(fleetDir, file), "utf-8"));
-      const win = (config.windows || []).find((w: any) => w.name === `${oracle}-oracle`);
+      const oracleLower = oracle.toLowerCase();
+      const win = (config.windows || []).find((w: any) => {
+        const wl = w.name.toLowerCase();
+        return wl === `${oracleLower}-oracle` || wl.startsWith(`${oracleLower}`) && wl.endsWith("-oracle");
+      });
       if (win?.repo) {
-        const fullPath = await ssh(`ghq list --full-path | grep -i '/${win.repo.replace(/^[^/]+\//, "")}$' | head -1`);
-        if (fullPath?.trim()) {
-          const repoPath = fullPath.trim();
+        // Try ghq first, fall back to well-known repo paths
+        let repoPath = "";
+        try {
+          const fullPath = await ssh(`ghq list --full-path | grep -i '/${win.repo.replace(/^[^/]+\//, "")}$' | head -1`);
+          if (fullPath?.trim()) repoPath = fullPath.trim();
+        } catch {}
+        if (!repoPath) {
+          // Fallback: check common repo locations
+          const repoName = win.repo.replace(/^[^/]+\//, "");
+          const candidates = [
+            `$HOME/repos/github.com/${win.repo}`,
+            `$HOME/${repoName}`,
+          ];
+          for (const c of candidates) {
+            try {
+              const resolved = await ssh(`eval echo ${c}`);
+              const exists = await ssh(`test -d "${resolved}" && echo "${resolved}"`);
+              if (exists?.trim()) { repoPath = exists.trim(); break; }
+            } catch {}
+          }
+        }
+        if (repoPath) {
           const repoName = repoPath.split("/").pop()!;
           const parentDir = repoPath.replace(/\/[^/]+$/, "");
           return { repoPath, repoName, parentDir };
@@ -188,23 +216,44 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
   try {
     const windows = await tmux.listWindows(session);
     const windowNames = windows.map(w => w.name);
-    // Match exact name OR fleet config pattern (e.g. "pulse-scheduler" matches "pulse-1-scheduler")
+    // Match: exact (case-insensitive), partial prefix (e.g. "doc" matches "DocCon-Oracle"),
+    // or fleet config pattern (e.g. "pulse-1-scheduler")
     const nameSuffix = windowName.replace(`${oracle}-`, "");
-    const existingWindow = windowNames.find(w => w === windowName)
-      || windowNames.find(w => new RegExp(`^${oracle}-\\d+-${nameSuffix}$`).test(w));
+    const wLower = windowName.toLowerCase();
+    const oLower = oracle.toLowerCase();
+    const existingWindow = windowNames.find(w => w.toLowerCase() === wLower)
+      || windowNames.find(w => w.toLowerCase().startsWith(oLower) && w.toLowerCase().endsWith("-oracle"))
+      || windowNames.find(w => new RegExp(`^${oracle}-\\d+-${nameSuffix}$`, "i").test(w));
     if (existingWindow) {
+      const target = `${session}:${existingWindow}`;
       if (opts.prompt) {
-        // Window exists but we have a prompt → send claude -p
-        console.log(`\x1b[33m⚡\x1b[0m '${existingWindow}' exists, sending prompt`);
-        await tmux.selectWindow(`${session}:${existingWindow}`);
-        const cmd = buildCommand(existingWindow);
-        const escaped = opts.prompt.replace(/'/g, "'\\''");
-        await tmux.sendText(`${session}:${existingWindow}`, `${cmd} -p '${escaped}'`);
-        return `${session}:${existingWindow}`;
+        // Window exists — check if Claude is already running
+        let isClaudeRunning = false;
+        try {
+          const paneCmd = await ssh(`tmux display-message -t '${target}' -p '#{pane_current_command}' 2>/dev/null`);
+          isClaudeRunning = /claude|node/i.test(paneCmd);
+        } catch {}
+
+        if (isClaudeRunning) {
+          // Claude already running → send message to existing session (not claude -p)
+          console.log(`\x1b[33m⚡\x1b[0m '${existingWindow}' has active Claude — sending message`);
+          await tmux.selectWindow(target);
+          const { sendKeys: sk } = await import("../ssh");
+          await sk(target, opts.prompt);
+          return target;
+        } else {
+          // No Claude running → start fresh with claude -p
+          console.log(`\x1b[33m⚡\x1b[0m '${existingWindow}' exists, starting claude with prompt`);
+          await tmux.selectWindow(target);
+          const cmd = buildCommand(existingWindow);
+          const escaped = opts.prompt.replace(/'/g, "'\\''");
+          await tmux.sendText(target, `${cmd} -p '${escaped}'`);
+          return target;
+        }
       }
       console.log(`\x1b[33m⚡\x1b[0m '${existingWindow}' already running in ${session}`);
-      await tmux.selectWindow(`${session}:${existingWindow}`);
-      return `${session}:${existingWindow}`;
+      await tmux.selectWindow(target);
+      return target;
     }
   } catch { /* session might be fresh */ }
 

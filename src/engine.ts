@@ -37,7 +37,8 @@ export class MawEngine {
       this.sendBusyAgents(ws);
     } else {
       // Cold start: fetch and send directly to this client
-      tmux.listAll().then(sessions => {
+      tmux.listAll().then(all => {
+        const sessions = all.filter(s => !s.name.startsWith("maw-pty-"));
         this.cachedSessions = sessions;
         ws.send(JSON.stringify({ type: "sessions", sessions }));
         this.sendBusyAgents(ws);
@@ -121,12 +122,19 @@ export class MawEngine {
     }
   }
 
+  /** Broadcast a message to all connected clients */
+  broadcast(msg: string) {
+    for (const ws of this.clients) ws.send(msg);
+  }
+
   // --- Broadcast ---
 
   private async broadcastSessions() {
     if (this.clients.size === 0) return;
     try {
-      const sessions = await tmux.listAll();
+      const all = await tmux.listAll();
+      // Filter out internal PTY sessions from dashboard view
+      const sessions = all.filter(s => !s.name.startsWith("maw-pty-"));
       this.cachedSessions = sessions;
       const json = JSON.stringify(sessions);
 

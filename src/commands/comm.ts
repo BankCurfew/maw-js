@@ -94,5 +94,15 @@ export async function cmdSend(query: string, message: string, force = false) {
   const line = JSON.stringify({ ts: new Date().toISOString(), from, to: query, target, msg: message, host, sid }) + "\n";
   try { await mkdir(logDir, { recursive: true }); await appendFile(logFile, line); } catch {}
 
+  // Write to feed.log so dashboard inbox shows agent-to-agent messages
+  try {
+    const feedLog = join(homedir(), ".oracle", "feed.log");
+    const now = new Date();
+    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+    const flat = message.replace(/\n/g, " \u239C ");
+    const feedLine = `${ts} | ${from} | ${host} | Notification | ${from} | maw-hey \u00bb [handoff] ${JSON.stringify({ from, to: query, message: flat })}\n`;
+    await appendFile(feedLog, feedLine);
+  } catch {}
+
   console.log(`\x1b[32msent\x1b[0m → ${target}: ${message}`);
 }

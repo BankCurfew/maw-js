@@ -45,7 +45,35 @@ function usage() {
   maw view <agent> [window]   Grouped tmux session (interactive attach)
   maw create-view <agent> [w] Alias for view
   maw view <agent> --clean    Hide status bar (full screen)
+  maw think                   Oracles scan work + propose ideas (GitHub issues)
+  maw think --oracles hr,dev  Limit which oracles think
+  maw review                  BoB reviews proposals → sends to inbox
+  maw meeting "goal"          BoB holds a meeting — wakes agents, collects input
+  maw meeting "goal" --dry-run  Show participants without waking
+  maw meeting "goal" --oracles dev,qa  Limit participants
+  maw task log <#> "msg"       Log activity on a task
+  maw task log <#> --commit "hash msg"  Log a commit
+  maw task log <#> --blocker "desc"     Log a blocker
+  maw task comment <#> "msg"   Comment on task (cross-oracle)
+  maw task ls                  Board + activity counts
+  maw task show <#>            Full activity timeline
+  maw project ls               List all projects
+  maw project show <id>        Project tree view
+  maw project create <id> "name"  Create a project
+  maw project add <id> #<issue>   Add task to project
+  maw project add <id> #<issue> --parent #<parent>  Add as subtask
+  maw project auto-organize    Auto-group unassigned tasks
+  maw project comment <id> "msg"  Comment on project
+  maw project complete <id>    Mark project completed
+  maw project archive <id>     Archive project
   maw <agent> <msg...>        Shorthand for hey
+  maw loop                    Show loop status (scheduled tasks)
+  maw loop history [id]       Loop execution history
+  maw loop trigger <id>       Manually fire a loop
+  maw loop add '{json}'       Add/update a loop definition
+  maw loop remove <id>        Remove a loop
+  maw loop enable|disable <id> Toggle a loop on/off
+  maw loop on|off             Enable/disable loop engine
   maw <agent>                 Shorthand for peek
   maw serve [port]            Start web UI (default: 3456)
 
@@ -122,6 +150,57 @@ if (cmd === "--version" || cmd === "-v") {
     }
     cmdLogLs(logOpts);
   }
+} else if (cmd === "task") {
+  const sub = args[1]?.toLowerCase();
+  if (sub === "log") {
+    const { cmdTaskLog } = await import("./commands/task-log");
+    await cmdTaskLog(args.slice(2));
+  } else if (sub === "show") {
+    const { cmdTaskShow } = await import("./commands/task-log");
+    await cmdTaskShow(args.slice(2));
+  } else if (sub === "comment") {
+    const { cmdTaskComment } = await import("./commands/task-log");
+    await cmdTaskComment(args.slice(2));
+  } else if (sub === "ls" || sub === "list" || !sub) {
+    const { cmdTaskLs } = await import("./commands/task-log");
+    await cmdTaskLs();
+  } else {
+    console.error("usage: maw task <log|ls|show|comment> [opts]");
+    process.exit(1);
+  }
+} else if (cmd === "project" || cmd === "proj") {
+  const sub = args[1]?.toLowerCase();
+  if (sub === "ls" || sub === "list" || !sub) {
+    const { cmdProjectLs } = await import("./commands/project");
+    await cmdProjectLs();
+  } else if (sub === "show") {
+    const { cmdProjectShow } = await import("./commands/project");
+    await cmdProjectShow(args.slice(2));
+  } else if (sub === "create" || sub === "new") {
+    const { cmdProjectCreate } = await import("./commands/project");
+    await cmdProjectCreate(args.slice(2));
+  } else if (sub === "add") {
+    const { cmdProjectAdd } = await import("./commands/project");
+    await cmdProjectAdd(args.slice(2));
+  } else if (sub === "remove" || sub === "rm") {
+    const { cmdProjectRemove } = await import("./commands/project");
+    await cmdProjectRemove(args.slice(2));
+  } else if (sub === "auto-organize" || sub === "auto" || sub === "organize") {
+    const { cmdProjectAutoOrganize } = await import("./commands/project");
+    await cmdProjectAutoOrganize();
+  } else if (sub === "comment") {
+    const { cmdProjectComment } = await import("./commands/project");
+    await cmdProjectComment(args.slice(2));
+  } else if (sub === "complete" || sub === "done") {
+    const { cmdProjectSetStatus } = await import("./commands/project");
+    await cmdProjectSetStatus(args.slice(2), "completed");
+  } else if (sub === "archive") {
+    const { cmdProjectSetStatus } = await import("./commands/project");
+    await cmdProjectSetStatus(args.slice(2), "archived");
+  } else {
+    console.error("usage: maw project <ls|show|create|add|remove|auto-organize|comment|complete|archive>");
+    process.exit(1);
+  }
 } else if (cmd === "done" || cmd === "finish") {
   if (!args[1]) { console.error("usage: maw done <window-name>\n       e.g. maw done neo-freelance"); process.exit(1); }
   await cmdDone(args[1]);
@@ -185,6 +264,29 @@ if (cmd === "--version" || cmd === "-v") {
     console.error("usage: maw pulse <add|ls|cleanup> [opts]");
     process.exit(1);
   }
+} else if (cmd === "think") {
+  const { cmdThink } = await import("./commands/think");
+  const thinkOpts: { oracles?: string[]; dryRun?: boolean } = {};
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--oracles" && args[i + 1]) { thinkOpts.oracles = args[++i].split(","); }
+    else if (args[i] === "--dry-run") { thinkOpts.dryRun = true; }
+  }
+  await cmdThink(thinkOpts);
+} else if (cmd === "review") {
+  const { cmdReview } = await import("./commands/think");
+  await cmdReview();
+} else if (cmd === "meeting" || cmd === "meet") {
+  const { cmdMeeting } = await import("./commands/meeting");
+  const meetOpts: { oracles?: string[]; dryRun?: boolean; timeout?: number } = {};
+  let goal = "";
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--oracles" && args[i + 1]) { meetOpts.oracles = args[++i].split(","); }
+    else if (args[i] === "--dry-run") { meetOpts.dryRun = true; }
+    else if (args[i] === "--timeout" && args[i + 1]) { meetOpts.timeout = +args[++i]; }
+    else if (!goal) { goal = args[i]; }
+  }
+  if (!goal) { console.error('usage: maw meeting "goal" [--oracles dev,designer] [--dry-run] [--timeout 120]'); process.exit(1); }
+  await cmdMeeting(goal, meetOpts);
 } else if (cmd === "overview" || cmd === "warroom" || cmd === "ov") {
   await cmdOverview(args.slice(1));
 } else if (cmd === "about" || cmd === "info") {
@@ -205,6 +307,33 @@ if (cmd === "--version" || cmd === "-v") {
   const clean = args.includes("--clean");
   const viewArgs = args.slice(1).filter(a => a !== "--clean");
   await cmdView(viewArgs[0], viewArgs[1], clean);
+} else if (cmd === "loop" || cmd === "loops") {
+  const { cmdLoop } = await import("./commands/loop");
+  await cmdLoop(args.slice(1));
+} else if (cmd === "auth") {
+  const { setupAuth } = await import("./auth");
+  const sub = args[1];
+  if (sub === "setup") {
+    const user = args[2];
+    const pass = args[3];
+    if (!user || !pass) { console.error("usage: maw auth setup <username> <password>"); process.exit(1); }
+    setupAuth(user, pass);
+    console.log(`\x1b[32m✓\x1b[0m Auth enabled — user: ${user}`);
+    console.log("  Restart maw server: pm2 restart maw");
+  } else if (sub === "disable") {
+    const { readFileSync, writeFileSync } = await import("fs");
+    const { join } = await import("path");
+    const p = join(import.meta.dir, "../auth.json");
+    try {
+      const c = JSON.parse(readFileSync(p, "utf-8"));
+      c.enabled = false;
+      writeFileSync(p, JSON.stringify(c, null, 2), "utf-8");
+      console.log("\x1b[33m⊘\x1b[0m Auth disabled");
+    } catch { console.error("No auth config found"); }
+  } else {
+    console.log("usage: maw auth setup <username> <password>");
+    console.log("       maw auth disable");
+  }
 } else if (cmd === "serve") {
   const { startServer } = await import("./server");
   startServer(args[1] ? +args[1] : 3456);

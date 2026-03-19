@@ -5,10 +5,47 @@ import { listSessions, capture, sendKeys, selectWindow } from "./ssh";
 import { processMirror } from "./commands/overview";
 import { FeedTailer } from "./feed-tail";
 import { MawEngine } from "./engine";
+import { LoopEngine } from "./loops";
+import { isAuthenticated, handleLogin, handleLogout, LOGIN_PAGE, isAuthEnabled } from "./auth";
 import type { WSData } from "./types";
 
 const app = new Hono();
 app.use("/api/*", cors());
+
+// --- Auth routes (always accessible) ---
+app.get("/auth/login", (c) => c.html(LOGIN_PAGE));
+app.post("/auth/login", async (c) => {
+  const { username, password } = await c.req.json();
+  const result = handleLogin(username, password, c.req.header("user-agent") || "");
+  if (result.ok) {
+    return c.json({ ok: true }, 200, {
+      "Set-Cookie": `maw_session=${result.sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`,
+    });
+  }
+  return c.json({ ok: false, error: result.error }, 401);
+});
+app.get("/auth/logout", (c) => {
+  handleLogout(c.req.raw);
+  return c.redirect("/auth/login", 302, {
+    "Set-Cookie": "maw_session=; Path=/; HttpOnly; Max-Age=0",
+  } as any);
+});
+
+// --- Auth middleware — protect everything except /auth/* ---
+app.use("*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  // Skip auth for auth routes and static assets needed for login
+  if (path.startsWith("/auth/")) return next();
+
+  if (!isAuthenticated(c.req.raw)) {
+    // API calls get 401, pages get redirect
+    if (path.startsWith("/api/") || path.startsWith("/ws")) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    return c.redirect("/auth/login");
+  }
+  return next();
+});
 
 // API routes (keep for CLI compatibility)
 app.get("/api/sessions", async (c) => c.json(await listSessions()));
@@ -203,6 +240,82 @@ app.post("/api/asks", async (c) => {
   }
 });
 
+// --- Task Activity Log ---
+import { readTaskLog, getAllLogSummaries, appendActivity } from "./task-log";
+import { loadProjects, saveProjects, addTaskToProject, removeTaskFromProject, createProject, updateProject, autoOrganize, getProjectBoardData } from "./projects";
+
+app.get("/api/task-log", (c) => {
+  const taskId = c.req.query("taskId");
+  if (!taskId) return c.json({ error: "taskId required" }, 400);
+  return c.json({ taskId, activities: readTaskLog(taskId) });
+});
+
+app.get("/api/task-log/summaries", (c) => {
+  return c.json(getAllLogSummaries());
+});
+
+app.post("/api/task-log", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.taskId || !body.content) return c.json({ error: "taskId and content required" }, 400);
+    const activity = appendActivity({
+      taskId: body.taskId,
+      type: body.type || "note",
+      oracle: body.oracle || "api",
+      content: body.content,
+      meta: body.meta,
+    });
+    return c.json({ ok: true, activity });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+// --- Projects ---
+
+app.get("/api/projects", (c) => {
+  return c.json(loadProjects());
+});
+
+app.post("/api/projects", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (body.action === "create") {
+      const project = createProject(body.id, body.name, body.description || "");
+      return c.json({ ok: true, project });
+    } else if (body.action === "update") {
+      const project = updateProject(body.id, body.updates || {});
+      return c.json({ ok: true, project });
+    } else if (body.action === "add-task") {
+      addTaskToProject(body.projectId, body.taskId, body.parentTaskId);
+      return c.json({ ok: true });
+    } else if (body.action === "remove-task") {
+      removeTaskFromProject(body.projectId, body.taskId);
+      return c.json({ ok: true });
+    } else if (body.action === "auto-organize") {
+      const { fetchBoardData: fetchBoard } = await import("./board");
+      const items = await fetchBoard();
+      const result = autoOrganize(items);
+      return c.json({ ok: true, ...result });
+    } else {
+      return c.json({ error: "unknown action" }, 400);
+    }
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.get("/api/project-board", async (c) => {
+  try {
+    const { fetchBoardData: fetchBoard } = await import("./board");
+    const items = await fetchBoard(c.req.query("filter") || undefined);
+    const data = getProjectBoardData(items);
+    return c.json(data);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 // --- Fleet Config ---
 
 const fleetDir = join(import.meta.dir, "../fleet");
@@ -366,6 +479,18 @@ app.post("/api/worktrees/cleanup", async (c) => {
   }
 });
 
+// --- Hall of Fame ---
+const hallOfFamePath = join(process.env.HOME || "/home/mbank", "repos/github.com/BankCurfew/HR-Oracle/hall-of-fame/data.json");
+
+app.get("/api/hall-of-fame", (c) => {
+  try {
+    if (!existsSync(hallOfFamePath)) return c.json({ error: "data.json not found" }, 404);
+    return c.json(JSON.parse(readFileSync(hallOfFamePath, "utf-8")));
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 // --- Oracle Feed ---
 const feedTailer = new FeedTailer();
 
@@ -376,6 +501,90 @@ app.get("/api/feed", (c) => {
   if (oracle) events = events.filter(e => e.oracle === oracle);
   const active = [...feedTailer.getActive().keys()];
   return c.json({ events: events.reverse(), total: events.length, active_oracles: active });
+});
+
+// --- Loops API ---
+const loopEngine = new LoopEngine();
+
+app.get("/api/loops", (c) => {
+  return c.json({ enabled: loopEngine.isEnabled(), loops: loopEngine.getStatus() });
+});
+
+app.get("/api/loops/history", (c) => {
+  const loopId = c.req.query("loopId") || undefined;
+  const limit = +(c.req.query("limit") || "50");
+  return c.json(loopEngine.getHistory(loopId, limit));
+});
+
+app.post("/api/loops/trigger", async (c) => {
+  const { loopId } = await c.req.json();
+  if (!loopId) return c.json({ error: "loopId required" }, 400);
+  const result = await loopEngine.triggerLoop(loopId);
+  return c.json(result);
+});
+
+app.post("/api/loops/add", async (c) => {
+  try {
+    const newLoop = await c.req.json();
+    if (!newLoop.id || !newLoop.schedule) return c.json({ error: "id and schedule required" }, 400);
+    const { readFileSync, writeFileSync } = await import("fs");
+    const { join } = await import("path");
+    const loopsPath = join(import.meta.dir, "../loops.json");
+    const config = JSON.parse(readFileSync(loopsPath, "utf-8"));
+    const idx = config.loops.findIndex((l: any) => l.id === newLoop.id);
+    if (idx >= 0) {
+      config.loops[idx] = { ...config.loops[idx], ...newLoop };
+    } else {
+      config.loops.push(newLoop);
+    }
+    writeFileSync(loopsPath, JSON.stringify(config, null, 2), "utf-8");
+    return c.json({ ok: true, action: idx >= 0 ? "updated" : "added" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.delete("/api/loops", async (c) => {
+  const loopId = c.req.query("id");
+  if (!loopId) return c.json({ error: "id required" }, 400);
+  const { readFileSync, writeFileSync } = await import("fs");
+  const { join } = await import("path");
+  const loopsPath = join(import.meta.dir, "../loops.json");
+  const config = JSON.parse(readFileSync(loopsPath, "utf-8"));
+  const before = config.loops.length;
+  config.loops = config.loops.filter((l: any) => l.id !== loopId);
+  writeFileSync(loopsPath, JSON.stringify(config, null, 2), "utf-8");
+  return c.json({ ok: config.loops.length < before });
+});
+
+app.post("/api/loops/toggle", async (c) => {
+  const { loopId, enabled } = await c.req.json();
+  if (loopId) {
+    const ok = loopEngine.toggleLoop(loopId, enabled);
+    return c.json({ ok });
+  } else {
+    loopEngine.toggleEngine(enabled);
+    return c.json({ ok: true });
+  }
+});
+
+// Jarvis API proxy — forward /api/jarvis/* to Admin-Oracle :3200
+const JARVIS_API_URL = process.env.JARVIS_API_URL || "http://localhost:3200";
+app.all("/api/jarvis/*", async (c) => {
+  const path = c.req.path; // e.g. /api/jarvis/stats
+  const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+  const target = `${JARVIS_API_URL}${path}${qs}`;
+  try {
+    const res = await fetch(target, {
+      method: c.req.method,
+      headers: c.req.method !== "GET" ? { "Content-Type": "application/json" } : {},
+      body: c.req.method !== "GET" ? await c.req.text() : undefined,
+    });
+    const data = await res.json();
+    return c.json(data, res.status as any);
+  } catch (e: any) {
+    return c.json({ error: `Jarvis API unreachable: ${e.message}` }, 502);
+  }
 });
 
 app.onError((err, c) => c.json({ error: err.message }, 500));
@@ -393,12 +602,14 @@ export function startServer(port = +(process.env.MAW_PORT || loadConfig().port |
     port,
     fetch(req, server) {
       const url = new URL(req.url);
-      if (url.pathname === "/ws/pty") {
-        if (server.upgrade(req, { data: { target: null, previewTargets: new Set(), mode: "pty" } as WSData })) return;
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }
-      if (url.pathname === "/ws") {
-        if (server.upgrade(req, { data: { target: null, previewTargets: new Set() } as WSData })) return;
+      // Protect WebSocket endpoints with auth
+      if (url.pathname === "/ws/pty" || url.pathname === "/ws") {
+        if (!isAuthenticated(req)) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        const mode = url.pathname === "/ws/pty" ? "pty" : undefined;
+        const data = { target: null, previewTargets: new Set(), ...(mode ? { mode } : {}) } as WSData;
+        if (server.upgrade(req, { data })) return;
         return new Response("WebSocket upgrade failed", { status: 400 });
       }
       return app.fetch(req);
@@ -418,6 +629,9 @@ export function startServer(port = +(process.env.MAW_PORT || loadConfig().port |
       },
     },
   });
+
+  // Start Loop Engine
+  loopEngine.start((msg) => engine.broadcast(msg));
 
   console.log(`maw serve → http://localhost:${port} (ws://localhost:${port}/ws)`);
   return server;

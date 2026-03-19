@@ -1,6 +1,19 @@
 import { sendKeys, selectWindow, ssh, getPaneCommand } from "./ssh";
 import { buildCommand } from "./config";
 import type { MawWS, Handler, MawEngine } from "./types";
+import {
+  fetchBoardData,
+  fetchFields,
+  setFieldByName,
+  addItem,
+  scanUntracked,
+  scanMine,
+  autoAssign,
+  getTimelineData,
+} from "./board";
+import { readTaskLog, getAllLogSummaries, appendActivity } from "./task-log";
+import { loadProjects, addTaskToProject, removeTaskFromProject, createProject, updateProject, autoOrganize, getProjectBoardData } from "./projects";
+import { LoopEngine } from "./loops";
 
 /** Run an async action with standard ok/error response */
 async function runAction(ws: MawWS, action: string, target: string, fn: () => Promise<void>) {
@@ -72,6 +85,336 @@ const restart: Handler = (ws, data) => {
   });
 };
 
+// --- Board handlers ---
+
+const board: Handler = async (ws, data) => {
+  try {
+    const [items, fields] = await Promise.all([
+      fetchBoardData(data.filter),
+      fetchFields(),
+    ]);
+    ws.send(JSON.stringify({ type: "board-data", items, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const boardSet: Handler = async (ws, data, engine) => {
+  try {
+    // Auto-log status changes
+    if (data.field?.toLowerCase() === "status") {
+      try {
+        const items = await fetchBoardData();
+        const item = items.find((i) => i.id === data.itemId);
+        if (item) {
+          appendActivity({
+            taskId: data.itemId,
+            type: "status_change",
+            oracle: "dashboard",
+            content: `Status changed: ${item.status || "none"} → ${data.value}`,
+            meta: { oldStatus: item.status, newStatus: data.value },
+          });
+        }
+      } catch { /* auto-log is best-effort */ }
+    }
+    await setFieldByName(data.itemId, data.field, data.value);
+    const [items, fields] = await Promise.all([
+      fetchBoardData(),
+      fetchFields(),
+    ]);
+    ws.send(JSON.stringify({ type: "board-data", items, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const boardAdd: Handler = async (ws, data) => {
+  try {
+    await addItem(data.title, { oracle: data.oracle, repo: data.repo });
+    const [items, fields] = await Promise.all([
+      fetchBoardData(),
+      fetchFields(),
+    ]);
+    ws.send(JSON.stringify({ type: "board-data", items, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const boardAutoAssign: Handler = async (ws) => {
+  try {
+    const result = await autoAssign();
+    ws.send(JSON.stringify({ type: "board-auto-assign-results", ...result }));
+    // Refresh board after assignment
+    const [items, fields] = await Promise.all([
+      fetchBoardData(),
+      fetchFields(),
+    ]);
+    ws.send(JSON.stringify({ type: "board-data", items, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const boardScan: Handler = async (ws) => {
+  try {
+    const results = await scanUntracked();
+    ws.send(JSON.stringify({ type: "board-scan-results", results }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const boardScanMine: Handler = async (ws) => {
+  try {
+    const results = await scanMine();
+    ws.send(JSON.stringify({ type: "board-scan-mine-results", results }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const boardTimeline: Handler = async (ws, data) => {
+  try {
+    const timeline = await getTimelineData(data.filter);
+    ws.send(JSON.stringify({ type: "board-timeline-data", timeline }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const pulseBoard: Handler = async (ws) => {
+  try {
+    const items = await fetchBoardData();
+    const active = items
+      .filter((i) => i.status.toLowerCase().replace(/\s/g, "") === "inprogress")
+      .map((i) => ({ number: i.content.number, title: i.title, oracle: i.oracle }));
+    const projects = items
+      .filter((i) => i.status.toLowerCase() === "todo" || i.status.toLowerCase() === "backlog")
+      .map((i) => ({ number: i.content.number, title: i.title, oracle: i.oracle }));
+    const tools = items
+      .filter((i) => i.status.toLowerCase() === "done")
+      .map((i) => ({ number: i.content.number, title: i.title, oracle: i.oracle }));
+    const total = items.filter((i) => i.status.toLowerCase() !== "done").length;
+    ws.send(JSON.stringify({
+      type: "pulse-board-data",
+      active,
+      projects,
+      tools,
+      total,
+      threads: [],
+    }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+// --- Task log handlers ---
+
+const taskLog: Handler = async (ws, data) => {
+  try {
+    let activities = readTaskLog(data.taskId);
+    // If no logs found by board item ID, try matching by issue number
+    if (activities.length === 0 && data.taskId.startsWith("PVTI_")) {
+      try {
+        const items = await fetchBoardData();
+        const item = items.find((i) => i.id === data.taskId);
+        if (item?.content.number) {
+          // Try issue number
+          const byNum = readTaskLog(String(item.content.number));
+          // Try RepoName_number pattern
+          const repo = item.content.repository?.split("/").pop() || "";
+          const byRepo = repo ? readTaskLog(`${repo}_${item.content.number}`) : [];
+          activities = [...byNum, ...byRepo, ...activities].sort((a, b) => a.ts.localeCompare(b.ts));
+        }
+      } catch {}
+    }
+    ws.send(JSON.stringify({ type: "task-log-data", taskId: data.taskId, activities }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const taskLogSummaries: Handler = async (ws) => {
+  try {
+    const raw = getAllLogSummaries();
+    // Enrich: map issue-number-keyed logs to board item IDs
+    // so frontend can match "#2" logs to PVTI_ board items
+    let boardItems: { id: string; content: { number: number } }[] = [];
+    try { boardItems = await fetchBoardData(); } catch {}
+    const issueToItemId = new Map<string, string>();
+    for (const item of boardItems) {
+      if (item.content.number > 0) {
+        issueToItemId.set(String(item.content.number), item.id);
+      }
+    }
+    // Build merged summaries: keep original keys + add board-item-id aliases
+    const summaries: Record<string, typeof raw[string]> = { ...raw };
+    for (const [taskId, summary] of Object.entries(raw)) {
+      // If taskId is a number (issue #), also index under the board item ID
+      const boardId = issueToItemId.get(taskId);
+      if (boardId && !summaries[boardId]) {
+        summaries[boardId] = { ...summary, taskId: boardId };
+      }
+      // If taskId contains repo name pattern like "Dev-Oracle_1", try matching
+      const repoMatch = taskId.match(/^(.+?)_(\d+)$/);
+      if (repoMatch) {
+        const num = repoMatch[2];
+        const bid = issueToItemId.get(num);
+        if (bid && !summaries[bid]) {
+          summaries[bid] = { ...summary, taskId: bid };
+        }
+      }
+    }
+    // Merge: if a board item has logs under BOTH its PVTI_ id and issue number, combine counts
+    for (const item of boardItems) {
+      const pvtiKey = item.id;
+      const numKey = String(item.content.number);
+      const pvtiSummary = raw[pvtiKey];
+      const numSummary = raw[numKey];
+      if (pvtiSummary && numSummary) {
+        // Merge into PVTI key
+        summaries[pvtiKey] = {
+          taskId: pvtiKey,
+          count: pvtiSummary.count + numSummary.count,
+          lastActivity: pvtiSummary.lastActivity > numSummary.lastActivity ? pvtiSummary.lastActivity : numSummary.lastActivity,
+          lastOracle: pvtiSummary.lastActivity > numSummary.lastActivity ? pvtiSummary.lastOracle : numSummary.lastOracle,
+          hasBlockers: pvtiSummary.hasBlockers || numSummary.hasBlockers,
+          contributors: [...new Set([...pvtiSummary.contributors, ...numSummary.contributors])],
+        };
+      }
+    }
+    ws.send(JSON.stringify({ type: "task-log-summaries-data", summaries }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const taskLogAdd: Handler = async (ws, data, engine) => {
+  try {
+    const activity = appendActivity({
+      taskId: data.taskId,
+      type: data.activityType || "note",
+      oracle: data.oracle || "dashboard",
+      content: data.content,
+      meta: data.meta,
+    });
+    // Send back to requester
+    ws.send(JSON.stringify({ type: "task-log-new", activity }));
+    // Broadcast to all other clients
+    engine.broadcast(JSON.stringify({ type: "task-log-new", activity }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+// --- Project handlers ---
+
+const projectBoard: Handler = async (ws, data) => {
+  try {
+    const items = await fetchBoardData(data.filter);
+    const result = getProjectBoardData(items);
+    const fields = await fetchFields();
+    ws.send(JSON.stringify({ type: "project-board-data", ...result, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const projectList: Handler = async (ws) => {
+  try {
+    const data = loadProjects();
+    ws.send(JSON.stringify({ type: "project-list-data", projects: data.projects }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const projectAddTask: Handler = async (ws, data, engine) => {
+  try {
+    addTaskToProject(data.projectId, data.taskId, data.parentTaskId);
+    ws.send(JSON.stringify({ type: "project-updated", projectId: data.projectId }));
+    // Broadcast refresh
+    const items = await fetchBoardData();
+    const result = getProjectBoardData(items);
+    const fields = await fetchFields();
+    engine.broadcast(JSON.stringify({ type: "project-board-data", ...result, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const projectRemoveTask: Handler = async (ws, data, engine) => {
+  try {
+    removeTaskFromProject(data.projectId, data.taskId);
+    ws.send(JSON.stringify({ type: "project-updated", projectId: data.projectId }));
+    const items = await fetchBoardData();
+    const result = getProjectBoardData(items);
+    const fields = await fetchFields();
+    engine.broadcast(JSON.stringify({ type: "project-board-data", ...result, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const projectCreate: Handler = async (ws, data, engine) => {
+  try {
+    const project = createProject(data.id, data.name, data.description || "");
+    ws.send(JSON.stringify({ type: "project-created", project }));
+    const items = await fetchBoardData();
+    const result = getProjectBoardData(items);
+    const fields = await fetchFields();
+    engine.broadcast(JSON.stringify({ type: "project-board-data", ...result, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const projectAutoOrganize: Handler = async (ws, _data, engine) => {
+  try {
+    const items = await fetchBoardData();
+    const result = autoOrganize(items);
+    ws.send(JSON.stringify({ type: "project-auto-organize-result", ...result }));
+    const updatedItems = await fetchBoardData();
+    const boardData = getProjectBoardData(updatedItems);
+    const fields = await fetchFields();
+    engine.broadcast(JSON.stringify({ type: "project-board-data", ...boardData, fields }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+// --- Loop handlers ---
+const loopEngineInstance = new LoopEngine();
+
+const loopStatus: Handler = async (ws) => {
+  try {
+    const status = loopEngineInstance.getStatus();
+    const enabled = loopEngineInstance.isEnabled();
+    ws.send(JSON.stringify({ type: "loop-status", enabled, loops: status }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const loopHistory: Handler = async (ws, data) => {
+  try {
+    const history = loopEngineInstance.getHistory(data.loopId, data.limit || 50);
+    ws.send(JSON.stringify({ type: "loop-history", history }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
+const loopTrigger: Handler = async (ws, data) => {
+  try {
+    const result = await loopEngineInstance.triggerLoop(data.loopId);
+    ws.send(JSON.stringify({ type: "loop-trigger-result", ...result }));
+  } catch (e: any) {
+    ws.send(JSON.stringify({ type: "error", error: e.message }));
+  }
+};
+
 /** Register all built-in WebSocket handlers on the engine */
 export function registerBuiltinHandlers(engine: MawEngine) {
   engine.on("subscribe", subscribe);
@@ -82,4 +425,32 @@ export function registerBuiltinHandlers(engine: MawEngine) {
   engine.on("stop", stop);
   engine.on("wake", wake);
   engine.on("restart", restart);
+
+  // Board
+  engine.on("board", board);
+  engine.on("board-set", boardSet);
+  engine.on("board-add", boardAdd);
+  engine.on("board-auto-assign", boardAutoAssign);
+  engine.on("board-scan", boardScan);
+  engine.on("board-scan-mine", boardScanMine);
+  engine.on("board-timeline", boardTimeline);
+  engine.on("pulse-board", pulseBoard);
+
+  // Task log
+  engine.on("task-log", taskLog);
+  engine.on("task-log-summaries", taskLogSummaries);
+  engine.on("task-log-add", taskLogAdd);
+
+  // Projects
+  engine.on("project-board", projectBoard);
+  engine.on("project-list", projectList);
+  engine.on("project-add-task", projectAddTask);
+  engine.on("project-remove-task", projectRemoveTask);
+  engine.on("project-create", projectCreate);
+  engine.on("project-auto-organize", projectAutoOrganize);
+
+  // Loops
+  engine.on("loop-status", loopStatus);
+  engine.on("loop-history", loopHistory);
+  engine.on("loop-trigger", loopTrigger);
 }
