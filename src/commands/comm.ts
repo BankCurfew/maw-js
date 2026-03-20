@@ -59,7 +59,11 @@ export async function cmdPeek(query?: string) {
     }
     return;
   }
-  const target = findWindow(sessions, query);
+  const { loadConfig } = await import("../config");
+  const config = await loadConfig();
+  const sessionName = (config.sessions as Record<string, string>)?.[query];
+  const searchIn = sessionName ? sessions.filter(s => s.name === sessionName) : sessions;
+  const target = findWindow(searchIn, query);
   if (!target) { console.error(`window not found: ${query}`); process.exit(1); }
   const content = await capture(target);
   console.log(`\x1b[36m--- ${target} ---\x1b[0m`);
@@ -67,8 +71,12 @@ export async function cmdPeek(query?: string) {
 }
 
 export async function cmdSend(query: string, message: string, force = false) {
+  const { loadConfig } = await import("../config");
+  const config = await loadConfig();
+  const sessionName = (config.sessions as Record<string, string>)?.[query];
   const sessions = await listSessions();
-  const target = findWindow(sessions, query);
+  const searchIn = sessionName ? sessions.filter(s => s.name === sessionName) : sessions;
+  const target = findWindow(searchIn, query);
   if (!target) { console.error(`window not found: ${query}`); process.exit(1); }
 
   // Detect active Claude session (#17)
@@ -89,7 +97,9 @@ export async function cmdSend(query: string, message: string, force = false) {
   const logDir = join(homedir(), ".oracle");
   const logFile = join(logDir, "maw-log.jsonl");
   const host = (await import("os")).hostname();
-  const from = process.env.CLAUDE_AGENT_NAME || "cli";
+  const cwdName = (await import("path")).basename(process.cwd());
+  const oracleMatch = cwdName.match(/^([^/]+)-oracle$/);
+  const from = process.env.CLAUDE_AGENT_NAME || (oracleMatch ? oracleMatch[1] : (cwdName === "mr-zero" ? "mr-zero" : "inwpong"));
   const sid = process.env.CLAUDE_SESSION_ID || null;
   const line = JSON.stringify({ ts: new Date().toISOString(), from, to: query, target, msg: message, host, sid }) + "\n";
   try { await mkdir(logDir, { recursive: true }); await appendFile(logFile, line); } catch {}
