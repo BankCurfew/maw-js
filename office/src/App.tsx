@@ -19,6 +19,7 @@ import { LoopsView } from "./components/LoopsView";
 import { JarvisView } from "./components/JarvisView";
 import { HallOfFameView } from "./components/HallOfFameView";
 import { IPadDashboard } from "./components/iPadDashboard";
+import { ChatView } from "./components/ChatView";
 import { ShortcutOverlay } from "./components/ShortcutOverlay";
 import { JumpOverlay } from "./components/JumpOverlay";
 import { OracleSheet } from "./components/OracleSheet";
@@ -41,11 +42,11 @@ function useHashRoute() {
     // If URL already has a hash, use it; otherwise restore from server state
     const urlHash = window.location.hash.slice(1);
     if (urlHash) return urlHash;
-    if (lastView && lastView !== "office") {
+    if (lastView) {
       window.location.hash = lastView;
       return lastView;
     }
-    return "office";
+    return "fleet";
   });
 
   useEffect(() => {
@@ -336,6 +337,14 @@ export function App() {
     return (
       <Layout activeView="board" {...layoutProps}>
         <BoardView connected={connected} send={send} agents={agents} />
+      </Layout>
+    );
+  }
+
+  if (route === "chat") {
+    return (
+      <Layout activeView="chat" {...layoutProps}>
+        <ChatView />
       </Layout>
     );
   }

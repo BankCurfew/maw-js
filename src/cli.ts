@@ -11,7 +11,11 @@ import { cmdOracleList, cmdOracleAbout } from "./commands/oracle";
 import { cmdWakeAll, cmdSleep, cmdFleetLs, cmdFleetRenumber, cmdFleetValidate, cmdFleetSync } from "./commands/fleet";
 import { cmdFleetInit } from "./commands/fleet-init";
 import { cmdDone } from "./commands/done";
-import { cmdLogLs, cmdLogExport } from "./commands/log";
+import { cmdSleepOne } from "./commands/sleep";
+import { cmdLogLs, cmdLogExport, cmdLogChat } from "./commands/log";
+import { cmdTokens } from "./commands/tokens";
+import { cmdTab } from "./commands/tab";
+import { cmdTalkTo } from "./commands/talk-to";
 
 const args = process.argv.slice(2);
 const cmd = args[0]?.toLowerCase();
@@ -33,6 +37,7 @@ function usage() {
   maw wake all [--kill]       Wake fleet (01-15 + 99, skips dormant 20+)
   maw wake all --all          Wake ALL including dormant
   maw wake all --resume       Wake fleet + send /recap to active board items
+  maw sleep <oracle> [window] Gracefully stop one oracle window
   maw stop                    Stop all fleet sessions
   maw about <oracle>           Oracle profile — session, worktrees, fleet
   maw oracle ls               Fleet status (awake/sleeping/worktrees)
@@ -66,6 +71,14 @@ function usage() {
   maw project comment <id> "msg"  Comment on project
   maw project complete <id>    Mark project completed
   maw project archive <id>     Archive project
+  maw tokens [--rebuild]      Token usage stats (from Claude sessions)
+  maw tokens --json           JSON output for API consumption
+  maw log chat [oracle]       Chat view — grouped conversation bubbles
+  maw chat [oracle]           Shorthand for log chat
+  maw tab                      List tabs in current session
+  maw tab N                    Peek tab N
+  maw tab N <msg...>           Send message to tab N
+  maw talk-to <agent> <msg>    Thread + hey (persistent + real-time)
   maw <agent> <msg...>        Shorthand for hey
   maw loop                    Show loop status (scheduled tasks)
   maw loop history [id]       Loop execution history
@@ -118,6 +131,11 @@ if (cmd === "--version" || cmd === "-v") {
   const msgArgs = args.slice(2).filter(a => a !== "--force");
   if (!args[1] || !msgArgs.length) { console.error("usage: maw hey <agent> <message> [--force]"); process.exit(1); }
   await cmdSend(args[1], msgArgs.join(" "), force);
+} else if (cmd === "talk-to" || cmd === "talkto" || cmd === "talk") {
+  const force = args.includes("--force");
+  const msgArgs = args.slice(2).filter(a => a !== "--force");
+  if (!args[1] || !msgArgs.length) { console.error("usage: maw talk-to <agent> <message> [--force]"); process.exit(1); }
+  await cmdTalkTo(args[1], msgArgs.join(" "), force);
 } else if (cmd === "fleet" && args[1] === "init") {
   await cmdFleetInit();
 } else if (cmd === "fleet" && args[1] === "ls") {
@@ -141,6 +159,16 @@ if (cmd === "--version" || cmd === "-v") {
       else if (args[i] === "--format" && args[i + 1]) logOpts.format = args[++i];
     }
     cmdLogExport(logOpts);
+  } else if (sub === "chat") {
+    const logOpts: { limit?: number; from?: string; to?: string; pair?: string } = {};
+    for (let i = 2; i < args.length; i++) {
+      if (args[i] === "--limit" && args[i + 1]) logOpts.limit = +args[++i];
+      else if (args[i] === "--from" && args[i + 1]) logOpts.from = args[++i];
+      else if (args[i] === "--to" && args[i + 1]) logOpts.to = args[++i];
+      else if (args[i] === "--pair" && args[i + 1]) logOpts.pair = args[++i];
+      else if (!args[i].startsWith("--")) logOpts.pair = args[i]; // shorthand: maw log chat neo
+    }
+    cmdLogChat(logOpts);
   } else {
     const logOpts: { limit?: number; from?: string; to?: string } = {};
     for (let i = 1; i < args.length; i++) {
@@ -201,11 +229,34 @@ if (cmd === "--version" || cmd === "-v") {
     console.error("usage: maw project <ls|show|create|add|remove|auto-organize|comment|complete|archive>");
     process.exit(1);
   }
+} else if (cmd === "chat") {
+  // Shorthand: maw chat [oracle] = maw log chat [oracle]
+  const logOpts: { limit?: number; pair?: string } = {};
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--limit" && args[i + 1]) logOpts.limit = +args[++i];
+    else if (!args[i].startsWith("--")) logOpts.pair = args[i];
+  }
+  cmdLogChat(logOpts);
+} else if (cmd === "tokens" || cmd === "usage") {
+  const rebuild = args.includes("--rebuild") || args.includes("--reindex");
+  const json = args.includes("--json");
+  const topIdx = args.indexOf("--top");
+  const top = topIdx >= 0 ? +args[topIdx + 1] : undefined;
+  cmdTokens({ rebuild, json, top });
 } else if (cmd === "done" || cmd === "finish") {
   if (!args[1]) { console.error("usage: maw done <window-name>\n       e.g. maw done neo-freelance"); process.exit(1); }
   await cmdDone(args[1]);
-} else if (cmd === "stop" || cmd === "sleep" || cmd === "rest") {
+} else if (cmd === "stop" || cmd === "rest") {
   await cmdSleep();
+} else if (cmd === "sleep") {
+  if (!args[1]) {
+    console.error("usage: maw sleep <oracle> [window]\n       maw sleep neo          # sleep neo-oracle\n       maw sleep neo mawjs    # sleep neo-mawjs worktree\n       maw stop               # stop ALL fleet sessions");
+    process.exit(1);
+  } else if (args[1] === "--all-done") {
+    console.log("\x1b[90m(placeholder) maw sleep --all-done — sleep ALL agents. Not yet implemented.\x1b[0m");
+  } else {
+    await cmdSleepOne(args[1], args[2]);
+  }
 } else if (cmd === "wake") {
   if (!args[1]) { console.error("usage: maw wake <oracle> [task] [--new <name>]\n       maw wake all [--kill]"); process.exit(1); }
   if (args[1].toLowerCase() === "all") {
@@ -302,6 +353,8 @@ if (cmd === "--version" || cmd === "-v") {
   }
 } else if (cmd === "completions") {
   await cmdCompletions(args[1]);
+} else if (cmd === "tab" || cmd === "tabs") {
+  await cmdTab(args.slice(1));
 } else if (cmd === "view" || cmd === "create-view" || cmd === "attach") {
   if (!args[1]) { console.error("usage: maw view <agent> [window] [--clean]"); process.exit(1); }
   const clean = args.includes("--clean");
