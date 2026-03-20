@@ -47,6 +47,7 @@ function usage() {
   maw done <window>            Clean up finished worktree window
   maw pulse add "task" [opts] Create issue + wake oracle
   maw pulse cleanup [--dry-run] Clean stale/orphan worktrees
+  maw board done #<issue> [msg] Mark board item Done + close issue
   maw view <agent> [window]   Grouped tmux session (interactive attach)
   maw create-view <agent> [w] Alias for view
   maw view <agent> --clean    Hide status bar (full screen)
@@ -313,6 +314,15 @@ if (cmd === "--version" || cmd === "-v") {
     console.log();
   } else {
     console.error("usage: maw pulse <add|ls|cleanup> [opts]");
+    process.exit(1);
+  }
+} else if (cmd === "board") {
+  const subcmd = args[1];
+  if (subcmd === "done" || subcmd === "complete") {
+    const { cmdBoardDone } = await import("./commands/board-done");
+    await cmdBoardDone(args.slice(2));
+  } else {
+    console.error("usage: maw board done #<issue> [\"message\"]");
     process.exit(1);
   }
 } else if (cmd === "think") {
