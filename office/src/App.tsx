@@ -140,6 +140,8 @@ export function App() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.target instanceof HTMLElement && e.target.closest("[data-terminal]")) return;
+      if (window.location.hash.replace("#", "").split("/")[0] === "terminal") return;
       if (e.key === "?" ) {
         setShowShortcuts(true);
         return;

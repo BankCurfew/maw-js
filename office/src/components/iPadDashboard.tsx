@@ -4,6 +4,7 @@ import { useSessions } from "../hooks/useSessions";
 import { useFleetStore } from "../lib/store";
 import { agentColor } from "../lib/constants";
 import { ChibiPortrait } from "./ChibiPortrait";
+import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
 import type { AgentState } from "../lib/types";
 
 // --- Device detection ---
@@ -110,6 +111,7 @@ function TerminalPanel({ agent, send }: { agent: AgentState; send: (msg: object)
   const contentRef = useRef("");
   const color = agentColor(agent.name);
   const name = agent.name.replace(/-oracle$/i, "");
+  const { uploading, attachments, inputRef: fileRef, pickFile, onFileChange, removeAttachment, clearAttachments, buildMessage, drag, onPaste } = useFileAttach();
 
   // Poll capture
   useEffect(() => {
@@ -138,9 +140,10 @@ function TerminalPanel({ agent, send }: { agent: AgentState; send: (msg: object)
   const handleSend = useCallback(() => {
     const input = inputRef.current;
     if (!input) return;
-    const val = input.value;
+    const val = buildMessage(input.value);
     send({ type: "send", target: agent.target, text: val ? val + "\r" : "\r" });
     input.value = "";
+    clearAttachments();
     input.focus();
   }, [agent.target, send]);
 
@@ -189,19 +192,34 @@ function TerminalPanel({ agent, send }: { agent: AgentState; send: (msg: object)
       </div>
 
       {/* Input */}
-      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background: "#0e0e18", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-        <span className="text-cyan-400 font-bold font-mono text-lg shrink-0">❯</span>
-        <input ref={inputRef} type="text" defaultValue=""
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSend(); } }}
-          className="flex-1 bg-transparent text-white/90 outline-none font-mono"
-          style={{ caretColor: "#22d3ee", fontSize: 16, minHeight: 44 }}
-          inputMode="text" enterKeyHint="send" spellCheck={false} autoComplete="off" placeholder="talk to oracle..."
-        />
-        <button onClick={handleSend}
-          className="shrink-0 rounded-xl bg-cyan-500 text-black font-bold active:bg-cyan-600 transition-colors"
-          style={{ padding: "12px 20px", fontSize: 14, minHeight: 48 }}>
-          SEND
-        </button>
+      <div className="flex-shrink-0" style={{ background: "#0e0e18", borderTop: "1px solid rgba(255,255,255,0.06)" }} onPaste={onPaste} {...drag}>
+        <FileInput inputRef={fileRef} onChange={onFileChange} />
+        {(attachments.length > 0 || uploading) && (
+          <div className="px-4 pt-2">
+            <AttachmentChips attachments={attachments} onRemove={removeAttachment} uploading={uploading} />
+          </div>
+        )}
+        <div className="flex items-center gap-3 px-4 py-3">
+          <button onClick={pickFile} className="text-white/30 hover:text-cyan-400 transition-colors shrink-0" title="Attach file">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
+          <span className="text-cyan-400 font-bold font-mono text-lg shrink-0">❯</span>
+          <textarea ref={inputRef as any} defaultValue=""
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            onChange={(e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
+            rows={1}
+            className="flex-1 bg-transparent text-white/90 outline-none font-mono resize-none"
+            style={{ caretColor: "#22d3ee", fontSize: 16, minHeight: 44, maxHeight: 120, overflowY: "auto" }}
+            inputMode="text" enterKeyHint="send" spellCheck={false} autoComplete="off" placeholder="talk to oracle..."
+          />
+          <button onClick={handleSend}
+            className="shrink-0 rounded-xl bg-cyan-500 text-black font-bold active:bg-cyan-600 transition-colors"
+            style={{ padding: "12px 20px", fontSize: 14, minHeight: 48 }}>
+            SEND
+          </button>
+        </div>
       </div>
     </div>
   );

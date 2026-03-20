@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, useRef, useCallback } from "react";
+import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
 import type { AgentState } from "../lib/types";
 
 const XTerminal = lazy(() => import("./XTerminal").then(m => ({ default: m.XTerminal })));
@@ -24,6 +25,25 @@ const STATUS_DOT: Record<string, string> = {
 
 export function TerminalModal({ agent, send, onClose, onNavigate, onSelectSibling, siblings }: TerminalModalProps) {
   const [showTabs, setShowTabs] = useState(false);
+  const { uploading, attachments, inputRef: fileInputRef, pickFile, onFileChange, removeAttachment, clearAttachments } = useFileAttach();
+  const xtermRef = useRef<{ pasteText?: (text: string) => void }>(null);
+
+  const handleUploadAndPaste = useCallback(async () => {
+    pickFile();
+  }, [pickFile]);
+
+  // When attachments change, paste URLs into terminal
+  const lastAttachCountRef = useRef(0);
+  if (attachments.length > lastAttachCountRef.current) {
+    const newAtts = attachments.slice(lastAttachCountRef.current);
+    const urls = newAtts.map(a => `${location.origin}${a.url}`).join(" ");
+    // Send the URL to the terminal as if typed
+    setTimeout(() => {
+      send({ type: "send", target: agent.target, text: urls, force: true });
+      clearAttachments();
+    }, 100);
+  }
+  lastAttachCountRef.current = attachments.length;
 
   return (
     <div
@@ -107,6 +127,31 @@ export function TerminalModal({ agent, send, onClose, onNavigate, onSelectSiblin
           )}
 
           <div className="ml-auto hidden sm:flex items-center gap-2 shrink-0">
+            <FileInput inputRef={fileInputRef} onChange={onFileChange} />
+            <button
+              onClick={handleUploadAndPaste}
+              className="px-2 py-0.5 rounded text-[10px] font-mono text-white/30 hover:text-cyan-400 hover:bg-cyan-400/10 border border-transparent hover:border-cyan-400/20 transition-all cursor-pointer flex items-center gap-1"
+              title="Attach file"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+              </svg>
+              attach
+            </button>
+            <button
+              onClick={() => send({ type: "send", target: agent.target, text: "\x1b[A", force: true })}
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all cursor-pointer"
+              title="Arrow Up"
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => send({ type: "send", target: agent.target, text: "\x1b[B", force: true })}
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-all cursor-pointer"
+              title="Arrow Down"
+            >
+              ↓
+            </button>
             <button
               onClick={() => { if (confirm(`Restart ${agent.name}?`)) send({ type: "restart", target: agent.target }); }}
               className="px-2 py-0.5 rounded text-[10px] font-mono text-white/30 hover:text-orange-400 hover:bg-orange-400/10 border border-transparent hover:border-orange-400/20 transition-all cursor-pointer"

@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useState, useEffect } from "react";
 import { AgentAvatar } from "./AgentAvatar";
 import { MiniMonitor } from "./MiniMonitor";
+import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
 import type { AgentState } from "../lib/types";
 import type { FeedLogEntry } from "./FleetGrid";
 import { guessCommand } from "../lib/constants";
@@ -146,46 +147,67 @@ function AgentInfo({ agent, isBusy, displayName, accent, agoLabel, feedLog }: {
   );
 }
 
-function AgentInput({ accent, displayName, isLast, inputOpen, text, setText, sent, onSend, inputRef }: {
+function AgentInput({ accent, displayName, isLast, inputOpen, text, setText, sent, onSend, inputRef, buildMessage, clearAttachments }: {
   accent: string; displayName: string; isLast: boolean; inputOpen: boolean;
   text: string; setText: (v: string) => void; sent: boolean; onSend: () => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
+  buildMessage: (t: string) => string; clearAttachments: () => void;
 }) {
+  const { uploading, attachments, inputRef: fileRef, pickFile, onFileChange, removeAttachment, drag, onPaste } = useFileAttach();
+
+  const handleSendWithAttach = useCallback(() => {
+    onSend();
+    clearAttachments();
+  }, [onSend, clearAttachments]);
+
   return (
     <div
-      className="flex items-center gap-2 px-6 overflow-hidden transition-all duration-200"
+      className="flex flex-col gap-1 px-6 overflow-hidden transition-all duration-200"
       style={{
-        height: inputOpen ? 56 : 0, opacity: inputOpen ? 1 : 0,
-        padding: inputOpen ? undefined : "0 24px",
+        height: inputOpen ? "auto" : 0, maxHeight: inputOpen ? 200 : 0, opacity: inputOpen ? 1 : 0,
+        padding: inputOpen ? "8px 24px" : "0 24px",
         background: `${accent}08`,
         borderBottom: inputOpen && !isLast ? "1px solid rgba(255,255,255,0.04)" : "none",
       }}
       onClick={e => e.stopPropagation()}
+      onPaste={onPaste}
+      {...drag}
     >
-      <input
-        ref={inputRef} type="text" value={text}
-        onChange={e => setText(e.target.value)}
-        onKeyDown={e => { if (e.key === "Enter") onSend(); if (e.key === "Escape") setText("__close__"); }}
-        onBlur={() => { if (!text.trim()) setTimeout(() => setText("__close__"), 200); }}
-        placeholder={`Talk to ${displayName}...`}
-        className="flex-1 px-4 py-3 rounded-xl text-[15px] text-white outline-none placeholder:text-white/20 [&::-webkit-search-cancel-button]:hidden [&::-webkit-clear-button]:hidden [&::-ms-clear]:hidden"
-        style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${accent}20`, WebkitAppearance: "none" as const }}
-        enterKeyHint="send" autoComplete="off" autoCorrect="off" tabIndex={inputOpen ? 0 : -1}
-      />
-      {sent ? (
-        <span className="text-[12px] font-mono px-3 py-2 rounded-lg" style={{ background: "#22C55E20", color: "#22C55E" }}>✓</span>
-      ) : (
-        <button
-          className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer active:scale-90"
-          style={{ background: text.trim() ? accent : `${accent}20` }}
-          onClick={onSend} tabIndex={inputOpen ? 0 : -1}
-        >
-          <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
-            stroke={text.trim() ? "#000" : `${accent}50`} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 19V5M5 12l7-7 7 7" />
+      <FileInput inputRef={fileRef} onChange={onFileChange} />
+      <AttachmentChips attachments={attachments} onRemove={removeAttachment} uploading={uploading} />
+      <div className="flex items-center gap-2">
+        <button onClick={pickFile} tabIndex={inputOpen ? 0 : -1}
+          className="text-white/30 hover:text-cyan-400 transition-colors flex-shrink-0" title="Attach file">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
           </svg>
         </button>
-      )}
+        <textarea
+          ref={inputRef as any} value={text}
+          onChange={e => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendWithAttach(); } if (e.key === "Escape") setText("__close__"); }}
+          onBlur={() => { if (!text.trim()) setTimeout(() => setText("__close__"), 200); }}
+          placeholder={`Talk to ${displayName}...`}
+          rows={1}
+          className="flex-1 px-4 py-3 rounded-xl text-[15px] text-white outline-none placeholder:text-white/20 resize-none"
+          style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${accent}20`, maxHeight: 120, overflowY: "auto" }}
+          enterKeyHint="send" autoComplete="off" autoCorrect="off" tabIndex={inputOpen ? 0 : -1}
+        />
+        {sent ? (
+          <span className="text-[12px] font-mono px-3 py-2 rounded-lg" style={{ background: "#22C55E20", color: "#22C55E" }}>✓</span>
+        ) : (
+          <button
+            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer active:scale-90"
+            style={{ background: (text.trim() || attachments.length > 0) ? accent : `${accent}20` }}
+            onClick={handleSendWithAttach} tabIndex={inputOpen ? 0 : -1}
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
+              stroke={(text.trim() || attachments.length > 0) ? "#000" : `${accent}50`} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -320,7 +342,8 @@ export const AgentRow = memo(function AgentRow({
       </div>
 
       <AgentInput accent={accent} displayName={displayName} isLast={isLast} inputOpen={inputOpen}
-        text={text} setText={setTextOrClose} sent={sent} onSend={handleSend} inputRef={inputRef} />
+        text={text} setText={setTextOrClose} sent={sent} onSend={handleSend} inputRef={inputRef}
+        buildMessage={(t) => t} clearAttachments={() => {}} />
     </div>
   );
 });

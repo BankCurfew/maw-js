@@ -337,6 +337,24 @@ export class BobSupervisor {
       }));
     }
 
+    // LAW #7: Ensure Bob knows about completion (auto-send if agent didn't)
+    try {
+      const bobSession = await detectSession("bob");
+      if (bobSession) {
+        const sessions = await listSessions();
+        const s = sessions.find(s => s.name === bobSession);
+        const w = s?.windows.find(w => /bob/i.test(w.name));
+        if (s && w) {
+          const bobTarget = `${s.name}:${w.index}`;
+          const cmd = await getPaneCommand(bobTarget).catch(() => "");
+          if (/claude|node/i.test(cmd)) {
+            const briefReport = `[auto-report] ${oracleName} completed: ${summary}${prUrl ? ` PR: ${prUrl}` : ""}${commits[0] ? ` commit: ${commits[0]}` : ""}`;
+            await sendKeys(bobTarget, briefReport + "\r").catch(() => {});
+          }
+        }
+      }
+    } catch {}
+
     tracked.state = "done";
     console.log(`  \x1b[32m✓\x1b[0m ${oracleName} completed: ${summary}`);
     this.untrack(oracle);
@@ -391,6 +409,9 @@ export class BobSupervisor {
         `2. Continue where you left off`,
         `3. Commit and push when done`,
         tracked.issueNum ? `4. Report back on issue #${tracked.issueNum}` : "",
+        `5. **⚠️ MANDATORY: /talk-to bob "done: [สรุป] — commits: [hash]"**`,
+        ``,
+        `> LAW #7: ห้ามจบ session โดยไม่ /talk-to bob เด็ดขาด`,
       ].filter(Boolean).join("\n");
 
       const target = await cmdWake(oracle, { prompt: promptLines });

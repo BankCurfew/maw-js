@@ -1,6 +1,7 @@
 import { memo, useState, useEffect, useRef, useCallback } from "react";
 import { agentColor, guessCommand } from "../lib/constants";
 import { ansiToHtml, processCapture } from "../lib/ansi";
+import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
 import type { AgentState } from "../lib/types";
 
 interface OracleSheetProps {
@@ -52,6 +53,7 @@ export const OracleSheet = memo(function OracleSheet({
   const sheetRef = useRef<HTMLDivElement>(null);
   const expandedRef = useRef(false);
   const [expanded, _setExpanded] = useState(false);
+  const { uploading, attachments, inputRef: fileInputRef, pickFile, onFileChange, removeAttachment, clearAttachments, buildMessage } = useFileAttach();
 
   const setExpanded = useCallback((val: boolean) => {
     expandedRef.current = val;
@@ -145,14 +147,16 @@ export const OracleSheet = memo(function OracleSheet({
     const input = nativeInputRef.current;
     if (!input) return;
     const val = input.value;
-    if (val) {
-      send({ type: "send", target: agent.target, text: val + "\r" });
+    const msg = buildMessage(val);
+    if (msg) {
+      send({ type: "send", target: agent.target, text: msg + "\r" });
     } else {
       send({ type: "send", target: agent.target, text: "\r" });
     }
     input.value = "";
+    clearAttachments();
     input.focus();
-  }, [agent.target, send]);
+  }, [agent.target, send, buildMessage, clearAttachments]);
 
   const handleInputKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); handleSend(); }
@@ -254,9 +258,26 @@ export const OracleSheet = memo(function OracleSheet({
           />
         </div>
 
+        {/* Attachment chips */}
+        {(attachments.length > 0 || uploading) && (
+          <div className="px-3 py-1 flex-shrink-0" style={{ background: "#0e0e18" }}>
+            <AttachmentChips attachments={attachments} onRemove={removeAttachment} uploading={uploading} />
+          </div>
+        )}
+
         {/* Talk input — uncontrolled for zero input lag */}
         <div className="flex items-center gap-2 px-3 py-2 flex-shrink-0" style={{ background: "#0e0e18", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-          <span className="text-cyan-400 font-bold font-mono text-sm shrink-0">❯</span>
+          <FileInput inputRef={fileInputRef} onChange={onFileChange} />
+          <button
+            onClick={pickFile}
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg active:scale-90"
+            style={{ background: "rgba(255,255,255,0.06)", color: uploading ? "#22d3ee" : "rgba(255,255,255,0.4)" }}
+            title="Attach file"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
           <input
             ref={nativeInputRef}
             type="text"
@@ -283,6 +304,8 @@ export const OracleSheet = memo(function OracleSheet({
           {[
             { label: "y", text: "y\r", color: "#22C55E" },
             { label: "n", text: "n\r", color: "#ef5350" },
+            { label: "↑", text: "\x1b[A", color: "#64748B" },
+            { label: "↓", text: "\x1b[B", color: "#64748B" },
             { label: "↵", text: "\r", color: "#64748B" },
             { label: "/recap", text: "/recap\r", color: "#fbbf24" },
             { label: "^C", text: "\x03", color: "#ef5350" },

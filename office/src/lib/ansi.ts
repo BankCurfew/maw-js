@@ -58,6 +58,14 @@ export function ansiToHtml(text: string): string {
   return h;
 }
 
+/** Convert URLs in already-escaped HTML into clickable links (Ctrl+Click or plain click). */
+export function linkifyHtml(html: string): string {
+  return html.replace(
+    /(https?:\/\/[^\s<>&"']+)/g,
+    '<a href="$1" target="_blank" rel="noopener" style="color:#89b4fa;text-decoration:underline;cursor:pointer" onclick="event.stopPropagation()">$1</a>',
+  );
+}
+
 export function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[0-9;]*m/g, "");
 }

@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useCallback, useEffect } from "react";
 import { useFleetStore } from "../lib/store";
 import { agentColor } from "../lib/constants";
+import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
 import type { AskItem } from "../lib/types";
 
 function timeAgo(ts: number): string {
@@ -463,10 +464,11 @@ function ReportCard({ ask }: { ask: AskItem }) {
 function AskCard({ ask, send, onClose }: { ask: AskItem; send: (msg: object) => void; onClose: () => void }) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dismissAsk = useFleetStore((s) => s.dismissAsk);
   const accent = agentColor(ask.oracle);
   const style = TYPE_STYLE[ask.type] || TYPE_STYLE.input;
+  const { uploading, attachments, inputRef, pickFile, onFileChange, removeAttachment, clearAttachments, buildMessage, drag, onPaste } = useFileAttach();
 
   const sendReply = useCallback((reply: string) => {
     let target = ask.target;
@@ -490,14 +492,15 @@ function AskCard({ ask, send, onClose }: { ask: AskItem; send: (msg: object) => 
     send({ type: "send", target, text: reply, force: true });
     setTimeout(() => send({ type: "send", target, text: "\r" }), 50);
     setSent(true);
+    clearAttachments();
     setTimeout(() => dismissAsk(ask.id), 600);
-  }, [ask, send, dismissAsk]);
+  }, [ask, send, dismissAsk, clearAttachments]);
 
   const handleSend = useCallback(() => {
-    if (!text.trim()) return;
-    sendReply(text.trim());
+    if (!text.trim() && attachments.length === 0) return;
+    sendReply(buildMessage(text.trim()));
     setText("");
-  }, [text, sendReply]);
+  }, [text, sendReply, buildMessage, attachments]);
 
   if (sent) {
     return (
@@ -510,7 +513,10 @@ function AskCard({ ask, send, onClose }: { ask: AskItem; send: (msg: object) => 
 
   return (
     <div className="rounded-xl p-5 border transition-all"
-      style={{ background: "rgba(255,255,255,0.03)", borderColor: `${accent}30` }}>
+      style={{ background: "rgba(255,255,255,0.03)", borderColor: `${accent}30` }}
+      onPaste={onPaste}
+      {...drag}>
+      <FileInput inputRef={inputRef} onChange={onFileChange} />
       {/* Header */}
       <div className="flex items-center gap-3 mb-3">
         <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
@@ -530,8 +536,11 @@ function AskCard({ ask, send, onClose }: { ask: AskItem; send: (msg: object) => 
       {/* Message */}
       <LinkedMessage text={cleanMessage(ask.message)} className="text-sm text-white/85 mb-4 leading-relaxed " />
 
+      {/* Attachments */}
+      <AttachmentChips attachments={attachments} onRemove={removeAttachment} uploading={uploading} />
+
       {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mt-2">
         {(ask.type === "plan" || ask.type === "attention") && (
           <button className="px-4 py-2 rounded-lg text-xs font-semibold active:scale-95 transition-all"
             style={{ background: "rgba(34,197,94,0.18)", color: "#22c55e" }}
@@ -546,15 +555,24 @@ function AskCard({ ask, send, onClose }: { ask: AskItem; send: (msg: object) => 
             Reject
           </button>
         )}
-        <input ref={inputRef} type="text" value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
+        <button className="px-2 py-2 rounded-lg text-xs active:scale-95 transition-all flex-shrink-0"
+          style={{ background: "rgba(255,255,255,0.06)", color: uploading ? "#22d3ee" : "rgba(255,255,255,0.4)" }}
+          onClick={pickFile}
+          title="Attach file">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+          </svg>
+        </button>
+        <textarea ref={textareaRef} value={text}
+          onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           placeholder="Reply..."
-          className="flex-1 min-w-0 px-4 py-2 rounded-lg text-sm text-white outline-none placeholder:text-white/30 [&::-webkit-search-cancel-button]:hidden [&::-webkit-clear-button]:hidden [&::-ms-clear]:hidden"
-          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", WebkitAppearance: "none" as const }}
+          rows={1}
+          className="flex-1 min-w-0 px-4 py-2 rounded-lg text-sm text-white outline-none placeholder:text-white/30 resize-none"
+          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", maxHeight: 120, overflowY: "auto" }}
           enterKeyHint="send" autoComplete="off" autoCorrect="off"
         />
-        {text.trim() && (
+        {(text.trim() || attachments.length > 0) && (
           <button className="px-3 py-2 rounded-lg text-xs active:scale-95 transition-all font-semibold"
             style={{ background: `${accent}30`, color: accent }}
             onClick={handleSend}>

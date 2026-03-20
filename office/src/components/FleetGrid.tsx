@@ -300,38 +300,16 @@ export const FleetGrid = memo(function FleetGrid({
 
   return (
     <div ref={containerRef} className="relative w-full min-h-screen" style={{ background: "#0a0a12" }}>
-      {/* Toggle: Stage vs Pitch */}
-      {stageMode === "pitch" ? (
-        <FootballPitch
-          agents={agents}
-          recentMap={recentMap}
-          showPreview={showPreview}
-          hidePreview={hidePreview}
-          onAgentClick={onAgentClick}
-          onToggleView={toggleStageMode}
-        />
-      ) : (
-        <>
-          <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 flex justify-end pt-3 sm:pt-4">
-            <button
-              onClick={toggleStageMode}
-              className="px-3 py-1 rounded-lg text-[11px] font-mono cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}
-            >
-              Switch to Pitch
-            </button>
-          </div>
-          <StageSection
-            busyAgents={busyAgents}
-            recentlyActive={recentlyActive}
-            recentMap={recentMap}
-            getAgentFeedLog={getAgentFeedLog}
-            showPreview={showPreview}
-            hidePreview={hidePreview}
-            onAgentClick={onAgentClick}
-          />
-        </>
-      )}
+      {/* Stage view (pitch view disabled — not yet functional) */}
+      <StageSection
+        busyAgents={busyAgents}
+        recentlyActive={recentlyActive}
+        recentMap={recentMap}
+        getAgentFeedLog={getAgentFeedLog}
+        showPreview={showPreview}
+        hidePreview={hidePreview}
+        onAgentClick={onAgentClick}
+      />
 
       {/* Rooms */}
       <div className="max-w-5xl mx-auto flex flex-col px-6 lg:px-8 py-6 gap-4">

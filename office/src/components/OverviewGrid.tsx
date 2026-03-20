@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef, useMemo } from "react";
-import { ansiToHtml, processCapture } from "../lib/ansi";
+import { ansiToHtml, processCapture, linkifyHtml } from "../lib/ansi";
 import { roomStyle, agentColor } from "../lib/constants";
 import { apiUrl } from "../lib/api";
 import { useFps } from "./FpsCounter";
@@ -131,7 +131,7 @@ const OverviewTile = memo(function OverviewTile({
         ref={termRef}
         className="flex-1 px-2 py-1.5 overflow-y-auto overflow-x-hidden font-mono text-[9px] leading-[1.35] text-[#cdd6f4] whitespace-pre-wrap break-all [overflow-wrap:anywhere]"
         style={{ background: "#08080c", minHeight: 180, maxHeight: 300 }}
-        dangerouslySetInnerHTML={{ __html: ansiToHtml(trimmed) }}
+        dangerouslySetInnerHTML={{ __html: linkifyHtml(ansiToHtml(trimmed)) }}
       />
     </div>
   );

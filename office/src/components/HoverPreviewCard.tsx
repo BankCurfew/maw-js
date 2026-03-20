@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
-import { ansiToHtml, processCapture } from "../lib/ansi";
+import { ansiToHtml, processCapture, linkifyHtml } from "../lib/ansi";
 import { agentColor, PREVIEW_CARD } from "../lib/constants";
 import { apiUrl } from "../lib/api";
+import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
 import type { AgentState, AgentEvent } from "../lib/types";
 
 interface HoverPreviewCardProps {
@@ -54,6 +55,7 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
   }, [onInputBufChange]);
   const termRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { uploading, attachments, inputRef: fileRef, pickFile, onFileChange, removeAttachment, clearAttachments, buildMessage, drag, onPaste } = useFileAttach();
   const color = agentColor(agent.name);
   const displayName = agent.name.replace(/-oracle$/, "").replace(/-/g, " ");
   const statusColor = STATUS_COLORS[agent.status] || "#666";
@@ -86,16 +88,18 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
       onFullscreen?.();
       return;
     }
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (streamingRef.current) {
         // In streaming mode: just send Enter, chars already sent
         addEvent?.(agent.target, "command", inputBuf);
         send?.({ type: "send", target: agent.target, text: "\r" });
         streamingRef.current = false;
-      } else if (inputBuf && send) {
-        addEvent?.(agent.target, "command", inputBuf);
-        send({ type: "send", target: agent.target, text: inputBuf });
+      } else if ((inputBuf || attachments.length > 0) && send) {
+        const msg = buildMessage(inputBuf);
+        addEvent?.(agent.target, "command", msg);
+        send({ type: "send", target: agent.target, text: msg });
+        clearAttachments();
       }
       setInputBuf("");
       prevInputRef.current = "";
@@ -112,7 +116,7 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
   const prevInputRef = useRef("");
 
   // Stream chars to tmux when input starts with /
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const val = e.target.value;
     const prev = prevInputRef.current;
     prevInputRef.current = val;
@@ -423,7 +427,7 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
         <div
           ref={termRef}
           className="absolute inset-0 px-3 py-2 overflow-y-auto overflow-x-hidden font-mono text-[10px] leading-[1.4] text-[#cdd6f4] whitespace-pre-wrap break-all"
-          dangerouslySetInnerHTML={{ __html: ansiToHtml(processCapture(content)) }}
+          dangerouslySetInnerHTML={{ __html: linkifyHtml(ansiToHtml(processCapture(content))) }}
         />
         {pinned && send && (
           <div className="absolute bottom-3 right-3 flex flex-col gap-1 z-10">
@@ -449,19 +453,27 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
 
       {/* Bottom: input when pinned, preview text when hovering */}
       {pinned && send ? (
-        <div
-          className="flex items-center gap-2 px-3 py-2 bg-[#0e0e18] border-t border-white/[0.06] font-mono text-xs cursor-text"
-          onClick={() => inputRef.current?.focus()}
-        >
+        <div className="bg-[#0e0e18] border-t border-white/[0.06]" onPaste={onPaste} {...drag}>
+          <FileInput inputRef={fileRef} onChange={onFileChange} />
+          <AttachmentChips attachments={attachments} onRemove={removeAttachment} uploading={uploading} />
+          <div
+            className="flex items-center gap-2 px-3 py-2 font-mono text-xs cursor-text"
+            onClick={() => inputRef.current?.focus()}
+          >
+          <button onClick={pickFile} className="text-white/30 hover:text-cyan-400 transition-colors shrink-0" title="Attach file">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
           <span className="text-cyan-400 font-semibold shrink-0">&#x276f;</span>
-          <input
-            ref={inputRef}
-            type="text"
+          <textarea
+            ref={inputRef as any}
             value={inputBuf}
             onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent text-white/90 outline-none caret-cyan-400 font-mono text-xs [&::-webkit-search-cancel-button]:hidden [&::-webkit-clear-button]:hidden [&::-ms-clear]:hidden"
-            style={{ caretColor: "#22d3ee", WebkitAppearance: "none" }}
+            onKeyDown={(e) => { handleKeyDown(e as any); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = e.currentTarget.scrollHeight + "px"; }}
+            rows={1}
+            className="flex-1 bg-transparent text-white/90 outline-none caret-cyan-400 font-mono text-xs resize-none"
+            style={{ caretColor: "#22d3ee", maxHeight: 80, overflowY: "auto" }}
             inputMode="text"
             enterKeyHint="send"
             spellCheck={false}
@@ -512,6 +524,7 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
           >
             SEND
           </button>
+        </div>
         </div>
       ) : (
         <div className="px-3 py-2 bg-[#0e0e18] border-t border-white/[0.06] font-mono text-[9px] text-white/30 truncate">

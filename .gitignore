@@ -10,6 +10,7 @@ fleet/*.json
 !fleet/*.example.json
 
 # Runtime data
+attachments/
 auth.json
 loops-log.json
 asks.json

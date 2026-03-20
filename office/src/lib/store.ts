@@ -224,7 +224,7 @@ export const useFleetStore = create<FleetStore>()(
       })),
       muted: false,
       toggleMuted: () => set((s) => ({ muted: !s.muted })),
-      stageMode: "pitch",
+      stageMode: "stage",
       toggleStageMode: () => set((s) => ({ stageMode: s.stageMode === "pitch" ? "stage" : "pitch" })),
 
       lastView: "office",

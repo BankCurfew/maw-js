@@ -285,6 +285,10 @@ export async function createDispatchIssue(oracle: string, task: string, item?: B
   lines.push(`4. Implement after plan is clear`);
   lines.push(`5. Commit with a clear message and push to remote`);
   lines.push(`6. **Report back on this issue**: commit hash, files changed, summary`);
+  lines.push(`7. **⚠️ MANDATORY: \`/talk-to bob "done: [สรุปสิ่งที่ทำ] — commits: [hash] PR: [url]"\`**`);
+  lines.push(``);
+  lines.push(`> **LAW #7: ทุกครั้งที่เสร็จงาน หรือต้องการประสานงาน MUST /talk-to bob**`);
+  lines.push(`> ห้ามจบ session โดยไม่ report bob เด็ดขาด — งานจะไม่ไหลต่อ`);
   lines.push(``);
   lines.push(`---`);
   lines.push(`*Created by BoB-Oracle — delegated to ${oracleName}*`);
@@ -351,6 +355,10 @@ export async function dispatchToOracle(oracle: string, task: string, item?: Boar
     `3. Implement and commit with clear message`,
     `4. Push to remote`,
     issueNum ? `5. Report back on issue #${issueNum} with: commit hash, files changed, summary` : `5. Report what you did`,
+    `6. **⚠️ MANDATORY: /talk-to bob "done: [สรุป] — commits: [hash] PR: [url]"**`,
+    ``,
+    `> LAW #7: ทุกครั้งที่เสร็จงาน/ติดปัญหา/ต้องประสานงาน → MUST /talk-to bob`,
+    `> ห้ามจบ session โดยไม่ report bob — งานจะไม่ไหลต่อ`,
   ].filter(Boolean).join("\n");
 
   const target = await cmdWake(oracle.toLowerCase(), { prompt: promptLines });

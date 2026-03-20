@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
 import { listSessions, capture, sendKeys, selectWindow } from "./ssh";
+import { tmux } from "./tmux";
 import { processMirror } from "./commands/overview";
 import { FeedTailer } from "./feed-tail";
 import { MawEngine } from "./engine";
@@ -630,6 +631,51 @@ app.all("/api/jarvis/*", async (c) => {
   }
 });
 
+// --- File Attachments ---
+import { mkdirSync } from "fs";
+import { randomUUID } from "crypto";
+import { extname } from "path";
+
+const attachDir = join(import.meta.dir, "../attachments");
+mkdirSync(attachDir, { recursive: true });
+
+app.post("/api/attach", async (c) => {
+  try {
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!file || !(file instanceof File)) return c.json({ error: "file required" }, 400);
+
+    // Limit to 20MB
+    if (file.size > 20 * 1024 * 1024) return c.json({ error: "file too large (max 20MB)" }, 400);
+
+    const ext = extname(file.name) || "";
+    const id = `${Date.now()}-${randomUUID().slice(0, 8)}${ext}`;
+    const buf = await file.arrayBuffer();
+    const fullPath = join(attachDir, id);
+    writeFileSync(fullPath, Buffer.from(buf));
+
+    const url = `/api/attachments/${id}`;
+    return c.json({ ok: true, id, url, name: file.name, size: file.size, mimeType: file.type });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+app.get("/api/attachments/:id", (c) => {
+  const id = c.req.param("id");
+  // Sanitize: only allow filename chars
+  if (!id || /[/\\]/.test(id)) return c.json({ error: "invalid id" }, 400);
+  const fullPath = join(attachDir, id);
+  if (!existsSync(fullPath)) return c.json({ error: "not found" }, 404);
+  const file = Bun.file(fullPath);
+  return new Response(file, {
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+});
+
 app.onError((err, c) => c.json({ error: err.message }, 500));
 
 export { app };
@@ -637,9 +683,13 @@ export { app };
 // --- WebSocket + Server ---
 
 import { handlePtyMessage, handlePtyClose } from "./pty";
+import { installAutoReport } from "./auto-report";
 
 export function startServer(port = +(process.env.MAW_PORT || loadConfig().port || 3456)) {
   const engine = new MawEngine({ feedTailer });
+
+  // LAW #7: Auto-report to Bob when oracle sessions end without /talk-to bob
+  installAutoReport(feedTailer);
 
   const wsHandler = {
     open: (ws: any) => {
@@ -676,6 +726,15 @@ export function startServer(port = +(process.env.MAW_PORT || loadConfig().port |
 
   // Start Loop Engine
   loopEngine.start((msg) => engine.broadcast(msg));
+
+  // Ensure a general-purpose "shell" tmux session with Claude Code exists
+  tmux.hasSession("shell").then(async (exists) => {
+    if (!exists) {
+      await tmux.run("new-session", "-d", "-s", "shell", "-x", "200", "-y", "50").catch(() => {});
+      // Auto-launch Claude Code in the shell session
+      setTimeout(() => tmux.run("send-keys", "-t", "shell:0", "claude", "Enter").catch(() => {}), 1000);
+    }
+  });
 
   console.log(`maw serve → http://localhost:${port} (ws://localhost:${port}/ws)`);
 

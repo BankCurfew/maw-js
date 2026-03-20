@@ -1,7 +1,8 @@
 import { memo, useState, useEffect, useRef, useCallback } from "react";
-import { ansiToHtml } from "../lib/ansi";
+import { ansiToHtml, linkifyHtml } from "../lib/ansi";
 import { roomStyle } from "../lib/constants";
 import { wsUrl } from "../lib/api";
+import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
 import type { Session, AgentState } from "../lib/types";
 
 interface TerminalViewProps {
@@ -20,6 +21,7 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
   const outputRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<HTMLDivElement>(null);
   const sendingRef = useRef(false);
+  const { uploading, attachments, inputRef: fileInputRef, pickFile, onFileChange, removeAttachment, clearAttachments, buildMessage, drag, onPaste } = useFileAttach();
 
   // Own WebSocket for capture stream (separate from main fleet WS)
   useEffect(() => {
@@ -31,7 +33,7 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
         const data = JSON.parse(e.data);
         if (data.type === "capture") {
           const out = outputRef.current;
-          const atBottom = out ? out.scrollHeight - out.scrollTop - out.clientHeight < 60 : true;
+          const atBottom = out ? out.scrollHeight - out.scrollTop - out.clientHeight < 200 : true;
           setCaptureHtml(ansiToHtml(data.content || "(empty)"));
           if (atBottom) requestAnimationFrame(() => out?.scrollTo(0, out.scrollHeight));
         }
@@ -81,6 +83,7 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
     sendingRef.current = true;
     const text = sendQueue[0];
     ws.send(JSON.stringify({ type: "send", target: selectedTarget, text }));
+    requestAnimationFrame(() => outputRef.current?.scrollTo(0, outputRef.current.scrollHeight));
     setTimeout(() => {
       setSendQueue(q => q.slice(1));
       sendingRef.current = false;
@@ -90,6 +93,14 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
   const queueSend = useCallback((text: string) => {
     if (!text || !selectedTarget) return;
     setSendQueue(q => [...q, text]);
+  }, [selectedTarget]);
+
+  // Send raw key sequence (arrow keys, Enter, Escape, etc.)
+  const sendRawKey = useCallback((seq: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !selectedTarget) return;
+    ws.send(JSON.stringify({ type: "send", target: selectedTarget, text: seq, force: true }));
+    requestAnimationFrame(() => outputRef.current?.scrollTo(0, outputRef.current.scrollHeight));
   }, [selectedTarget]);
 
   // Keyboard handler
@@ -111,17 +122,33 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
 
     if (e.key === "Enter") {
       e.preventDefault();
-      if (inputBuf) { queueSend(inputBuf); setInputBuf(""); }
+      if (inputBuf || attachments.length > 0) {
+        queueSend(buildMessage(inputBuf));
+        setInputBuf("");
+        clearAttachments();
+      } else sendRawKey("\n");
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      sendRawKey("\x1b[A");
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      sendRawKey("\x1b[B");
     } else if (e.key === "Backspace") {
       e.preventDefault();
-      if (e.metaKey || e.ctrlKey) setInputBuf("");
-      else setInputBuf(b => b.slice(0, -1));
+      if (inputBuf) {
+        if (e.metaKey || e.ctrlKey) setInputBuf("");
+        else setInputBuf(b => b.slice(0, -1));
+      } else {
+        sendRawKey("\x7f");
+      }
     } else if (e.key === "Escape") {
       e.preventDefault();
-      setInputBuf(""); setSendQueue([]);
+      if (inputBuf || sendQueue.length > 0) { setInputBuf(""); setSendQueue([]); }
+      else sendRawKey("\x1b");
     } else if (e.key === "c" && e.ctrlKey) {
       e.preventDefault();
       setInputBuf(""); setSendQueue([]);
+      sendRawKey("\x03");
     } else if (e.key === "Tab") {
       e.preventDefault();
       queueSend(inputBuf + "\t");
@@ -130,7 +157,7 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
       e.preventDefault();
       setInputBuf(b => b + e.key);
     }
-  }, [selectedTarget, inputBuf, queueSend, selectWindow, sessions]);
+  }, [selectedTarget, inputBuf, attachments, queueSend, sendRawKey, selectWindow, sessions, buildMessage, clearAttachments]);
 
   // Get display name for selected target
   const selectedName = selectedTarget
@@ -141,7 +168,7 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
     <div className="flex flex-col md:flex-row mx-2 sm:mx-4 md:mx-6 mb-3 rounded-xl sm:rounded-2xl overflow-hidden border border-white/[0.06]" style={{ height: "calc(100vh - 72px)" }}>
       {/* Sidebar */}
       <div className="w-full md:w-[220px] flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-white/[0.06] max-h-[40vh] md:max-h-none overflow-y-auto" style={{ background: "#08080e" }}>
-        {sessions.map(session => {
+        {[...sessions].sort((a, b) => a.name === "shell" ? -1 : b.name === "shell" ? 1 : 0).map(session => {
           const style = roomStyle(session.name);
           return (
             <div key={session.name} className="py-1">
@@ -184,10 +211,14 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
       <div
         ref={termRef}
         className="flex-1 flex flex-col min-w-0 outline-none"
+        data-terminal="true"
         tabIndex={0}
         onKeyDown={handleKeyDown}
+        onPaste={onPaste}
         onClick={() => termRef.current?.focus()}
+        {...drag}
       >
+        <FileInput inputRef={fileInputRef} onChange={onFileChange} />
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-2 border-b border-white/[0.06] flex-shrink-0" style={{ background: "#0a0a12" }}>
           <span className="text-xs font-mono text-white/40">{selectedName || "select a window"}</span>
@@ -204,7 +235,7 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
           style={{ background: "#0a0a0f", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", color: "#aaa" }}
         >
           {captureHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: captureHtml }} />
+            <div dangerouslySetInnerHTML={{ __html: linkifyHtml(captureHtml) }} />
           ) : (
             <div className="text-white/15 text-center mt-[30vh] text-sm">
               {selectedTarget ? "connecting..." : "select a window \u2190"}
@@ -212,11 +243,27 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
           )}
         </div>
 
+        {/* Attachment chips */}
+        {(attachments.length > 0 || uploading) && (
+          <div className="px-3 py-1 border-t border-white/[0.06]" style={{ background: "#0d0d14" }}>
+            <AttachmentChips attachments={attachments} onRemove={removeAttachment} uploading={uploading} />
+          </div>
+        )}
+
         {/* Input line */}
         <div
           className="flex items-center px-3 py-1.5 border-t border-white/[0.06] font-mono text-[13px] min-h-[32px]"
           style={{ background: "#0d0d14" }}
         >
+          <button
+            onClick={pickFile}
+            className="mr-2 text-white/30 hover:text-cyan-400 transition-colors flex-shrink-0"
+            title="Attach file"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
           <span className="text-white/30 mr-2">&gt;</span>
           <span className="text-white/90 whitespace-pre">{inputBuf}</span>
           <span
@@ -229,12 +276,37 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
           {(inputBuf || sendQueue.length > 0) && (
             <span
               className="ml-auto text-white/30 text-[11px] cursor-pointer hover:text-red-400 px-2 rounded"
-              onClick={() => { setInputBuf(""); setSendQueue([]); }}
+              onClick={() => { setInputBuf(""); setSendQueue([]); clearAttachments(); }}
             >
               esc
             </span>
           )}
         </div>
+        {/* Control bar — arrow keys, Enter, Esc */}
+        {selectedTarget && (
+          <div
+            className="flex items-center gap-1.5 px-3 py-1.5 border-t border-white/[0.06]"
+            style={{ background: "#0a0a10" }}
+          >
+            {[
+              { label: "↑", seq: "\x1b[A" },
+              { label: "↓", seq: "\x1b[B" },
+              { label: "Enter", seq: "\n" },
+              { label: "Esc", seq: "\x1b" },
+              { label: "Ctrl+C", seq: "\x03" },
+              { label: "Tab", seq: "\t" },
+            ].map(({ label, seq }) => (
+              <button
+                key={label}
+                onClick={() => { sendRawKey(seq); termRef.current?.focus(); }}
+                className="px-2.5 py-1 rounded text-[11px] font-mono cursor-pointer select-none active:scale-95 transition-transform"
+                style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

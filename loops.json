@@ -170,7 +170,8 @@
       "prompt": "Morning Briefing — เช็ค Google Calendar วันนี้+พรุ่งนี้, scan Gmail urgent, ดู BoB Office status จาก maw peek, สรุป finance pending แล้วส่ง email briefing ให้แบงค์ bankvuttipipat@gmail.com ผ่าน DocCon review ก่อนส่ง",
       "requireIdle": true,
       "enabled": true,
-      "description": "Daily 07:00 — morning briefing email to แบงค์"
+      "description": "Daily 07:00 — morning briefing email to แบงค์",
+      "task": "สรุปนัด + email + finance + office status → email แบงค์"
     },
     {
       "id": "pa-email-check",
@@ -180,7 +181,8 @@
       "prompt": "Email Check — scan Gmail inbox ใหม่ จัดหมวด Urgent/Action/FYI สรุป email สำคัญ draft reply สำหรับ urgent flag email เกี่ยวกับเงินเข้า finance tracking",
       "requireIdle": true,
       "enabled": true,
-      "description": "3x daily — scan Gmail, categorize, draft replies"
+      "description": "3x daily — scan Gmail, categorize, draft replies",
+      "task": "scan Gmail สรุป urgent + draft replies"
     },
     {
       "id": "pa-calendar-check",
@@ -190,7 +192,8 @@
       "prompt": "Calendar Check — เช็ค Google Calendar นัดถัดไป แจ้งเตือนแบงค์ถ้ามีนัดใน 1 ชม. เช็ค conflict",
       "requireIdle": true,
       "enabled": true,
-      "description": "2x daily — calendar check and reminders"
+      "description": "2x daily — calendar check and reminders",
+      "task": "เช็คนัดถัดไป แจ้งเตือน"
     },
     {
       "id": "pa-evening-summary",
@@ -200,7 +203,8 @@
       "prompt": "Evening Summary — สรุปสิ่งที่เกิดขึ้นวันนี้: email handled, นัดที่ผ่านไป, office status, pending items พรุ่งนี้มีอะไร ส่ง email สรุปให้แบงค์",
       "requireIdle": true,
       "enabled": true,
-      "description": "Daily 20:00 — evening summary email"
+      "description": "Daily 20:00 — evening summary email",
+      "task": "สรุปวันนี้ + พรุ่งนี้มีอะไร → email แบงค์"
     },
     {
       "id": "pa-weekly-finance",
@@ -210,7 +214,8 @@
       "prompt": "Weekly Finance — สรุปรายรับ-จ่ายสัปดาห์นี้จาก Gmail (AIA commission, ePOS, receipts, subscriptions) ทำตาราง + กำไรขาดทุน ส่ง email report ให้แบงค์",
       "requireIdle": true,
       "enabled": true,
-      "description": "Sunday 09:00 — weekly financial summary"
+      "description": "Sunday 09:00 — weekly financial summary",
+      "task": "สรุปรายรับ-จ่ายสัปดาห์ + งบดุล → email แบงค์"
     },
     {
       "id": "pa-monthly-report",
@@ -220,7 +225,18 @@
       "prompt": "Monthly Finance Report — งบดุล + กระแสเงินสด + รายจ่ายตามหมวด + trend เปรียบเทียบเดือนก่อน ส่ง email report ให้แบงค์",
       "requireIdle": true,
       "enabled": true,
-      "description": "1st of month — monthly financial report + cash flow"
+      "description": "1st of month — monthly financial report + cash flow",
+      "task": "monthly financial report → email แบงค์"
+    },
+    {
+      "id": "daily-security-scan",
+      "oracle": "security",
+      "tmux": "15-security:0",
+      "schedule": "0 9 * * *",
+      "prompt": "Daily security scan: scan all 15 oracle repos for secrets (API keys, tokens, passwords), check .gitignore coverage, check for new .env files committed. Report findings to BoB thread #44.",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Daily secret scan across all oracle repos"
     }
   ]
 }

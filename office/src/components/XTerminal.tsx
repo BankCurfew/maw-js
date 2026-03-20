@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { wsUrl } from "../lib/api";
 import type { AgentState } from "../lib/types";
@@ -93,7 +94,11 @@ export function XTerminal({ target, onClose, onNavigate, siblings, onSelectSibli
     });
 
     const fit = new FitAddon();
+    const webLinks = new WebLinksAddon((_event, uri) => {
+      window.open(uri, "_blank", "noopener");
+    });
     term.loadAddon(fit);
+    term.loadAddon(webLinks);
     term.open(container);
 
     // Delay fit until container has real dimensions
@@ -197,6 +202,7 @@ export function XTerminal({ target, onClose, onNavigate, siblings, onSelectSibli
   return (
     <div
       ref={containerRef}
+      data-terminal="true"
       style={{ width: "100%", height: "100%", overflow: "hidden", touchAction: "none", maxWidth: "100vw" }}
     />
   );
