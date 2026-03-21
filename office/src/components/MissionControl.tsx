@@ -304,7 +304,7 @@ export const MissionControl = memo(function MissionControl({
   const vbW = 1200 / zoom;
   const vbH = baseH / zoom;
   const vbX = (1200 - vbW) / 2 - pan.x;
-  const vbY = (baseH - vbH) / 2 - pan.y + (isPortrait ? 50 : 0);
+  const vbY = (baseH - vbH) / 2 - pan.y + (isPortrait ? 100 : 0);
 
   return (
     <div
