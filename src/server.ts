@@ -7,7 +7,7 @@ import { processMirror } from "./commands/overview";
 import { FeedTailer } from "./feed-tail";
 import { MawEngine } from "./engine";
 import { LoopEngine } from "./loops";
-import { isAuthenticated, handleLogin, handleLogout, LOGIN_PAGE, isAuthEnabled } from "./auth";
+import { isAuthenticated, handleLogin, handleLogout, getActiveSessions, LOGIN_PAGE, isAuthEnabled } from "./auth";
 import type { WSData } from "./types";
 
 const app = new Hono();
@@ -21,7 +21,8 @@ app.use("/api/*", cors());
 app.get("/auth/login", (c) => c.html(LOGIN_PAGE));
 app.post("/auth/login", async (c) => {
   const { username, password } = await c.req.json();
-  const result = handleLogin(username, password, c.req.header("user-agent") || "");
+  const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "direct";
+  const result = handleLogin(username, password, c.req.header("user-agent") || "", ip);
   if (result.ok) {
     return c.json({ ok: true }, 200, {
       "Set-Cookie": `maw_session=${result.sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`,
@@ -34,6 +35,20 @@ app.get("/auth/logout", (c) => {
   return c.redirect("/auth/login", 302, {
     "Set-Cookie": "maw_session=; Path=/; HttpOnly; Max-Age=0",
   } as any);
+});
+app.post("/auth/logout", (c) => {
+  handleLogout(c.req.raw);
+  return c.json({ ok: true }, 200, {
+    "Set-Cookie": "maw_session=; Path=/; HttpOnly; Max-Age=0",
+  });
+});
+app.get("/auth/me", (c) => {
+  const authed = isAuthenticated(c.req.raw);
+  return c.json({ authenticated: authed, authEnabled: isAuthEnabled() });
+});
+app.get("/api/auth/sessions", (c) => {
+  if (!isAuthenticated(c.req.raw)) return c.json({ error: "unauthorized" }, 401);
+  return c.json(getActiveSessions());
 });
 
 // --- Auth middleware — protect everything except /auth/* ---
@@ -535,6 +550,20 @@ app.get("/api/maw-log", (c) => {
   return c.json({ entries, total });
 });
 
+// --- Oracle Progress ---
+import { readProgress, getOracleProgress } from "./progress";
+
+app.get("/api/progress", (c) => {
+  return c.json(readProgress());
+});
+
+app.get("/api/progress/:oracle", (c) => {
+  const oracle = c.req.param("oracle").toLowerCase();
+  const progress = getOracleProgress(oracle);
+  if (!progress) return c.json({ error: "no progress found" }, 404);
+  return c.json(progress);
+});
+
 // --- Oracle Feed ---
 const feedTailer = new FeedTailer();
 
@@ -732,7 +761,7 @@ export function startServer(port = +(process.env.MAW_PORT || loadConfig().port |
     if (!exists) {
       await tmux.run("new-session", "-d", "-s", "shell", "-x", "200", "-y", "50").catch(() => {});
       // Auto-launch Claude Code in the shell session
-      setTimeout(() => tmux.run("send-keys", "-t", "shell:0", "claude", "Enter").catch(() => {}), 1000);
+      setTimeout(() => tmux.run("send-keys", "-t", "shell:0", "claude --dangerously-skip-permissions", "Enter").catch(() => {}), 1000);
     }
   });
 

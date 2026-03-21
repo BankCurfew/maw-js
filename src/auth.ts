@@ -13,7 +13,7 @@ interface AuthConfig {
   enabled: boolean;
   username: string;
   passwordHash: string; // bcrypt-like hash
-  sessions: Record<string, { createdAt: number; userAgent: string }>;
+  sessions: Record<string, { createdAt: number; userAgent: string; ip?: string }>;
   allowLocal: boolean; // allow localhost without auth
 }
 
@@ -85,7 +85,7 @@ export function isAuthenticated(req: Request): boolean {
   return true;
 }
 
-export function handleLogin(username: string, password: string, userAgent: string): { ok: boolean; sessionId?: string; error?: string } {
+export function handleLogin(username: string, password: string, userAgent: string, ip?: string): { ok: boolean; sessionId?: string; error?: string } {
   const config = loadAuthConfig();
 
   if (config.username !== username) {
@@ -96,9 +96,17 @@ export function handleLogin(username: string, password: string, userAgent: strin
     return { ok: false, error: "Invalid credentials" };
   }
 
-  // Create session
+  // Purge expired sessions before creating new one
+  const now = Date.now();
+  for (const [id, session] of Object.entries(config.sessions)) {
+    if (now - session.createdAt > SESSION_EXPIRY) {
+      delete config.sessions[id];
+    }
+  }
+
+  // Create session with IP
   const sessionId = generateSessionId();
-  config.sessions[sessionId] = { createdAt: Date.now(), userAgent };
+  config.sessions[sessionId] = { createdAt: Date.now(), userAgent, ip: ip || "unknown" };
 
   // Clean old sessions (keep max 10)
   const entries = Object.entries(config.sessions).sort((a, b) => b[1].createdAt - a[1].createdAt);
@@ -108,6 +116,16 @@ export function handleLogin(username: string, password: string, userAgent: strin
 
   saveAuthConfig(config);
   return { ok: true, sessionId };
+}
+
+export function getActiveSessions(): { total: number; sessions: Array<{ id: string; createdAt: number; userAgent: string; ip?: string }> } {
+  const config = loadAuthConfig();
+  const now = Date.now();
+  const active = Object.entries(config.sessions)
+    .filter(([_, s]) => now - s.createdAt <= SESSION_EXPIRY)
+    .sort((a, b) => b[1].createdAt - a[1].createdAt)
+    .map(([id, s]) => ({ id: id.slice(0, 12) + "...", createdAt: s.createdAt, userAgent: s.userAgent, ip: s.ip }));
+  return { total: active.length, sessions: active };
 }
 
 export function handleLogout(req: Request): void {

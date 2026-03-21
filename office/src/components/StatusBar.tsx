@@ -124,6 +124,20 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
             </button>
           )}
 
+          {/* Logout */}
+          <button
+            onClick={async () => {
+              if (!confirm("Logout from BoB's Office?")) return;
+              await fetch("/auth/logout", { method: "POST" });
+              window.location.href = "/auth/login";
+            }}
+            className="min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono active:scale-95 transition-all flex items-center justify-center"
+            style={{ background: "rgba(239,83,80,0.08)", color: "rgba(239,83,80,0.6)", border: "1px solid rgba(239,83,80,0.15)" }}
+            title="Logout"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+
           {/* Desktop nav — scrollable at xl, hidden below */}
           <nav className="hidden xl:flex items-center gap-2 text-xs ml-2 overflow-x-auto scrollbar-hide max-w-[50vw]" style={{ scrollbarWidth: "none" }}>
             {NAV_ITEMS.map((item) => (
@@ -171,6 +185,17 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
           ))}
           {/* Show children (view controls) in mobile menu too */}
           {children && <div className="w-full flex flex-wrap gap-2 mt-1">{children}</div>}
+          {/* Logout in mobile menu */}
+          <button
+            onClick={async () => {
+              if (!confirm("Logout from BoB's Office?")) return;
+              await fetch("/auth/logout", { method: "POST" });
+              window.location.href = "/auth/login";
+            }}
+            className="px-3 py-2 rounded-lg text-sm font-medium transition-all active:scale-95 bg-red-500/10 text-red-400 border border-red-500/20"
+          >
+            Logout
+          </button>
         </nav>
       )}
     </header>
