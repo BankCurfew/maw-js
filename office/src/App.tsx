@@ -6,7 +6,7 @@ import { StatusBar } from "./components/StatusBar";
 import { RoomGrid } from "./components/RoomGrid";
 import { TerminalModal } from "./components/TerminalModal";
 import { MissionControl } from "./components/MissionControl";
-import { FleetGrid, FleetControls } from "./components/FleetGrid";
+import { FleetGrid, FleetControls, BroadcastModal } from "./components/FleetGrid";
 import { OverviewGrid } from "./components/OverviewGrid";
 import { OrbitalView } from "./components/OrbitalView";
 import { VSView } from "./components/VSView";
@@ -80,7 +80,7 @@ function useAudioUnlock() {
 }
 
 /** Shared layout — StatusBar + overlays rendered once for all views */
-function Layout({ activeView, connected, agentCount, sessionCount, askCount, muted, onToggleMute, onJump, onInbox, statusBarChildren, terminalModal, showShortcuts, onCloseShortcuts, jumpOverlay, inboxOverlay, fullHeight, children }: {
+function Layout({ activeView, connected, agentCount, sessionCount, askCount, muted, onToggleMute, onJump, onInbox, statusBarChildren, terminalModal, showShortcuts, onCloseShortcuts, jumpOverlay, inboxOverlay, broadcastModal, fullHeight, children }: {
   activeView: string;
   connected: boolean;
   agentCount: number;
@@ -96,6 +96,7 @@ function Layout({ activeView, connected, agentCount, sessionCount, askCount, mut
   onCloseShortcuts: () => void;
   jumpOverlay: ReactNode;
   inboxOverlay: ReactNode;
+  broadcastModal?: ReactNode;
   fullHeight?: boolean;
   children: ReactNode;
 }) {
@@ -115,6 +116,7 @@ function Layout({ activeView, connected, agentCount, sessionCount, askCount, mut
       {showShortcuts && <ShortcutOverlay onClose={onCloseShortcuts} />}
       {jumpOverlay}
       {inboxOverlay}
+      {broadcastModal}
     </div>
   );
 }
@@ -127,6 +129,14 @@ export function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showJump, setShowJump] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+
+  // Listen for broadcast-open event from StatusBar
+  useEffect(() => {
+    const handler = () => setShowBroadcast(true);
+    window.addEventListener("broadcast-open", handler);
+    return () => window.removeEventListener("broadcast-open", handler);
+  }, []);
 
   // "?" key opens shortcut overlay, "j" or Ctrl+K opens jump overlay
   useEffect(() => {
@@ -236,6 +246,7 @@ export function App() {
     onCloseShortcuts: () => setShowShortcuts(false),
     jumpOverlay: showJump ? <JumpOverlay agents={agents} onSelect={onSelectAgent} onClose={() => setShowJump(false)} /> : null,
     inboxOverlay: showInbox ? <InboxOverlay send={send} onClose={() => setShowInbox(false)} /> : null,
+    broadcastModal: showBroadcast ? <BroadcastModal agents={agents} send={send} onClose={() => setShowBroadcast(false)} /> : null,
   };
 
   if (route === "office") {
