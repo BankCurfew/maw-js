@@ -191,6 +191,7 @@ if (cmd === "--version" || cmd === "-v") {
       else if (args[i] === "--issue" && args[i + 1]) { issueNum = +args[++i]; }
       else if (args[i] === "--repo" && args[i + 1]) { repo = args[++i]; }
       else if (!wakeOpts.task) { wakeOpts.task = args[i]; }
+      else if (!wakeOpts.prompt) { wakeOpts.prompt = args.slice(i).join(" "); break; }
     }
     if (issueNum) {
       console.log(`\x1b[36m⚡\x1b[0m fetching issue #${issueNum}...`);
