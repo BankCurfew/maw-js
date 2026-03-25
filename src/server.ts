@@ -11,6 +11,10 @@ import { isAuthenticated, handleLogin, handleLogout, getActiveSessions, LOGIN_PA
 import type { WSData } from "./types";
 
 const app = new Hono();
+
+// Module-level engine reference (set by startServer)
+let engine: MawEngine | null = null;
+
 app.use("/api/*", async (c, next) => {
   await next();
   c.header("Access-Control-Allow-Private-Network", "true");
@@ -576,6 +580,19 @@ app.get("/api/feed", (c) => {
   return c.json({ events: events.reverse(), total: events.length, active_oracles: active });
 });
 
+// --- Oracle Health API ---
+
+app.get("/api/oracle-health", (c) => {
+  if (!engine) {
+    return c.json({ error: "Server not fully initialized", timestamp: new Date().toISOString() }, 503);
+  }
+  const summary = engine.getHealthSummary();
+  if (!summary) {
+    return c.json({ error: "Health data not yet available — check back in 30s", timestamp: new Date().toISOString() }, 503);
+  }
+  return c.json(summary);
+});
+
 // --- Loops API ---
 const loopEngine = new LoopEngine();
 
@@ -715,7 +732,7 @@ import { handlePtyMessage, handlePtyClose } from "./pty";
 import { installAutoReport } from "./auto-report";
 
 export function startServer(port = +(process.env.MAW_PORT || loadConfig().port || 3456)) {
-  const engine = new MawEngine({ feedTailer });
+  engine = new MawEngine({ feedTailer });
 
   // LAW #7: Auto-report to Bob when oracle sessions end without /talk-to bob
   installAutoReport(feedTailer);
