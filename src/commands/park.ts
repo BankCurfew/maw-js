@@ -23,11 +23,33 @@ async function currentWindowInfo(): Promise<{ session: string; window: string }>
   return { session, window };
 }
 
-export async function cmdPark(note?: string) {
-  const { session, window } = await currentWindowInfo();
+export async function cmdPark(...rawArgs: string[]) {
+  const { session, window: currentWindow } = await currentWindowInfo();
 
-  // Get git context from window's pane cwd
-  const cwd = (await tmux.run("display-message", "-p", "#{pane_current_path}")).trim();
+  // Determine target window and note:
+  // - maw park → park current window
+  // - maw park "note" → park current window with note (if arg doesn't match a window)
+  // - maw park <window-name> → park that window
+  // - maw park <window-name> "note" → park that window with note
+  let targetWindow = currentWindow;
+  let note: string | undefined;
+
+  if (rawArgs.length > 0) {
+    const firstArg = rawArgs[0];
+    // Check if first arg matches a known tmux window name
+    const windows = await tmux.listWindows(session);
+    const windowNames = windows.map(w => w.name);
+    if (windowNames.includes(firstArg) && firstArg !== currentWindow) {
+      targetWindow = firstArg;
+      note = rawArgs.slice(1).join(" ") || undefined;
+    } else {
+      // Treat all args as note
+      note = rawArgs.join(" ") || undefined;
+    }
+  }
+
+  // Get git context from target window's pane cwd
+  const cwd = (await tmux.run("display-message", "-t", `${session}:${targetWindow}`, "-p", "#{pane_current_path}")).trim();
   let branch = "", lastCommit = "", dirtyFiles: string[] = [];
   try { branch = (await ssh(`git -C '${cwd}' branch --show-current 2>/dev/null`)).trim(); } catch {}
   try { lastCommit = (await ssh(`git -C '${cwd}' log -1 --oneline 2>/dev/null`)).trim(); } catch {}
@@ -37,14 +59,14 @@ export async function cmdPark(note?: string) {
   } catch {}
 
   const state: ParkedState = {
-    window, session, branch, cwd, lastCommit, dirtyFiles,
+    window: targetWindow, session, branch, cwd, lastCommit, dirtyFiles,
     note: note || "",
     parkedAt: new Date().toISOString(),
   };
 
   mkdirSync(PARKED_DIR, { recursive: true });
-  writeFileSync(join(PARKED_DIR, `${window}.json`), JSON.stringify(state, null, 2) + "\n");
-  console.log(`\x1b[32m✓\x1b[0m parked \x1b[33m${window}\x1b[0m${note ? ` — "${note}"` : ""}`);
+  writeFileSync(join(PARKED_DIR, `${targetWindow}.json`), JSON.stringify(state, null, 2) + "\n");
+  console.log(`\x1b[32m✓\x1b[0m parked \x1b[33m${targetWindow}\x1b[0m${note ? ` — "${note}"` : ""}`);
 }
 
 export async function cmdParkLs() {

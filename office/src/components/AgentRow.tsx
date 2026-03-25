@@ -80,9 +80,16 @@ function AgentInfo({ agent, isBusy, displayName, accent, agoLabel, feedLog, team
   agent: AgentState; isBusy: boolean; displayName: string; accent: string;
   agoLabel?: string; feedLog?: FeedLogEntry[] | null; teams?: Team[];
 }) {
-  const agentTeam = teams?.find(t => t.members.some(m => m.name === agent.name));
-  const teamMember = agentTeam?.members.find(m => m.name === agent.name);
-  const teamColor = teamMember?.color ? COLOR_MAP[teamMember.color] || "#888" : "#888";
+  // Match team by: 1) exact member name, 2) cwd path match
+  const agentTeam = teams?.find(t => t.members.some(m =>
+    m.name === agent.name ||
+    (agent.cwd && m.cwd && m.cwd === agent.cwd)
+  ));
+  const teamMember = agentTeam?.members.find(m =>
+    m.name === agent.name || (agent.cwd && m.cwd && m.cwd === agent.cwd)
+  );
+  const teamColor = teamMember?.color ? COLOR_MAP[teamMember.color] || "#888" :
+    agentTeam?.members[0]?.color ? COLOR_MAP[agentTeam.members[0].color] || "#888" : "#888";
   return (
     <div className="flex flex-col gap-1 flex-1 min-w-0">
       <div className="flex items-center gap-3">

@@ -7,6 +7,7 @@ const MAW_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..");
 import { listSessions, capture, sendKeys, selectWindow } from "./ssh";
 import { processMirror } from "./commands/overview";
 import { MawEngine } from "./engine";
+import { scanTeams } from "./engine.teams";
 import type { FeedEvent } from "./lib/feed";
 import type { WSData } from "./types";
 
@@ -427,15 +428,8 @@ app.post("/api/feed", async (c) => {
 import { homedir } from "os";
 
 app.get("/api/teams", (c) => {
-  const teamsDir = join(homedir(), ".claude/teams");
-  try {
-    const dirs = readdirSync(teamsDir).filter(d => existsSync(join(teamsDir, d, "config.json")));
-    const teams = dirs.map(d => {
-      try { return JSON.parse(readFileSync(join(teamsDir, d, "config.json"), "utf-8")); }
-      catch { return null; }
-    }).filter(Boolean);
-    return c.json({ teams, total: teams.length });
-  } catch { return c.json({ teams: [], total: 0 }); }
+  const teams = scanTeams();
+  return c.json({ teams, total: teams.length });
 });
 
 app.get("/api/teams/:name", (c) => {

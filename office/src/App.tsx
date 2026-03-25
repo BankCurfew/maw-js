@@ -379,7 +379,7 @@ export function App() {
   if (route === "teams") {
     return (
       <Layout activeView="teams" {...layoutProps}>
-        <TeamPanel />
+        <TeamPanel teams={teams} />
       </Layout>
     );
   }

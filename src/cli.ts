@@ -59,7 +59,7 @@ function usage() {
   maw chat [oracle]           Shorthand for log chat
   maw workon <repo> [task]    Open repo in new tmux window + claude (alias: work)
   maw rename <tab#> <name>     Rename tab (auto-prefixes oracle name)
-  maw park [note]              Park current tab with context snapshot
+  maw park [window] [note]     Park current (or named) tab with context snapshot
   maw park ls                  List all parked tabs
   maw resume [tab#/name]       Resume a parked tab (sends context)
   maw inbox                    List recent inbox items
@@ -226,7 +226,7 @@ if (cmd === "--version" || cmd === "-v") {
   if (args[1] === "ls" || args[1] === "list") {
     await cmdParkLs();
   } else {
-    await cmdPark(args.slice(1).join(" ") || undefined);
+    await cmdPark(...args.slice(1));
   }
 } else if (cmd === "resume" || cmd === "unpause") {
   await cmdResume(args[1]);

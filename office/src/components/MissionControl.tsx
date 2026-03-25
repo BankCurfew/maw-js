@@ -8,6 +8,8 @@ import { FpsCounter } from "./FpsCounter";
 import { roomStyle, PREVIEW_CARD } from "../lib/constants";
 import { BroadcastModal } from "./FleetGrid";
 import type { AgentState, Session, AgentEvent } from "../lib/types";
+import type { Team } from "./TeamPanel";
+import { COLOR_MAP } from "./TeamPanel";
 interface MissionControlProps {
   sessions: Session[];
   agents: AgentState[];
@@ -16,6 +18,7 @@ interface MissionControlProps {
   onSelectAgent: (agent: AgentState) => void;
   eventLog: AgentEvent[];
   addEvent: (target: string, type: AgentEvent["type"], detail: string) => void;
+  teams?: Team[];
 }
 
 export const MissionControl = memo(function MissionControl({
@@ -26,6 +29,7 @@ export const MissionControl = memo(function MissionControl({
   onSelectAgent,
   eventLog,
   addEvent,
+  teams,
 }: MissionControlProps) {
   const [groupSolo, setGroupSolo] = useState(true);
   const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
@@ -552,22 +556,35 @@ export const MissionControl = memo(function MissionControl({
                     </text>
 
                     {/* Hover tooltip — hidden when preview card is showing */}
-                    {isHovered && !hoverPreview && (
-                      <g>
-                        <rect x={-100} y={-65} width={200} height={34} rx={8}
-                          fill="rgba(8,8,16,0.95)" stroke={s.style.accent} strokeWidth={0.8} opacity={0.95} />
-                        {agent.preview && (
-                          <text x={0} y={-48} textAnchor="middle" fill="#e0e0e0" fontSize={9}
-                            fontFamily="'SF Mono', monospace">
-                            {agent.preview.slice(0, 35)}
+                    {isHovered && !hoverPreview && (() => {
+                      const agentTeam = teams?.find(t => t.members.some(m =>
+                        m.name === agent.name || (agent.cwd && m.cwd && m.cwd === agent.cwd)
+                      ));
+                      const teamColor = agentTeam?.members[0]?.color ? COLOR_MAP[agentTeam.members[0].color] || s.style.accent : s.style.accent;
+                      const tooltipH = agentTeam ? 48 : 34;
+                      return (
+                        <g>
+                          <rect x={-100} y={-65 - (agentTeam ? 14 : 0)} width={200} height={tooltipH} rx={8}
+                            fill="rgba(8,8,16,0.95)" stroke={s.style.accent} strokeWidth={0.8} opacity={0.95} />
+                          {agentTeam && (
+                            <text x={0} y={-62} textAnchor="middle" fill={teamColor} fontSize={8}
+                              fontFamily="'SF Mono', monospace" fontWeight="bold">
+                              ● {agentTeam.name}
+                            </text>
+                          )}
+                          {agent.preview && (
+                            <text x={0} y={-48} textAnchor="middle" fill="#e0e0e0" fontSize={9}
+                              fontFamily="'SF Mono', monospace">
+                              {agent.preview.slice(0, 35)}
+                            </text>
+                          )}
+                          <text x={0} y={-38} textAnchor="middle" fill={s.style.accent} fontSize={8}
+                            fontFamily="'SF Mono', monospace" opacity={0.7}>
+                            {agent.status} · {agent.target}
                           </text>
-                        )}
-                        <text x={0} y={-38} textAnchor="middle" fill={s.style.accent} fontSize={8}
-                          fontFamily="'SF Mono', monospace" opacity={0.7}>
-                          {agent.status} · {agent.target}
-                        </text>
-                      </g>
-                    )}
+                        </g>
+                      );
+                    })()}
                   </g>
                 );
               })}

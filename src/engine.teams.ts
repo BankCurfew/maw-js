@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { execSync } from "child_process";
 import type { MawWS } from "./types";
 
 interface TeamData {
@@ -8,17 +9,47 @@ interface TeamData {
   description: string;
   members: any[];
   tasks: any[];
+  alive: boolean;
 }
 
 const TEAMS_DIR = join(homedir(), ".claude/teams");
 const TASKS_DIR = join(homedir(), ".claude/tasks");
 
-/** Scan all teams + tasks, return current state */
+/** Get all live tmux pane IDs */
+function livePaneIds(): Set<string> {
+  try {
+    const raw = execSync("tmux list-panes -a -F '#{pane_id}'", { encoding: "utf-8", timeout: 2000 });
+    return new Set(raw.split("\n").filter(Boolean));
+  } catch { return new Set(); }
+}
+
+/** Check if a team has any alive members */
+function isTeamAlive(members: any[], panes: Set<string>): boolean {
+  for (const m of members) {
+    // tmux-mode: check if pane exists
+    if (m.backendType === "tmux" && m.tmuxPaneId && panes.has(m.tmuxPaneId)) return true;
+    // in-process: check if cwd is on this machine (not /Users/ on a Linux box)
+    if (m.backendType === "in-process" && m.cwd) {
+      const isLocal = m.cwd.startsWith(homedir());
+      if (!isLocal) continue; // remote/MBA leftover
+      // Check if lead's Claude session might still be running (heuristic: created < 2h ago)
+      if (m.joinedAt && Date.now() - m.joinedAt < 2 * 60 * 60 * 1000) return true;
+    }
+    // team-lead with empty paneId: check by cwd locality + recency
+    if (m.agentType === "team-lead" || m.name === "team-lead") {
+      if (m.cwd && m.cwd.startsWith(homedir()) && m.joinedAt && Date.now() - m.joinedAt < 2 * 60 * 60 * 1000) return true;
+    }
+  }
+  return false;
+}
+
+/** Scan all teams + tasks, return current state with liveness */
 export function scanTeams(): TeamData[] {
   try {
     const dirs = readdirSync(TEAMS_DIR).filter(d =>
       existsSync(join(TEAMS_DIR, d, "config.json"))
     );
+    const panes = livePaneIds();
     return dirs.map(d => {
       try {
         const config = JSON.parse(readFileSync(join(TEAMS_DIR, d, "config.json"), "utf-8"));
@@ -33,7 +64,8 @@ export function scanTeams(): TeamData[] {
             })
             .filter(Boolean);
         } catch {}
-        return { ...config, tasks };
+        const alive = isTeamAlive(config.members || [], panes);
+        return { ...config, tasks, alive };
       } catch { return null; }
     }).filter(Boolean) as TeamData[];
   } catch { return []; }

@@ -255,6 +255,7 @@ export function useSessions() {
           preview: cd?.preview || "",
           status: cd?.status || "idle",
           project,
+          cwd: w.cwd,
         };
       })
     );
