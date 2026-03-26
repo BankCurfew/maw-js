@@ -4,6 +4,7 @@ import { loadConfig, buildCommand, getEnvVars } from "../config";
 import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { FLEET_DIR } from "../paths";
+import { restoreTabOrder } from "../tab-order";
 
 /**
  * Verify all windows in a session are running Claude (not empty zsh).
@@ -163,8 +164,31 @@ function sanitizeBranchName(name: string): string {
     .slice(0, 50);
 }
 
-export async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; prompt?: string }): Promise<string> {
-  const { repoPath, repoName, parentDir } = await resolveOracle(oracle);
+export async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; prompt?: string; incubate?: string }): Promise<string> {
+  let resolved: { repoPath: string; repoName: string; parentDir: string };
+
+  if (opts.incubate) {
+    // Clone/update repo via ghq, then use it as the target
+    const slug = opts.incubate; // e.g. "Soul-Brews-Studio/maw-js"
+    const repoSlug = slug.includes("github.com") ? slug : `github.com/${slug}`;
+    console.log(`\x1b[36m⚡\x1b[0m incubating ${slug}...`);
+    await ssh(`ghq get -u -p ${repoSlug}`);
+    const fullPath = await ssh(`ghq list --full-path | grep -i '${repoSlug}$' | head -1`);
+    if (!fullPath?.trim()) throw new Error(`ghq could not find ${slug} after clone`);
+    const repoPath = fullPath.trim();
+    const repoName = repoPath.split("/").pop()!;
+    const parentDir = repoPath.replace(/\/[^/]+$/, "");
+    resolved = { repoPath, repoName, parentDir };
+
+    // Auto-derive task name from repo slug if not set
+    if (!opts.task && !opts.newWt) {
+      opts.newWt = repoName.replace(/-/g, "");
+    }
+  } else {
+    resolved = await resolveOracle(oracle);
+  }
+
+  const { repoPath, repoName, parentDir } = resolved;
 
   // Detect or create tmux session (spawn all worktrees if new)
   let session = await detectSession(oracle);
@@ -227,6 +251,12 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
     await new Promise(r => setTimeout(r, 3000));
     const retried = await ensureSessionRunning(session);
     if (retried > 0) console.log(`\x1b[33m${retried} window(s) retried.\x1b[0m`);
+  }
+
+  // Restore saved tab order (from previous sleep)
+  const reordered = await restoreTabOrder(session);
+  if (reordered > 0) {
+    console.log(`\x1b[36m↻ ${reordered} window(s) reordered to saved positions.\x1b[0m`);
   }
 
   let targetPath = repoPath;

@@ -8,7 +8,7 @@ import { cmdOverview } from "./commands/overview";
 import { cmdWake, fetchIssuePrompt } from "./commands/wake";
 import { cmdPulseAdd, cmdPulseLs } from "./commands/pulse";
 import { cmdOracleList, cmdOracleAbout } from "./commands/oracle";
-import { cmdWakeAll, cmdSleep, cmdFleetLs, cmdFleetRenumber, cmdFleetValidate, cmdFleetSync } from "./commands/fleet";
+import { cmdWakeAll, cmdSleep, cmdFleetLs, cmdFleetRenumber, cmdFleetValidate, cmdFleetSync, cmdFleetSyncConfigs } from "./commands/fleet";
 import { cmdFleetInit } from "./commands/fleet-init";
 import { cmdDone } from "./commands/done";
 import { cmdSleepOne } from "./commands/sleep";
@@ -33,11 +33,13 @@ function usage() {
   maw hey <agent> <msg...>    Send message to agent (alias: tell)
   maw wake <oracle> [task]    Wake oracle in tmux window + claude
   maw wake <oracle> --issue N Wake oracle with GitHub issue as prompt
+  maw wake <oracle> --incubate org/repo  Clone repo + worktree
   maw fleet init              Scan ghq repos, generate fleet/*.json
   maw fleet ls                List fleet configs with conflict detection
   maw fleet renumber          Fix numbering conflicts (sequential)
   maw fleet validate          Check for problems (dupes, orphans, missing repos)
-  maw fleet sync              Add unregistered windows to fleet configs
+  maw fleet sync              Sync repo fleet/*.json → ~/.config/maw/fleet/
+  maw fleet sync-windows      Add unregistered windows to fleet configs
   maw wake all [--kill]       Wake fleet (01-15 + 99, skips dormant 20+)
   maw wake all --all          Wake ALL including dormant
   maw wake all --resume       Wake fleet + send /recap to active board items
@@ -48,7 +50,9 @@ function usage() {
   maw overview              War-room: all oracles in split panes
   maw overview neo hermes   Only specific oracles
   maw overview --kill       Tear down overview
-  maw done <window>            Clean up finished worktree window
+  maw done <window>            Auto-save (/rrr + commit + push) then clean up
+  maw done <window> --force   Skip auto-save, kill immediately
+  maw done <window> --dry-run Show what would happen
   maw pulse add "task" [opts] Create issue + wake oracle
   maw pulse cleanup [--dry-run] Clean stale/orphan worktrees
   maw view <agent> [window]   Grouped tmux session (interactive attach)
@@ -86,6 +90,8 @@ function usage() {
   maw wake neo --new free     Create worktree + wake
   maw wake neo --issue 5      Fetch issue #5 + send as claude -p prompt
   maw wake neo --issue 5 --repo org/repo   Explicit repo
+  maw wake neo --incubate org/repo         Clone via ghq + worktree
+  maw wake neo --incubate org/repo --issue 5  Incubate + issue prompt
 
 \x1b[33mPulse add:\x1b[0m
   maw pulse ls                Board table (terminal)
@@ -135,12 +141,17 @@ if (cmd === "--version" || cmd === "-v") {
 } else if (cmd === "fleet" && args[1] === "validate") {
   await cmdFleetValidate();
 } else if (cmd === "fleet" && args[1] === "sync") {
+  await cmdFleetSyncConfigs();
+} else if (cmd === "fleet" && (args[1] === "sync-windows" || args[1] === "syncwin")) {
   await cmdFleetSync();
 } else if (cmd === "fleet" && !args[1]) {
   await cmdFleetLs();
 } else if (cmd === "done" || cmd === "finish") {
-  if (!args[1]) { console.error("usage: maw done <window-name>\n       e.g. maw done neo-freelance"); process.exit(1); }
-  await cmdDone(args[1]);
+  if (!args[1]) { console.error("usage: maw done <window-name> [--force] [--dry-run]\n       e.g. maw done neo-freelance"); process.exit(1); }
+  const doneForce = args.includes("--force");
+  const doneDry = args.includes("--dry-run");
+  const doneName = args.slice(1).find(a => !a.startsWith("--"))!;
+  await cmdDone(doneName, { force: doneForce, dryRun: doneDry });
 } else if (cmd === "stop" || cmd === "rest") {
   await cmdSleep();
 } else if (cmd === "sleep") {
@@ -157,16 +168,19 @@ if (cmd === "--version" || cmd === "-v") {
   if (args[1].toLowerCase() === "all") {
     await cmdWakeAll({ kill: args.includes("--kill"), all: args.includes("--all"), resume: args.includes("--resume") });
   } else {
-    const wakeOpts: { task?: string; newWt?: string; prompt?: string } = {};
+    const wakeOpts: { task?: string; newWt?: string; prompt?: string; incubate?: string } = {};
     let issueNum: number | null = null;
     let repo: string | undefined;
     for (let i = 2; i < args.length; i++) {
       if (args[i] === "--new" && args[i + 1]) { wakeOpts.newWt = args[++i]; }
+      else if (args[i] === "--incubate" && args[i + 1]) { wakeOpts.incubate = args[++i]; }
       else if (args[i] === "--issue" && args[i + 1]) { issueNum = +args[++i]; }
       else if (args[i] === "--repo" && args[i + 1]) { repo = args[++i]; }
       else if (!wakeOpts.task) { wakeOpts.task = args[i]; }
       else if (!wakeOpts.prompt) { wakeOpts.prompt = args.slice(i).join(" "); break; }
     }
+    // Auto-set repo for --issue from --incubate value
+    if (wakeOpts.incubate && !repo) { repo = wakeOpts.incubate; }
     if (issueNum) {
       console.log(`\x1b[36m⚡\x1b[0m fetching issue #${issueNum}...`);
       wakeOpts.prompt = await fetchIssuePrompt(issueNum, repo);
