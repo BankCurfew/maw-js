@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { listSessions, capture, sendKeys, selectWindow } from "../ssh";
 import { getAggregatedSessions, findPeerForTarget, sendKeysToPeer } from "../peers";
+import { loadConfig } from "../config";
+import { curlFetch } from "../curl-fetch";
 import { processMirror } from "../commands/overview";
 
 export const sessionsApi = new Hono();
@@ -38,15 +40,39 @@ sessionsApi.post("/send", async (c) => {
   const peerUrl = await findPeerForTarget(target, local);
 
   if (peerUrl) {
-    // Route to peer
+    // Route to peer (found via session aggregation)
     const ok = await sendKeysToPeer(peerUrl, target, text);
     if (ok) return c.json({ ok: true, target, text, source: peerUrl });
     return c.json({ error: "Failed to send to peer", target, source: peerUrl }, 502);
   }
 
-  // Send locally
-  await sendKeys(target, text);
-  return c.json({ ok: true, target, text, source: "local" });
+  // Check agent registry — direct routing via config
+  const config = loadConfig();
+  const targetName = target.replace(/-oracle$/, "").split(":").pop() || target;
+  const agentNode = config.agents?.[targetName] || config.agents?.[target];
+  if (agentNode && agentNode !== (config.node || config.host || "local")) {
+    const peer = config.namedPeers?.find(p => p.name === agentNode);
+    const peerUrl2 = peer?.url || config.peers?.find(p => p.includes(agentNode));
+    if (peerUrl2) {
+      const res = await curlFetch(`${peerUrl2}/api/send`, {
+        method: "POST",
+        body: JSON.stringify({ target, text }),
+        timeout: 10000,
+      });
+      if (res.ok && res.data?.ok) {
+        return c.json({ ok: true, target: res.data.target || target, text, source: peerUrl2 });
+      }
+      return c.json({ error: `Agent ${targetName} mapped to ${agentNode} but send failed`, target, source: peerUrl2 }, 502);
+    }
+  }
+
+  // Send locally (target found in local tmux)
+  try {
+    await sendKeys(target, text);
+    return c.json({ ok: true, target, text, source: "local" });
+  } catch {
+    return c.json({ error: `target not found: ${target}`, target }, 404);
+  }
 });
 
 sessionsApi.post("/select", async (c) => {
