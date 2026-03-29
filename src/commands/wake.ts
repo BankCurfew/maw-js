@@ -100,7 +100,12 @@ export async function resolveOracle(oracle: string): Promise<{ repoPath: string;
         const sessions = await res.json();
         const list = Array.isArray(sessions) ? sessions : sessions.sessions || [];
         for (const s of list) {
-          const found = (s.windows || []).find((w: any) => w.name === `${oracle}-oracle` || w.name === oracle);
+          const oracleLower = oracle.toLowerCase();
+          const sessionMatch = s.name.toLowerCase().includes(oracleLower);
+          const found = (s.windows || []).find((w: any) =>
+            w.name === `${oracle}-oracle` || w.name === oracle ||
+            w.name.toLowerCase().startsWith(oracleLower)
+          ) || (sessionMatch ? (s.windows || [])[0] : null);
           if (found) {
             console.log(`\x1b[36m⚡\x1b[0m ${oracle} found on peer ${peer} — waking remotely`);
             // Send wake command to peer
