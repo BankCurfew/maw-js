@@ -281,7 +281,7 @@ if (cmd === "--version" || cmd === "-v") {
   await cmdRename(args[1], args[2]);
 } else if (cmd === "tab" || cmd === "tabs") {
   await cmdTab(args.slice(1));
-} else if (cmd === "view" || cmd === "create-view" || cmd === "attach") {
+} else if (cmd === "view" || cmd === "create-view" || cmd === "attach" || cmd === "a") {
   if (!args[1]) { console.error("usage: maw view <agent> [window] [--clean]"); process.exit(1); }
   const clean = args.includes("--clean");
   const viewArgs = args.slice(1).filter(a => a !== "--clean");
