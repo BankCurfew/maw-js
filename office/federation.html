@@ -48,7 +48,7 @@
 <body>
 
 <h1>Federation</h1>
-<div class="subtitle">Multi-machine agent mesh — <span id="node-name">...</span></div>
+<div class="subtitle">Multi-machine agent mesh — <span id="node-name">...</span> — <span id="auth-status" style="color:#666;">auth: checking...</span></div>
 
 <h2>Transport Status <span class="refresh" onclick="load()">refresh</span></h2>
 <div class="card" id="transports">
@@ -110,13 +110,22 @@ bun install && bun link</pre>
 <div class="step">
   <div class="step-num">3</div>
   <div class="step-content">
+    <div class="step-title">Set the federation token</div>
+    <div class="step-desc">Add <code>"federationToken"</code> to your config — must match all nodes in the mesh (min 16 chars). Without it, your node can read but not send commands to peers.</div>
+    <pre>"federationToken": "your-shared-secret-here"</pre>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">4</div>
+  <div class="step-content">
     <div class="step-title">Start the server</div>
     <pre>pm2 start src/server.ts --name maw --interpreter bun</pre>
   </div>
 </div>
 
 <div class="step">
-  <div class="step-num">4</div>
+  <div class="step-num">5</div>
   <div class="step-content">
     <div class="step-title">Test federation</div>
     <pre># Send to a remote agent
@@ -223,6 +232,22 @@ async function load() {
     console.error('Federation load error:', err);
   }
 }
+
+// Load auth status
+async function loadAuth() {
+  try {
+    const auth = await fetch(`${API}/api/auth/status`).then(r => r.json());
+    const el = document.getElementById('auth-status');
+    if (auth.enabled) {
+      el.textContent = `auth: ${auth.method} (${auth.tokenPreview})`;
+      el.style.color = '#4caf50';
+    } else {
+      el.textContent = 'auth: disabled';
+      el.style.color = '#f44336';
+    }
+  } catch { document.getElementById('auth-status').textContent = 'auth: unknown'; }
+}
+loadAuth();
 
 load();
 setInterval(load, 10000);

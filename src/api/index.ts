@@ -15,8 +15,12 @@ import { costsApi } from "./costs";
 import { triggersApi } from "./triggers";
 import { avengersApi } from "./avengers";
 import { transportApi } from "./transport";
+import { federationAuth } from "../lib/federation-auth";
 
 export const api = new Hono();
+
+// Federation auth — enforces HMAC on protected endpoints from remote peers
+api.use("*", federationAuth());
 
 api.route("/", sessionsApi);
 api.route("/", feedApi);

@@ -4,7 +4,12 @@
  * Bun/Node fetch() is broken on macOS for local/WireGuard IPs.
  * curl (Apple-signed) bypasses the macOS Local Network Privacy restriction.
  * Used for ALL peer/federation HTTP calls.
+ *
+ * Auto-signs requests with HMAC-SHA256 when federationToken is configured.
  */
+
+import { signHeaders } from "./lib/federation-auth";
+import { loadConfig } from "./config";
 
 export interface CurlResponse {
   ok: boolean;
@@ -23,6 +28,18 @@ export async function curlFetch(url: string, opts?: {
   if (opts?.body) {
     args.push("-H", "Content-Type: application/json", "-d", opts.body);
   }
+
+  // Auto-sign with federation token (HMAC-SHA256)
+  try {
+    const token = loadConfig().federationToken;
+    if (token) {
+      const urlObj = new URL(url);
+      const headers = signHeaders(token, opts?.method || "GET", urlObj.pathname);
+      args.push("-H", `X-Maw-Timestamp: ${headers["X-Maw-Timestamp"]}`);
+      args.push("-H", `X-Maw-Signature: ${headers["X-Maw-Signature"]}`);
+    }
+  } catch {}
+
   args.push(url);
 
   try {

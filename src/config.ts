@@ -162,6 +162,17 @@ function validateConfig(raw: Record<string, unknown>): Partial<MawConfig> {
     }
   }
 
+  // federationToken: string, min 16 chars
+  if ("federationToken" in raw) {
+    if (typeof raw.federationToken === "string" && raw.federationToken.length >= 16) {
+      result.federationToken = raw.federationToken;
+    } else if (typeof raw.federationToken === "string") {
+      warn("federationToken", "must be at least 16 characters");
+    } else {
+      warn("federationToken", "must be a string");
+    }
+  }
+
   // pin: string if present
   if ("pin" in raw) {
     if (typeof raw.pin === "string") {
@@ -331,7 +342,12 @@ export function configForDisplay(): MawConfig & { envMasked: Record<string, stri
       envMasked[k] = v.slice(0, 3) + "\u2022".repeat(Math.min(v.length - 3, 20));
     }
   }
-  return { ...config, env: {}, envMasked };
+  const result: any = { ...config, env: {}, envMasked };
+  // Mask federation token (show first 4 chars only)
+  if (result.federationToken) {
+    result.federationToken = result.federationToken.slice(0, 4) + "\u2022".repeat(12);
+  }
+  return result;
 }
 
 /** Simple glob match: supports * at start/end (e.g., "*-oracle", "codex-*") */

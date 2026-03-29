@@ -14,6 +14,7 @@
 import mqtt from "mqtt";
 import type { Transport, TransportTarget, TransportMessage, TransportPresence } from "../transport";
 import type { FeedEvent } from "../lib/feed";
+import { sign, verify } from "../lib/federation-auth";
 
 export interface MqttConfig {
   broker: string;          // e.g. "ws://localhost:9001" or "mqtt://localhost:1883"
@@ -22,6 +23,7 @@ export interface MqttConfig {
   password?: string;
   selfName: string;        // this host's oracle fleet name
   selfHost: string;        // this host's hostname
+  federationToken?: string; // HMAC signing for payload auth
 }
 
 export class MqttTransport implements Transport {
@@ -95,18 +97,25 @@ export class MqttTransport implements Transport {
     this._connected = false;
   }
 
+  private signPayload(payload: Record<string, any>, topic: string): Record<string, any> {
+    const token = this.config.federationToken;
+    if (!token) return payload;
+    const ts = Math.floor(Date.now() / 1000);
+    return { ...payload, _ts: ts, _sig: sign(token, "MQTT", topic, ts) };
+  }
+
   async send(target: TransportTarget, message: string): Promise<boolean> {
     if (!this.client || !this._connected) return false;
 
     const topic = `oracle/${target.oracle}/inbox`;
-    const payload = JSON.stringify({
+    const payload = this.signPayload({
       from: this.config.selfName,
       body: message,
       timestamp: Date.now(),
-    });
+    }, topic);
 
     return new Promise((resolve) => {
-      this.client!.publish(topic, payload, { qos: 0 }, (err) => {
+      this.client!.publish(topic, JSON.stringify(payload), { qos: 0 }, (err) => {
         resolve(!err);
       });
     });
@@ -115,13 +124,13 @@ export class MqttTransport implements Transport {
   async publishPresence(presence: TransportPresence): Promise<void> {
     if (!this.client || !this._connected) return;
     const topic = `oracle/${presence.oracle}/status`;
-    this.client.publish(topic, JSON.stringify(presence), { qos: 0 });
+    this.client.publish(topic, JSON.stringify(this.signPayload(presence as any, topic)), { qos: 0 });
   }
 
   async publishFeed(event: FeedEvent): Promise<void> {
     if (!this.client || !this._connected) return;
     const topic = `fleet/${this.config.selfHost}/feed`;
-    this.client.publish(topic, JSON.stringify(event), { qos: 0 });
+    this.client.publish(topic, JSON.stringify(this.signPayload(event as any, topic)), { qos: 0 });
   }
 
   onMessage(handler: (msg: TransportMessage) => void) {
@@ -155,6 +164,13 @@ export class MqttTransport implements Transport {
     ], { qos: 0 });
   }
 
+  private verifyPayload(msg: any, topic: string): boolean {
+    const token = this.config.federationToken;
+    if (!token) return true; // no token = no auth
+    if (!msg._sig || !msg._ts) return false; // token set but no sig = reject
+    return verify(token, "MQTT", topic, msg._ts, msg._sig);
+  }
+
   private handleIncoming(topic: string, payload: string) {
     const parts = topic.split("/");
 
@@ -162,6 +178,10 @@ export class MqttTransport implements Transport {
       // oracle/{name}/inbox → message
       if (parts[0] === "oracle" && parts[2] === "inbox") {
         const msg = JSON.parse(payload);
+        if (!this.verifyPayload(msg, topic)) {
+          console.warn(`[mqtt] rejected: bad signature on ${topic}`);
+          return;
+        }
         for (const h of this.msgHandlers) {
           h({
             from: msg.from || "unknown",
@@ -176,6 +196,7 @@ export class MqttTransport implements Transport {
       // oracle/{name}/status → presence
       if (parts[0] === "oracle" && parts[2] === "status") {
         const p = JSON.parse(payload);
+        if (!this.verifyPayload(p, topic)) return;
         for (const h of this.presenceHandlers) h(p);
       }
 
@@ -183,6 +204,7 @@ export class MqttTransport implements Transport {
       if (parts[0] === "fleet" && parts[2] === "feed") {
         if (parts[1] !== this.config.selfHost) {
           const event = JSON.parse(payload);
+          if (!this.verifyPayload(event, topic)) return;
           for (const h of this.feedHandlers) h(event);
         }
       }
@@ -195,10 +217,11 @@ export class MqttTransport implements Transport {
     this.heartbeatInterval = setInterval(() => {
       if (this.client && this._connected) {
         const topic = `oracle/${this.config.selfName}/heartbeat`;
-        this.client.publish(topic, JSON.stringify({
+        const payload = this.signPayload({
           host: this.config.selfHost,
           timestamp: Date.now(),
-        }), { qos: 0 });
+        }, topic);
+        this.client.publish(topic, JSON.stringify(payload), { qos: 0 });
       }
     }, 30_000);
   }

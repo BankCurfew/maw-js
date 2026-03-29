@@ -70,7 +70,7 @@ export function startServer(port = +(process.env.MAW_PORT || loadConfig().port |
       if (server.upgrade(req, { data: { target: null, previewTargets: new Set() } as WSData })) return;
       return new Response("WebSocket upgrade failed", { status: 400 });
     }
-    return app.fetch(req);
+    return app.fetch(req, { server });
   };
 
   // HTTP server (always)

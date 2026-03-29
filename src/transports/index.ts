@@ -36,6 +36,7 @@ export function createTransportRouter(): TransportRouter {
         password: mqttConfig.password,
         selfName: mqttConfig.selfName || config.node || "maw",
         selfHost: mqttConfig.selfHost || config.node || "local",
+        federationToken: config.federationToken,
       }),
     );
   }
