@@ -231,7 +231,7 @@ setInterval(load, 10000);
 const fleetAgents = new Map();
 async function loadFeed() {
   try {
-    const res = await fetch(`${API}/api/feed-history`).then(r => r.json()).catch(() => []);
+    const res = await fetch(`${API}/api/feed`).then(r => r.json()).catch(() => []);
     const events = Array.isArray(res) ? res : (res.events || []);
     for (const e of events) {
       const key = `${e.host}:${e.oracle}`;
