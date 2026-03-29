@@ -66,13 +66,17 @@ sessionsApi.post("/send", async (c) => {
     }
   }
 
-  // Send locally — try exact target first, then fuzzy match
-  const resolved = findWindow(local, target) || target;
+  // Send locally — fuzzy match: try target, then strip -oracle suffix
+  const baseName = target.replace(/-oracle$/, "");
+  const resolved = findWindow(local, target) || findWindow(local, baseName);
+  if (!resolved) {
+    return c.json({ error: `target not found: ${target}`, target }, 404);
+  }
   try {
     await sendKeys(resolved, text);
     return c.json({ ok: true, target: resolved, text, source: "local" });
-  } catch {
-    return c.json({ error: `target not found: ${target}`, target }, 404);
+  } catch (err) {
+    return c.json({ error: `sendKeys failed: ${String(err)}`, target: resolved }, 500);
   }
 });
 
