@@ -50,15 +50,22 @@
           wsRef.current = ws
           ws.onopen = () => setConnected(true)
           ws.onclose = () => { setConnected(false); setTimeout(connect, 2000) }
+          const seen = new Set()
           ws.onmessage = (e) => {
             try {
               const data = JSON.parse(e.data)
               if (data.type === 'feed') {
                 const ev = data.event
+                const key = `${ev.oracle}:${ev.event}:${ev.ts}`
+                if (seen.has(key)) return
+                seen.add(key)
+                if (seen.size > 500) seen.clear()
                 setEvents(prev => [ev, ...prev].slice(0, 100))
                 setCount(c => c + 1)
               } else if (data.type === 'feed-history') {
-                setEvents((data.events || []).slice(0, 50))
+                const events = (data.events || []).slice(0, 50)
+                setEvents(events)
+                // Don't increment count for history replay
               }
             } catch {}
           }
