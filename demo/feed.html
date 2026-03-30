@@ -85,14 +85,23 @@
           <div class="status ${connected ? 'connected' : 'disconnected'}">
             ${connected ? '● Connected' : '○ Disconnected'} · ${count} events
           </div>
-          ${events.map((ev, i) => html`
-            <div class="event" key=${i} data-type=${ev.event}>
-              <span class="time">${fmt(ev.ts || ev.timestamp)}</span>
-              <span class="oracle">${ev.oracle}</span>
-              <span class="type">${ev.event}</span>
-              ${ev.message ? html`<div class="msg">${ev.message}</div>` : null}
-            </div>
-          `)}
+          ${events.map((ev, i) => {
+            const msg = (ev.message || '').trim()
+            const tool = msg.replace(/ [✓✗].*$/, '').split(':')[0].trim()
+            const detail = msg.includes(':') ? msg.slice(msg.indexOf(':') + 1).trim() : msg.replace(/^.*[✓✗]\s*/, '')
+            const oneliner = ev.event === 'PostToolUse' ? (msg.includes('✓') ? `${tool} ✓` : `${tool} ✗`)
+              : ev.event === 'PreToolUse' ? `${tool}: ${detail}`.slice(0, 120)
+              : ev.event === 'Stop' ? `⏹ ${msg}`.slice(0, 120)
+              : ev.event === 'UserPromptSubmit' ? `💬 ${msg}`.slice(0, 80)
+              : msg || ev.event
+            return html`
+              <div class="event" key=${i} data-type=${ev.event}>
+                <span class="time">${fmt(ev.ts || ev.timestamp)}</span>
+                <span class="oracle">${ev.oracle}</span>
+                <span class="type">${oneliner}</span>
+              </div>
+            `
+          })}
           <p class="meta"><a href="index.html">← back</a></p>
         </div>
       `
