@@ -8,7 +8,9 @@ asks.json
 
 # Build artifacts
 wasm-office/target/
+office-8bit/target/
 wasm-vm/
+.DS_Store
 
 # Bun global link artifacts
 ~/
