@@ -7,7 +7,7 @@ import { processMirror } from "./commands/overview";
 import { FeedTailer } from "./feed-tail";
 import { MawEngine } from "./engine";
 import { LoopEngine } from "./loops";
-import { isAuthenticated, handleLogin, handleLogout, getActiveSessions, LOGIN_PAGE, isAuthEnabled } from "./auth";
+import { isAuthenticated, handleLogin, handleLogout, getActiveSessions, LOGIN_PAGE, isAuthEnabled, generateQrToken, getQrTokenStatus, approveQrToken, QR_APPROVE_PAGE } from "./auth";
 import type { WSData } from "./types";
 
 const app = new Hono();
@@ -55,11 +55,59 @@ app.get("/api/auth/sessions", (c) => {
   return c.json(getActiveSessions());
 });
 
+// --- QR Code Login ---
+app.get("/auth/qr-generate", (c) => {
+  const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "direct";
+  const ua = c.req.header("user-agent") || "";
+  const result = generateQrToken(ua, ip);
+  return c.json(result);
+});
+
+app.get("/auth/qr-approve", (c) => {
+  const token = c.req.query("token");
+  if (!token) return c.text("Missing token", 400);
+  // Must be authenticated (logged in on phone)
+  if (!isAuthenticated(c.req.raw)) {
+    // Redirect to login, then back to approve page
+    return c.redirect(`/auth/login?redirect=/auth/qr-approve?token=${encodeURIComponent(token)}`);
+  }
+  const ua = c.req.header("user-agent") || "Unknown device";
+  return c.html(QR_APPROVE_PAGE(token, ua));
+});
+
+app.post("/auth/qr-approve", async (c) => {
+  // Must be authenticated (logged in on phone)
+  if (!isAuthenticated(c.req.raw)) {
+    return c.json({ ok: false, error: "Not authenticated" }, 401);
+  }
+  const { token } = await c.req.json();
+  if (!token) return c.json({ ok: false, error: "Missing token" }, 400);
+  const cookie = c.req.header("cookie") || "";
+  const match = cookie.match(/maw_session=([a-f0-9]+)/);
+  const approverSession = match ? match[1] : "unknown";
+  const result = approveQrToken(token, approverSession);
+  if (!result.ok) return c.json(result, 400);
+  return c.json({ ok: true });
+});
+
+app.get("/auth/qr-status", (c) => {
+  const token = c.req.query("token");
+  if (!token) return c.json({ error: "Missing token" }, 400);
+  const result = getQrTokenStatus(token);
+  if (result.status === "approved" && result.sessionId) {
+    // Set HttpOnly cookie server-side (same as password login)
+    return c.json({ status: "approved" }, 200, {
+      "Set-Cookie": `maw_session=${result.sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`,
+    });
+  }
+  return c.json(result);
+});
+
 // --- Auth middleware — protect everything except /auth/* ---
 app.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
-  // Skip auth for auth routes and static assets needed for login
-  if (path.startsWith("/auth/")) return next();
+  // Skip auth for auth routes, static assets needed for login, and attachments (UUID-based, unguessable)
+  if (path.startsWith("/auth/") || path.startsWith("/api/attachments/")) return next();
 
   if (!isAuthenticated(c.req.raw)) {
     // API calls get 401, pages get redirect
@@ -591,6 +639,22 @@ app.get("/api/oracle-health", (c) => {
     return c.json({ error: "Health data not yet available — check back in 30s", timestamp: new Date().toISOString() }, 503);
   }
   return c.json(summary);
+});
+
+// --- Wake API (for health page restart when no tmux session exists) ---
+app.post("/api/wake/:oracle", async (c) => {
+  const oracle = c.req.param("oracle");
+  try {
+    const proc = Bun.spawn(["bun", "run", "src/cli.ts", "wake", oracle], {
+      cwd: import.meta.dir.replace(/\/src$/, ""),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
+    return c.json({ ok: true, oracle });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
 });
 
 // --- Loops API ---
