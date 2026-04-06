@@ -46,7 +46,7 @@ export class Tmux {
   /** Base runner — executes `tmux [-S socket] <subcommand> [args...]` via ssh. */
   async run(subcommand: string, ...args: (string | number)[]): Promise<string> {
     const socketFlag = this.socket ? `-S ${q(this.socket)} ` : "";
-    const cmd = `tmux ${socketFlag}${subcommand} ${args.map(q).join(" ")} 2>/dev/null`;
+    const cmd = `tmux ${socketFlag}${subcommand} ${args.map(q).join(" ")}`;
     return ssh(cmd, this.host);
   }
 
