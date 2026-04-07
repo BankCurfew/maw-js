@@ -1,5 +1,6 @@
 import { listSessions, ssh } from "../ssh";
 import { loadConfig } from "../config";
+import { soulSync, formatSyncResults } from "../soul-sync";
 import { readdirSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -146,6 +147,21 @@ export async function cmdDone(windowName_: string) {
 
   if (!removedFromConfig) {
     console.log(`  \x1b[90m○\x1b[0m not in any fleet config`);
+  }
+
+  // 4. Soul-sync: push recent learnings to sync_peers (hand-over mode)
+  if (sessionName) {
+    try {
+      const results = await soulSync(sessionName);
+      if (results === null) {
+        console.log(`  \x1b[90m○\x1b[0m no sync_peers configured — skipping soul-sync`);
+      } else {
+        console.log(`  \x1b[36m🧬\x1b[0m soul-sync (hand-over):`);
+        console.log(formatSyncResults(results));
+      }
+    } catch (e: any) {
+      console.log(`  \x1b[33m⚠\x1b[0m soul-sync failed: ${e.message}`);
+    }
   }
 
   console.log();

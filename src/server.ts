@@ -641,6 +641,12 @@ app.get("/api/oracle-health", (c) => {
   return c.json(summary);
 });
 
+// --- Anti-Pattern Scan API ---
+app.get("/api/anti-patterns", (c) => {
+  const { runAntiPatternScan } = require("./anti-patterns");
+  return c.json(runAntiPatternScan());
+});
+
 // --- Wake API (for health page restart when no tmux session exists) ---
 app.post("/api/wake/:oracle", async (c) => {
   const oracle = c.req.param("oracle");
