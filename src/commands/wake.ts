@@ -1,4 +1,4 @@
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
 import { tmux } from "../tmux";
 import { buildCommand, buildCommandInDir, cfgTimeout } from "../config";
 import { restoreTabOrder } from "../tab-order";
@@ -44,8 +44,8 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
     const slug = opts.incubate;
     const repoSlug = slug.includes("github.com") ? slug : `github.com/${slug}`;
     console.log(`\x1b[36m⚡\x1b[0m incubating ${slug}...`);
-    await ssh(`ghq get -u -p ${repoSlug}`);
-    const fullPath = await ssh(`ghq list --full-path | grep -i '${repoSlug}$' | head -1`);
+    await hostExec(`ghq get -u -p ${repoSlug}`);
+    const fullPath = await hostExec(`ghq list --full-path | grep -i '${repoSlug}$' | head -1`);
     if (!fullPath?.trim()) throw new Error(`ghq could not find ${slug} after clone`);
     const repoPath = fullPath.trim();
     resolved = { repoPath, repoName: repoPath.split("/").pop()!, parentDir: repoPath.replace(/\/[^/]+$/, "") };
@@ -145,11 +145,11 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
       const wtPath = `${parentDir}/${repoName}.wt-${wtName}`;
       const branch = `agents/${wtName}`;
       const safe = (s: string) => s.replace(/'/g, "'\\''");
-      try { await ssh(`git -C '${safe(repoPath)}' rev-parse HEAD 2>/dev/null`); } catch {
-        await ssh(`git -C '${safe(repoPath)}' commit --allow-empty -m "init: bootstrap for worktree"`);
+      try { await hostExec(`git -C '${safe(repoPath)}' rev-parse HEAD 2>/dev/null`); } catch {
+        await hostExec(`git -C '${safe(repoPath)}' commit --allow-empty -m "init: bootstrap for worktree"`);
       }
-      try { await ssh(`git -C '${safe(repoPath)}' branch -D '${safe(branch)}' 2>/dev/null`); } catch { /* ok */ }
-      await ssh(`git -C '${safe(repoPath)}' worktree add '${safe(wtPath)}' -b '${safe(branch)}'`);
+      try { await hostExec(`git -C '${safe(repoPath)}' branch -D '${safe(branch)}' 2>/dev/null`); } catch { /* ok */ }
+      await hostExec(`git -C '${safe(repoPath)}' worktree add '${safe(wtPath)}' -b '${safe(branch)}'`);
       console.log(`\x1b[32m+\x1b[0m worktree: ${wtPath} (${branch})`);
       targetPath = wtPath;
       windowName = `${oracle}-${name}`;

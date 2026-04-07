@@ -2,6 +2,7 @@ import { describe, test, expect, mock } from "bun:test";
 
 // Mock only the dependencies that config.ts needs
 mock.module("../src/ssh", () => ({
+  hostExec: async () => "",
   ssh: async () => "",
 }));
 

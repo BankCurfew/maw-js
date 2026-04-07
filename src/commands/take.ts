@@ -1,4 +1,4 @@
-import { listSessions, ssh } from "../ssh";
+import { listSessions, hostExec } from "../ssh";
 import { tmux } from "../tmux";
 import { buildCommandInDir } from "../config";
 
@@ -24,7 +24,7 @@ export async function cmdTake(source: string, targetSession?: string) {
   let target = targetSession;
   if (!target) {
     try {
-      target = (await ssh("tmux display-message -p '#{session_name}'")).trim();
+      target = (await hostExec("tmux display-message -p '#{session_name}'")).trim();
     } catch {
       console.error("  \x1b[31m✗\x1b[0m could not detect current tmux session");
       process.exit(1);
@@ -55,12 +55,12 @@ export async function cmdTake(source: string, targetSession?: string) {
   // Get the window's cwd before moving
   let paneCwd = "";
   try {
-    paneCwd = (await ssh(`tmux display-message -t '${srcSess.name}:${srcWin.name}' -p '#{pane_current_path}'`)).trim();
+    paneCwd = (await hostExec(`tmux display-message -t '${srcSess.name}:${srcWin.name}' -p '#{pane_current_path}'`)).trim();
   } catch { /* ok */ }
 
   // Move the window: tmux move-window -s source:window -t target:
   try {
-    await ssh(`tmux move-window -s '${srcSess.name}:${srcWin.name}' -t '${target}:'`);
+    await hostExec(`tmux move-window -s '${srcSess.name}:${srcWin.name}' -t '${target}:'`);
     console.log(`  \x1b[32m✓\x1b[0m ${srcSess.name}:${srcWin.name} → ${target}`);
     if (paneCwd) {
       console.log(`  \x1b[90m  cwd: ${paneCwd}\x1b[0m`);

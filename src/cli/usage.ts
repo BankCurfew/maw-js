@@ -31,6 +31,8 @@ export function usage() {
   maw archive <oracle>         Graceful oracle death (soul-sync → disable → archive)
   maw find <keyword>           Search ψ/memory/ across all oracles
   maw fleet health             Fleet health: dormancy, zombies, islands
+  maw fleet consolidate        Merge branches + push disabled oracles
+  maw fleet consolidate --remove  Also delete .disabled configs after push
   maw done <window>            Auto-save (/rrr + commit + push) then clean up
   maw done <window> --force   Skip auto-save, kill immediately
   maw done <window> --dry-run Show what would happen

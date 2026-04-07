@@ -1,4 +1,4 @@
-import { ssh } from "./ssh";
+import { hostExec } from "./ssh";
 import { loadConfig, cfgLimit } from "./config";
 
 /** Resolve tmux socket path from env or config. */
@@ -43,11 +43,11 @@ export class Tmux {
     this.socket = socket !== undefined ? socket : resolveSocket();
   }
 
-  /** Base runner — executes `tmux [-S socket] <subcommand> [args...]` via ssh. */
+  /** Base runner — executes `tmux [-S socket] <subcommand> [args...]` via hostExec. */
   async run(subcommand: string, ...args: (string | number)[]): Promise<string> {
     const socketFlag = this.socket ? `-S ${q(this.socket)} ` : "";
     const cmd = `tmux ${socketFlag}${subcommand} ${args.map(q).join(" ")}`;
-    return ssh(cmd, this.host);
+    return hostExec(cmd, this.host);
   }
 
   /** Like run() but swallows errors — for best-effort cleanup ops. */
@@ -193,10 +193,10 @@ export class Tmux {
     if (lines > 50) {
       return this.run("capture-pane", "-t", target, "-e", "-p", "-S", -lines);
     }
-    // For shorter captures, pipe through tail (needs raw ssh)
+    // For shorter captures, pipe through tail (needs raw hostExec)
     const socketFlag = this.socket ? `-S ${q(this.socket)} ` : "";
     const cmd = `tmux ${socketFlag}capture-pane -t ${q(target)} -e -p 2>/dev/null | tail -${lines}`;
-    return ssh(cmd, this.host);
+    return hostExec(cmd, this.host);
   }
 
   async resizePane(target: string, cols: number, rows: number): Promise<void> {
@@ -235,7 +235,7 @@ export class Tmux {
     const escaped = text.replace(/'/g, "'\\''");
     const socketFlag = this.socket ? `-S ${q(this.socket)} ` : "";
     const cmd = `printf '%s' '${escaped}' | tmux ${socketFlag}load-buffer -`;
-    await ssh(cmd, this.host);
+    await hostExec(cmd, this.host);
   }
 
   async pasteBuffer(target: string): Promise<void> {
@@ -287,5 +287,5 @@ export class Tmux {
   }
 }
 
-/** Default tmux instance (uses default host from ssh config). */
+/** Default tmux instance (uses default host from hostExec config). */
 export const tmux = new Tmux();

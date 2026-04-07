@@ -1,4 +1,4 @@
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
 import { tmux } from "../tmux";
 import { loadConfig, getEnvVars } from "../config";
 import { readdirSync, readFileSync } from "fs";
@@ -11,14 +11,14 @@ export async function fetchIssuePrompt(issueNum: number, repo?: string): Promise
   let repoSlug = repo;
   if (!repoSlug) {
     try {
-      const remote = await ssh("git remote get-url origin 2>/dev/null");
+      const remote = await hostExec("git remote get-url origin 2>/dev/null");
       const m = remote.match(/github\.com[:/](.+?)(?:\.git)?$/);
       if (m) repoSlug = m[1];
     } catch { /* expected */ }
   }
   if (!repoSlug) throw new Error("Could not detect repo — pass --repo org/name");
 
-  const json = await ssh(`gh issue view ${issueNum} --repo '${repoSlug}' --json title,body,labels`);
+  const json = await hostExec(`gh issue view ${issueNum} --repo '${repoSlug}' --json title,body,labels`);
   const issue = JSON.parse(json);
   const labels = (issue.labels || []).map((l: any) => l.name).join(", ");
   return [
@@ -30,7 +30,7 @@ export async function fetchIssuePrompt(issueNum: number, repo?: string): Promise
 }
 
 export async function resolveOracle(oracle: string): Promise<{ repoPath: string; repoName: string; parentDir: string }> {
-  const ghqOut = await ssh(`ghq list --full-path | grep -i '/${oracle}-oracle$' | head -1`);
+  const ghqOut = await hostExec(`ghq list --full-path | grep -i '/${oracle}-oracle$' | head -1`);
   if (ghqOut?.trim()) {
     const repoPath = ghqOut.trim();
     return { repoPath, repoName: repoPath.split("/").pop()!, parentDir: repoPath.replace(/\/[^/]+$/, "") };
@@ -41,7 +41,7 @@ export async function resolveOracle(oracle: string): Promise<{ repoPath: string;
       const config = JSON.parse(readFileSync(join(FLEET_DIR, file), "utf-8"));
       const win = (config.windows || []).find((w: any) => w.name === `${oracle}-oracle`);
       if (win?.repo) {
-        const fullPath = await ssh(`ghq list --full-path | grep -i '/${win.repo.replace(/^[^/]+\//, "")}$' | head -1`);
+        const fullPath = await hostExec(`ghq list --full-path | grep -i '/${win.repo.replace(/^[^/]+\//, "")}$' | head -1`);
         if (fullPath?.trim()) {
           const repoPath = fullPath.trim();
           return { repoPath, repoName: repoPath.split("/").pop()!, parentDir: repoPath.replace(/\/[^/]+$/, "") };
@@ -82,7 +82,7 @@ export async function resolveOracle(oracle: string): Promise<{ repoPath: string;
 }
 
 export async function findWorktrees(parentDir: string, repoName: string): Promise<{ path: string; name: string }[]> {
-  const lsOut = await ssh(`ls -d ${parentDir}/${repoName}.wt-* 2>/dev/null || true`);
+  const lsOut = await hostExec(`ls -d ${parentDir}/${repoName}.wt-* 2>/dev/null || true`);
   return lsOut.split("\n").filter(Boolean).map(p => ({
     path: p, name: p.split("/").pop()!.replace(`${repoName}.wt-`, ""),
   }));
@@ -115,7 +115,7 @@ export async function detectSession(oracle: string): Promise<string | null> {
 export async function setSessionEnv(session: string): Promise<void> {
   for (const [key, val] of Object.entries(getEnvVars())) {
     if (val.startsWith("pass:")) {
-      await ssh(`tmux set-environment -t '${session}' ${key} "$(pass show '${val.slice(5)}')"`)
+      await hostExec(`tmux set-environment -t '${session}' ${key} "$(pass show '${val.slice(5)}')"`)
     } else {
       await tmux.setEnvironment(session, key, val);
     }

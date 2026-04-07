@@ -112,8 +112,19 @@ export function startServer(port = +(process.env.MAW_PORT || loadConfig().port |
   };
 
   // HTTP server (always)
-  const server = Bun.serve({ port, fetch: fetchHandler, websocket: wsHandler });
-  console.log(`maw ${VERSION} serve → ${HTTP_URL} (${WS_URL})`);
+  // Security: bind to localhost unless peers are configured (federation needs network access)
+  const config = loadConfig();
+  const hasPeers = (config.peers?.length ?? 0) > 0 || (config.namedPeers?.length ?? 0) > 0;
+  const hostname = hasPeers ? "0.0.0.0" : "127.0.0.1";
+
+  if (hasPeers && !config.federationToken) {
+    console.warn(`\x1b[31m⚠ WARNING: peers configured but no federationToken set!\x1b[0m`);
+    console.warn(`\x1b[31m  Port ${port} is exposed to network WITHOUT authentication.\x1b[0m`);
+    console.warn(`\x1b[31m  Add "federationToken" (min 16 chars) to maw.config.json\x1b[0m`);
+  }
+
+  const server = Bun.serve({ port, hostname, fetch: fetchHandler, websocket: wsHandler });
+  console.log(`maw ${VERSION} serve → ${HTTP_URL} (${WS_URL}) [${hostname}]`);
 
   // HTTPS server (if TLS configured)
   const tlsCfg = loadConfig().tls;

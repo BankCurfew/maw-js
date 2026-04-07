@@ -1,4 +1,4 @@
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
 import { loadConfig } from "../config";
 import { loadFleetEntries } from "./fleet-load";
 import { cmdSoulSync } from "./soul-sync";
@@ -39,7 +39,7 @@ export async function cmdBud(name: string, opts: BudOpts = {}) {
   let parentName = opts.from;
   if (!parentName) {
     try {
-      const cwd = (await ssh("tmux display-message -p '#{pane_current_path}'")).trim();
+      const cwd = (await hostExec("tmux display-message -p '#{pane_current_path}'")).trim();
       const repoName = cwd.split("/").pop() || "";
       parentName = repoName.replace(/-oracle$/, "").replace(/\.wt-.*$/, "");
     } catch {
@@ -72,7 +72,7 @@ export async function cmdBud(name: string, opts: BudOpts = {}) {
   } else {
     console.log(`  \x1b[36m⏳\x1b[0m creating repo: ${budRepoSlug}...`);
     try {
-      await ssh(`gh repo create ${budRepoSlug} --private --clone=false`);
+      await hostExec(`gh repo create ${budRepoSlug} --private --add-readme`);
       console.log(`  \x1b[32m✓\x1b[0m repo created on GitHub`);
     } catch (e: any) {
       if (e.message?.includes("already exists")) {
@@ -81,7 +81,7 @@ export async function cmdBud(name: string, opts: BudOpts = {}) {
         throw e;
       }
     }
-    await ssh(`ghq get -p github.com/${budRepoSlug}`);
+    await hostExec(`ghq get -p github.com/${budRepoSlug}`);
     console.log(`  \x1b[32m✓\x1b[0m cloned via ghq`);
   }
 
@@ -157,9 +157,9 @@ Rule 6: Oracle Never Pretends to Be Human
 
   // 6. Initial git commit + push
   try {
-    await ssh(`git -C '${budRepoPath}' add -A`);
-    await ssh(`git -C '${budRepoPath}' commit -m 'feat: birth — budded from ${parentName}'`);
-    await ssh(`git -C '${budRepoPath}' push -u origin HEAD`);
+    await hostExec(`git -C '${budRepoPath}' add -A`);
+    await hostExec(`git -C '${budRepoPath}' commit -m 'feat: birth — budded from ${parentName}'`);
+    await hostExec(`git -C '${budRepoPath}' push -u origin HEAD`);
     console.log(`  \x1b[32m✓\x1b[0m initial commit pushed`);
   } catch {
     console.log(`  \x1b[33m⚠\x1b[0m git push failed (may need manual setup)`);

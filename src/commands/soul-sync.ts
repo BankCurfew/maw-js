@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, copyFileSync, mkdirSync, appendFileSync } from "fs";
 import { join } from "path";
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
 import { loadConfig } from "../config";
 import { loadFleet, type FleetSession } from "./fleet-load";
 
@@ -44,7 +44,7 @@ export function syncDir(srcDir: string, dstDir: string): number {
  */
 async function resolveOraclePath(name: string): Promise<string | null> {
   try {
-    const out = await ssh(`ghq list --full-path | grep -i '/${name}-oracle$' | head -1`);
+    const out = await hostExec(`ghq list --full-path | grep -i '/${name}-oracle$' | head -1`);
     if (out?.trim()) return out.trim();
   } catch { /* not found */ }
 
@@ -129,7 +129,7 @@ export async function cmdSoulSync(target?: string, opts?: { from?: boolean; cwd?
   let cwd = opts?.cwd || "";
   if (!cwd) {
     try {
-      cwd = (await ssh("tmux display-message -p '#{pane_current_path}'")).trim();
+      cwd = (await hostExec("tmux display-message -p '#{pane_current_path}'")).trim();
     } catch {
       cwd = process.cwd();
     }
@@ -142,7 +142,7 @@ export async function cmdSoulSync(target?: string, opts?: { from?: boolean; cwd?
   // Resolve current oracle path (may be worktree, use git common dir)
   let oraclePath = cwd;
   try {
-    const commonDir = (await ssh(`git -C '${cwd}' rev-parse --git-common-dir`)).trim();
+    const commonDir = (await hostExec(`git -C '${cwd}' rev-parse --git-common-dir`)).trim();
     if (commonDir && commonDir !== ".git") {
       const mainGit = commonDir.startsWith("/") ? commonDir : join(cwd, commonDir);
       oraclePath = join(mainGit, "..");

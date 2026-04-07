@@ -1,4 +1,4 @@
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
 import { loadConfig } from "../config";
 import { loadFleetEntries } from "./fleet-load";
 import { cmdSoulSync } from "./soul-sync";
@@ -69,7 +69,7 @@ export async function cmdArchive(oracleName: string, opts: { dryRun?: boolean } 
       console.log(`  \x1b[36m⬡\x1b[0m [dry-run] would archive: gh repo archive ${repoSlug}`);
     } else {
       try {
-        await ssh(`gh repo archive ${repoSlug} --yes`);
+        await hostExec(`gh repo archive ${repoSlug} --yes`);
         console.log(`  \x1b[32m✓\x1b[0m GitHub repo archived: ${repoSlug}`);
       } catch (e: any) {
         console.log(`  \x1b[33m⚠\x1b[0m archive failed: ${e.message || e}`);

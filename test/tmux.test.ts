@@ -12,11 +12,13 @@ mock.module("../src/config", () => ({
 }));
 
 // Mock ssh module — intercept the command string
+const mockExec = async (cmd: string, _host?: string) => {
+  commands.push(cmd);
+  return sshResult;
+};
 mock.module("../src/ssh", () => ({
-  ssh: async (cmd: string, _host?: string) => {
-    commands.push(cmd);
-    return sshResult;
-  },
+  hostExec: mockExec,
+  ssh: mockExec,
 }));
 
 // Ensure no socket env var leaks into tests
@@ -257,8 +259,10 @@ describe("Tmux", () => {
     test("propagates stderr from tmux errors (no 2>/dev/null swallow)", async () => {
       // Regression: tmux.run() previously wrapped every command with
       // `2>/dev/null`, making wake failures surface as bare "exit 1".
+      const throwExec = async (_cmd: string) => { throw new Error("can't find session: neo"); };
       mock.module("../src/ssh", () => ({
-        ssh: async (_cmd: string) => { throw new Error("can't find session: neo"); },
+        hostExec: throwExec,
+        ssh: throwExec,
       }));
       const t2 = new Tmux();
       await expect(t2.run("list-windows", "-t", "neo")).rejects.toThrow("can't find session: neo");
@@ -266,8 +270,10 @@ describe("Tmux", () => {
 
     test("built command does not include 2>/dev/null", async () => {
       let captured = "";
+      const capExec = async (cmd: string) => { captured = cmd; return ""; };
       mock.module("../src/ssh", () => ({
-        ssh: async (cmd: string) => { captured = cmd; return ""; },
+        hostExec: capExec,
+        ssh: capExec,
       }));
       const t2 = new Tmux();
       await t2.run("has-session", "-t", "neo");
@@ -280,8 +286,10 @@ describe("Tmux", () => {
     test("swallows errors", async () => {
       // Override mock to throw
       const orig = commands;
+      const throwExec2 = async () => { throw new Error("session not found"); };
       mock.module("../src/ssh", () => ({
-        ssh: async () => { throw new Error("session not found"); },
+        hostExec: throwExec2,
+        ssh: throwExec2,
       }));
       const t2 = new Tmux();
       const result = await t2.tryRun("kill-session", "-t", "nonexistent");
@@ -294,11 +302,13 @@ describe("Tmux", () => {
   describe("host", () => {
     test("passes host to ssh", async () => {
       let capturedHost: string | undefined;
+      const hostMock = async (_cmd: string, host?: string) => {
+        capturedHost = host;
+        return "";
+      };
       mock.module("../src/ssh", () => ({
-        ssh: async (_cmd: string, host?: string) => {
-          capturedHost = host;
-          return "";
-        },
+        hostExec: hostMock,
+        ssh: hostMock,
       }));
       const remote = new Tmux("black.local");
       await remote.killSession("test");

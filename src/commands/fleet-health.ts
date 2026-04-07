@@ -1,4 +1,4 @@
-import { listSessions, ssh } from "../ssh";
+import { listSessions, hostExec } from "../ssh";
 import { loadFleetEntries } from "./fleet-load";
 import { join } from "path";
 import { loadConfig } from "../config";
@@ -30,7 +30,7 @@ export async function cmdFleetHealth() {
     if (mainWindow?.repo) {
       const repoPath = join(ghqRoot, "github.com", mainWindow.repo);
       try {
-        const ts = await ssh(`git -C '${repoPath}' log -1 --format='%ci' 2>/dev/null`);
+        const ts = await hostExec(`git -C '${repoPath}' log -1 --format='%ci' 2>/dev/null`);
         if (ts.trim()) {
           const d = new Date(ts.trim());
           daysSinceActivity = Math.floor((now - d.getTime()) / 86400000);

@@ -7,6 +7,7 @@ import { cmdFederationStatus } from "../commands/federation";
 import { cmdReunion } from "../commands/reunion";
 import { cmdSoulSync } from "../commands/soul-sync";
 import { cmdFleetHealth } from "../commands/fleet-health";
+import { cmdFleetConsolidate } from "../commands/fleet-consolidate";
 import { cmdArchive } from "../commands/archive";
 import { cmdFind } from "../commands/find";
 
@@ -23,6 +24,8 @@ export async function routeFleet(cmd: string, args: string[]): Promise<boolean> 
       await cmdFleetValidate();
     } else if (sub === "health") {
       await cmdFleetHealth();
+    } else if (sub === "consolidate") {
+      await cmdFleetConsolidate({ dryRun: args.includes("--dry-run"), remove: args.includes("--remove") });
     } else if (sub === "sync") {
       await cmdFleetSyncConfigs();
     } else if (sub === "sync-windows" || sub === "syncwin") {

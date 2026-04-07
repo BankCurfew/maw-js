@@ -1,5 +1,5 @@
 import { readdirSync } from "fs";
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
 import { tmux } from "../tmux";
 import { loadConfig, buildCommandInDir, getEnvVars } from "../config";
 import { FLEET_DIR } from "../paths";
@@ -27,7 +27,7 @@ export async function cmdSleep() {
 async function resumeActiveItems() {
   const repo = "laris-co/pulse-oracle";
   try {
-    const issuesJson = await ssh(
+    const issuesJson = await hostExec(
       `gh issue list --repo ${repo} --state open --json number,title,labels --limit 50`
     );
     const issues: { number: number; title: string; labels: { name: string }[] }[] = JSON.parse(issuesJson || "[]");
@@ -82,7 +82,7 @@ async function respawnMissingWorktrees(sessions: FleetSession[]): Promise<number
 
       let wtPaths: string[] = [];
       try {
-        const raw = await ssh(`ls -d ${parentDir}/${repoName}.wt-* 2>/dev/null || true`);
+        const raw = await hostExec(`ls -d ${parentDir}/${repoName}.wt-* 2>/dev/null || true`);
         wtPaths = raw.split("\n").filter(Boolean);
       } catch { continue; }
 

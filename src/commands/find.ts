@@ -1,4 +1,4 @@
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
 import { loadConfig } from "../config";
 import { loadFleet } from "./fleet-load";
 import { join } from "path";
@@ -51,13 +51,13 @@ export async function cmdFind(keyword: string, opts: { oracle?: string } = {}) {
   // Search each oracle
   for (const { name, psiPath } of targets) {
     try {
-      const out = await ssh(`grep -ril '${keyword.replace(/'/g, "\\'")}' '${psiPath}' 2>/dev/null || true`);
+      const out = await hostExec(`grep -ril '${keyword.replace(/'/g, "\\'")}' '${psiPath}' 2>/dev/null || true`);
       const files = out.trim().split("\n").filter(Boolean);
 
       for (const file of files) {
         // Get matching line for context
         try {
-          const match = await ssh(`grep -m1 -i '${keyword.replace(/'/g, "\\'")}' '${file}' 2>/dev/null || true`);
+          const match = await hostExec(`grep -m1 -i '${keyword.replace(/'/g, "\\'")}' '${file}' 2>/dev/null || true`);
           results.push({
             oracle: name,
             file: file.replace(psiPath + "/", ""),
