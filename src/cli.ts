@@ -47,6 +47,11 @@ function usage() {
   maw overview neo hermes   Only specific oracles
   maw overview --kill       Tear down overview
   maw done <window>            Clean up finished worktree window
+  maw sovereign status          Oracle-as-Sovereign ψ/ status
+  maw sovereign migrate <oracle> Migrate ψ/ to sovereign layout
+  maw sovereign migrate --all   Migrate all oracles
+  maw sovereign rollback <oracle> Restore original layout
+  maw sovereign verify          Health check all symlinks
   maw bud <name> [opts]        Spawn new child oracle (budding)
   maw bud <name> --from <oracle> --approved-by bank
   maw bud <name> --dry-run     Show plan without executing
@@ -286,6 +291,9 @@ if (cmd === "--version" || cmd === "-v") {
     }
     await cmdWake(args[1], wakeOpts);
   }
+} else if (cmd === "sovereign" || cmd === "sov") {
+  const { cmdSovereign } = await import("./commands/sovereign");
+  await cmdSovereign(args.slice(1));
 } else if (cmd === "bud") {
   const budName = args[1];
   if (!budName) { console.error("usage: maw bud <name> --approved-by <human> [--from <oracle>] [--dry-run]"); process.exit(1); }

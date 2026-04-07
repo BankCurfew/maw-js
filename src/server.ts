@@ -647,6 +647,12 @@ app.get("/api/anti-patterns", (c) => {
   return c.json(runAntiPatternScan());
 });
 
+// --- Sovereign Status API ---
+app.get("/api/sovereign", (c) => {
+  const { getSovereignStatus, verifySovereignHealth } = require("./commands/sovereign");
+  return c.json({ status: getSovereignStatus(), health: verifySovereignHealth() });
+});
+
 // --- Wake API (for health page restart when no tmux session exists) ---
 app.post("/api/wake/:oracle", async (c) => {
   const oracle = c.req.param("oracle");
