@@ -8,6 +8,7 @@ import { cmdOverview } from "./commands/overview";
 import { cmdWake, fetchIssuePrompt } from "./commands/wake";
 import { cmdPulseAdd, cmdPulseLs } from "./commands/pulse";
 import { cmdPulseScan } from "./anti-patterns";
+import { cmdBud } from "./commands/bud";
 import { cmdOracleList, cmdOracleAbout } from "./commands/oracle";
 import { cmdWakeAll, cmdSleep, cmdFleetLs, cmdFleetRenumber, cmdFleetValidate, cmdFleetSync } from "./commands/fleet";
 import { cmdFleetInit } from "./commands/fleet-init";
@@ -46,6 +47,9 @@ function usage() {
   maw overview neo hermes   Only specific oracles
   maw overview --kill       Tear down overview
   maw done <window>            Clean up finished worktree window
+  maw bud <name> [opts]        Spawn new child oracle (budding)
+  maw bud <name> --from <oracle> --approved-by bank
+  maw bud <name> --dry-run     Show plan without executing
   maw pulse add "task" [opts] Create issue + wake oracle
   maw pulse scan               Anti-pattern health check (Zombie/Island)
   maw pulse scan --json        JSON output for dashboard/API
@@ -282,6 +286,17 @@ if (cmd === "--version" || cmd === "-v") {
     }
     await cmdWake(args[1], wakeOpts);
   }
+} else if (cmd === "bud") {
+  const budName = args[1];
+  if (!budName) { console.error("usage: maw bud <name> --approved-by <human> [--from <oracle>] [--dry-run]"); process.exit(1); }
+  const budOpts: { from?: string; repo?: string; dryRun?: boolean; approvedBy?: string } = {};
+  for (let i = 2; i < args.length; i++) {
+    if (args[i] === "--from" && args[i + 1]) budOpts.from = args[++i];
+    else if (args[i] === "--repo" && args[i + 1]) budOpts.repo = args[++i];
+    else if (args[i] === "--approved-by" && args[i + 1]) budOpts.approvedBy = args[++i];
+    else if (args[i] === "--dry-run") budOpts.dryRun = true;
+  }
+  await cmdBud(budName, budOpts);
 } else if (cmd === "pulse") {
   const subcmd = args[1];
   if (subcmd === "add") {
