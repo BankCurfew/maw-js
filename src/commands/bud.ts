@@ -9,11 +9,13 @@
  * 5. Dormancy timeline tracked (budded_at for TTL)
  */
 
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync } from "fs";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync, symlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { ssh } from "../ssh";
 import { loadConfig } from "../config";
+
+const SOVEREIGN_ROOT = join(homedir(), ".oracle", "ψ");
 import { cmdWake } from "./wake";
 
 const FLEET_DIR = join(import.meta.dir, "../../fleet");
@@ -214,25 +216,38 @@ export async function cmdBud(name: string, opts: BudOptions) {
   }
 
   // ═══════════════════════════════════════════════
-  // Step 2: Initialize ψ/ vault
+  // Step 2: Initialize ψ/ vault (sovereign layout)
   // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 2/8:\x1b[0m Initialize ψ/ vault`);
-  const psiDirs = [
-    "ψ/inbox/handoff",
-    "ψ/memory/learnings",
-    "ψ/memory/retrospectives",
-    "ψ/writing",
-    "ψ/lab",
-    "ψ/active",
+  console.log(`\x1b[36mStep 2/8:\x1b[0m Initialize ψ/ vault (sovereign)`);
+  const psiSubDirs = [
+    "inbox/handoff",
+    "memory/learnings",
+    "memory/retrospectives",
+    "memory/resonance",
+    "writing",
+    "lab",
+    "active",
+    "archive",
+    "outbox",
   ];
-  for (const dir of psiDirs) {
-    mkdirSync(join(repoPath, dir), { recursive: true });
+
+  // Sovereign layout: ψ/ lives at ~/.oracle/ψ/{name}/, repo gets symlink
+  const sovereignDir = join(SOVEREIGN_ROOT, budName);
+  mkdirSync(sovereignDir, { recursive: true });
+  for (const dir of psiSubDirs) {
+    mkdirSync(join(sovereignDir, dir), { recursive: true });
   }
-  // Add .gitkeep files
-  for (const dir of psiDirs) {
-    const keepPath = join(repoPath, dir, ".gitkeep");
+  // Add .gitkeep files in sovereign dir
+  for (const dir of psiSubDirs) {
+    const keepPath = join(sovereignDir, dir, ".gitkeep");
     if (!existsSync(keepPath)) writeFileSync(keepPath, "");
   }
+  // Create symlink: repo/ψ → ~/.oracle/ψ/{name}
+  const psiSymlinkPath = join(repoPath, "ψ");
+  if (!existsSync(psiSymlinkPath)) {
+    symlinkSync(sovereignDir, psiSymlinkPath);
+  }
+
   // Security: .gitignore to prevent accidental secret commits
   const gitignore = `.env
 .env.*
@@ -242,9 +257,11 @@ credentials.json
 secrets/
 .mcp.json
 node_modules/
+ψ
 `;
   writeFileSync(join(repoPath, ".gitignore"), gitignore);
-  console.log(`  \x1b[32m✓\x1b[0m ψ/ vault initialized (${psiDirs.length} directories + .gitignore)`);
+  console.log(`  \x1b[32m✓\x1b[0m ψ/ sovereign vault at ${sovereignDir}`);
+  console.log(`  \x1b[32m✓\x1b[0m symlink: repo/ψ → ${sovereignDir}`);
 
   // ═══════════════════════════════════════════════
   // Step 3: Generate CLAUDE.md (identity from parent DNA)
@@ -334,7 +351,7 @@ node_modules/
   // ═══════════════════════════════════════════════
   console.log(`\x1b[36mStep 7/8:\x1b[0m Initial commit`);
   try {
-    await ssh(`cd "${repoPath}" && git add CLAUDE.md .gitignore ψ/ && git commit -m "🧬 Birth: ${oracleDisplayName} — budded from ${parentName || 'root'}" --allow-empty`);
+    await ssh(`cd "${repoPath}" && git add CLAUDE.md .gitignore && git commit -m "🧬 Birth: ${oracleDisplayName} — budded from ${parentName || 'root'} (sovereign)" --allow-empty`);
     await ssh(`cd "${repoPath}" && git push origin HEAD 2>/dev/null || git push -u origin main 2>/dev/null || true`);
     console.log(`  \x1b[32m✓\x1b[0m Committed and pushed`);
   } catch {
@@ -426,10 +443,11 @@ sync_peers: [${parentName ? `"${parentName}"` : ""}]
 4. **Curiosity Creates Existence** — Every problem solved creates understanding
 5. **Form and Formless** — Code is form; the mission is formless
 
-## Brain Structure
+## Brain Structure (Sovereign)
 
 \`\`\`
-ψ/ → inbox/ (handoffs, focus) | memory/ (learnings, retros) | writing/ | lab/ | active/ (ephemeral)
+~/.oracle/ψ/${budName}/ → inbox/ | memory/ (learnings, retros, resonance) | writing/ | lab/ | active/ | archive/ | outbox/
+repo/ψ → symlink to above
 \`\`\`
 
 ---
@@ -453,7 +471,7 @@ function printPlan(budName: string, repoName: string, displayName: string, paren
   const sessionName = `${String(fleetNum).padStart(2, "0")}-${budName}`;
 
   console.log(`  1. Create repo:      gh repo create ${ORG}/${repoName} --private`);
-  console.log(`  2. Init ψ/ vault:    6 directories + .gitkeep`);
+  console.log(`  2. Init ψ/ vault:    Sovereign at ~/.oracle/ψ/${budName} + symlink`);
   console.log(`  3. Generate:         CLAUDE.md (identity stub)`);
   console.log(`  4. Fleet config:     ${sessionName}.json (budded_from: ${parentName || "root"})`);
   console.log(`  5. Register:         Birth issue on ${ORG}/${repoName}`);
