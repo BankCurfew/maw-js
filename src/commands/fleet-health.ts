@@ -82,14 +82,25 @@ export async function cmdFleetHealth() {
   const islands = rows.filter(r => r.flag.includes("island")).length;
   const zombies = rows.filter(r => r.flag.includes("zombie")).length;
 
-  // Show disabled oracles
+  // Show disabled oracles with detail
   const disabledFiles = readDir(FLEET_DIR).filter((f: string) => f.endsWith(".disabled"));
   if (disabledFiles.length > 0) {
     console.log();
     console.log(`  \x1b[90m── Disabled (${disabledFiles.length}) ──\x1b[0m`);
     for (const f of disabledFiles) {
-      const dName = f.replace(/^\d+-/, "").replace(".json.disabled", "");
-      console.log(`  \x1b[90m  ✕ ${dName}\x1b[0m`);
+      try {
+        const cfg = JSON.parse(require("fs").readFileSync(join(FLEET_DIR, f), "utf-8"));
+        const dName = f.replace(/^\d+-/, "").replace(".json.disabled", "");
+        const num = f.match(/^(\d+)/)?.[1] || "?";
+        const wins = cfg.windows?.length || 0;
+        const repo = cfg.windows?.[0]?.repo || "?";
+        const peers = cfg.sync_peers?.length || 0;
+        const repoExists = require("fs").existsSync(join(ghqRoot, "github.com", repo));
+        console.log(`  \x1b[90m  ${num.padStart(2)}  ${dName.padEnd(20)} ${String(wins).padStart(2)} win  repo:${repoExists ? "yes" : "no "}  peers:${peers}\x1b[0m`);
+      } catch {
+        const dName = f.replace(/^\d+-/, "").replace(".json.disabled", "");
+        console.log(`  \x1b[90m  ✕ ${dName}\x1b[0m`);
+      }
     }
   }
 
