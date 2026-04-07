@@ -7,6 +7,7 @@ import { cmdCompletions } from "./commands/completions";
 import { cmdOverview } from "./commands/overview";
 import { cmdWake, fetchIssuePrompt } from "./commands/wake";
 import { cmdPulseAdd, cmdPulseLs } from "./commands/pulse";
+import { cmdPulseScan } from "./anti-patterns";
 import { cmdOracleList, cmdOracleAbout } from "./commands/oracle";
 import { cmdWakeAll, cmdSleep, cmdFleetLs, cmdFleetRenumber, cmdFleetValidate, cmdFleetSync } from "./commands/fleet";
 import { cmdFleetInit } from "./commands/fleet-init";
@@ -46,6 +47,8 @@ function usage() {
   maw overview --kill       Tear down overview
   maw done <window>            Clean up finished worktree window
   maw pulse add "task" [opts] Create issue + wake oracle
+  maw pulse scan               Anti-pattern health check (Zombie/Island)
+  maw pulse scan --json        JSON output for dashboard/API
   maw pulse cleanup [--dry-run] Clean stale/orphan worktrees
   maw board done #<issue> [msg] Mark board item Done + close issue
   maw view <agent> [window]   Grouped tmux session (interactive attach)
@@ -295,6 +298,9 @@ if (cmd === "--version" || cmd === "-v") {
   } else if (subcmd === "ls" || subcmd === "list") {
     const sync = args.includes("--sync");
     await cmdPulseLs({ sync });
+  } else if (subcmd === "scan" || subcmd === "health") {
+    const json = args.includes("--json");
+    cmdPulseScan({ json });
   } else if (subcmd === "cleanup" || subcmd === "clean") {
     const { scanWorktrees, cleanupWorktree } = await import("./worktrees");
     const worktrees = await scanWorktrees();
