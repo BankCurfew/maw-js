@@ -36,6 +36,13 @@ interface FleetConfig {
   sync_peers?: string[];
 }
 
+/** Reserved oracle names — cannot be used as bud names */
+const RESERVED_NAMES = new Set([
+  "bob", "dev", "qa", "security", "hr", "admin", "data", "doc", "editor",
+  "designer", "researcher", "writer", "botdev", "creator", "aia", "fe", "pa",
+  "maw", "oracle", "root", "pulse", "system",
+]);
+
 // --- Helpers ---
 
 function logToFeed(oracle: string, message: string) {
@@ -106,13 +113,24 @@ function getNextFleetNumber(): number {
 export async function cmdBud(name: string, opts: BudOptions) {
   const ghqRoot = loadConfig().ghqRoot;
   const parentName = opts.from || detectParentOracle();
-  // Normalize: "dashboard-dev" → "dashboard-dev", "Dashboard" → "dashboard"
-  // Strip "-oracle" suffix if user included it
-  const budName = name.toLowerCase().replace(/[^a-z0-9-]/g, "").replace(/-oracle$/, "");
+  // Normalize: "dashboard_dev" → "dashboard-dev", "Dashboard" → "dashboard"
+  // Convert underscores to hyphens, strip "-oracle" suffix if user included it
+  const budName = name.toLowerCase().replace(/_/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-oracle$/, "").replace(/^-+|-+$/g, "");
+
+  if (!budName) {
+    console.error(`\x1b[31m✗ DENIED\x1b[0m — Invalid oracle name: "${name}"`);
+    process.exit(1);
+  }
   // Title case for display: "dashboard-dev" → "DashboardDev"
   const titleCase = budName.split("-").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join("");
   const repoName = `${titleCase}-Oracle`;
   const oracleDisplayName = `${titleCase}-Oracle`;
+
+  // Validate: reserved names
+  if (RESERVED_NAMES.has(budName)) {
+    console.error(`\x1b[31m✗ DENIED\x1b[0m — "${budName}" is a reserved oracle name`);
+    process.exit(1);
+  }
 
   console.log(`\n\x1b[36m🧬 maw bud\x1b[0m — Oracle Reproduction\n`);
   console.log(`  Parent:  ${parentName || "(none — root oracle)"}`);
@@ -150,7 +168,8 @@ export async function cmdBud(name: string, opts: BudOptions) {
   // ═══════════════════════════════════════════════
   // SECURITY GATE #2: Credential isolation
   // ═══════════════════════════════════════════════
-  console.log(`  \x1b[32m✓\x1b[0m Gate #2: Fresh credentials (no parent inheritance)`);
+  // Gate #2 enforcement is in Step 6 (soul-sync seed) where sensitive content is filtered
+  console.log(`  \x1b[32m✓\x1b[0m Gate #2: Fresh credentials (no parent inheritance — enforced in Step 6 seed filter)`);
 
   // ═══════════════════════════════════════════════
   // SECURITY GATE #5: Dormancy timeline
@@ -214,7 +233,18 @@ export async function cmdBud(name: string, opts: BudOptions) {
     const keepPath = join(repoPath, dir, ".gitkeep");
     if (!existsSync(keepPath)) writeFileSync(keepPath, "");
   }
-  console.log(`  \x1b[32m✓\x1b[0m ψ/ vault initialized (${psiDirs.length} directories)`);
+  // Security: .gitignore to prevent accidental secret commits
+  const gitignore = `.env
+.env.*
+*.key
+*.pem
+credentials.json
+secrets/
+.mcp.json
+node_modules/
+`;
+  writeFileSync(join(repoPath, ".gitignore"), gitignore);
+  console.log(`  \x1b[32m✓\x1b[0m ψ/ vault initialized (${psiDirs.length} directories + .gitignore)`);
 
   // ═══════════════════════════════════════════════
   // Step 3: Generate CLAUDE.md (identity from parent DNA)
@@ -234,7 +264,7 @@ export async function cmdBud(name: string, opts: BudOptions) {
     name: sessionName,
     windows: [{ name: oracleDisplayName, repo: `${ORG}/${repoName}` }],
     budded_from: parentName || undefined,
-    budded_at: buddedAt,
+    budded_at: buddedAt, // Gate #5: dormancy enforced by maw pulse scan (30d suspend, 90d archive)
     sync_peers: parentName ? [parentName] : [],
   };
   const fleetPath = join(FLEET_DIR, `${sessionName}.json`);
@@ -282,8 +312,8 @@ export async function cmdBud(name: string, opts: BudOptions) {
         let seeded = 0;
         for (const file of files) {
           const content = readFileSync(join(parentLearnings, file), "utf-8");
-          // Security Gate #2: Skip sensitive content
-          if (/customer|credential|secret|password|\.env|portfolio/i.test(content)) continue;
+          // Security Gate #2: Skip sensitive content (expanded per Security-Oracle review)
+          if (/customer|credential|secret|password|\.env|portfolio|API_KEY|SUPABASE|TOKEN|Bearer|sk-[a-zA-Z0-9]|eyJ[a-zA-Z0-9]|ghp_|xoxb-|xoxp-|PRIVATE.KEY/i.test(content)) continue;
           const attributed = content + `\n\n---\n*Seeded from ${parentName} via maw bud (hand-off)*\n`;
           writeFileSync(join(targetLearnings, file), attributed);
           seeded++;
@@ -304,7 +334,7 @@ export async function cmdBud(name: string, opts: BudOptions) {
   // ═══════════════════════════════════════════════
   console.log(`\x1b[36mStep 7/8:\x1b[0m Initial commit`);
   try {
-    await ssh(`cd "${repoPath}" && git add -A && git commit -m "🧬 Birth: ${oracleDisplayName} — budded from ${parentName || 'root'}" --allow-empty`);
+    await ssh(`cd "${repoPath}" && git add CLAUDE.md .gitignore ψ/ && git commit -m "🧬 Birth: ${oracleDisplayName} — budded from ${parentName || 'root'}" --allow-empty`);
     await ssh(`cd "${repoPath}" && git push origin HEAD 2>/dev/null || git push -u origin main 2>/dev/null || true`);
     console.log(`  \x1b[32m✓\x1b[0m Committed and pushed`);
   } catch {
