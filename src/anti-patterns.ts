@@ -43,6 +43,13 @@ const LOOPS_PATH = join(__dirname, "../loops.json");
 /** Oracles with legitimately low commit output — check thread/doc output instead */
 const LOW_COMMIT_ROLES = new Set(["hr", "doc", "researcher", "editor"]);
 
+/** Feed name → EXPECTED_ORACLES key alias (when feed name doesn't match) */
+const FEED_NAME_ALIASES: Record<string, string> = {
+  doccon: "doc",
+  "doccon-oracle": "doc",
+  bob: "bob",  // BoB-Oracle → bob (already works but BoB casing is tricky)
+};
+
 // Thresholds (in hours)
 const ZOMBIE_WARNING_H = 24;
 const ZOMBIE_CRITICAL_H = 48;
@@ -78,7 +85,9 @@ function getEnabledLoops(): Map<string, number> {
   const map = new Map<string, number>();
   try {
     if (!existsSync(LOOPS_PATH)) return map;
-    const loops = JSON.parse(readFileSync(LOOPS_PATH, "utf-8")) as Array<{ oracle: string; enabled: boolean }>;
+    const data = JSON.parse(readFileSync(LOOPS_PATH, "utf-8"));
+    // loops.json is { enabled, loops: [...] } — not a flat array
+    const loops: Array<{ oracle: string; enabled: boolean }> = Array.isArray(data) ? data : (data.loops || []);
     for (const loop of loops) {
       if (loop.enabled) {
         map.set(loop.oracle, (map.get(loop.oracle) || 0) + 1);
@@ -162,10 +171,12 @@ export function detectZombies(): AntiPatternFlag[] {
   const enabledLoops = getEnabledLoops();
   const lastFeedEvents = getLastFeedEvents();
 
-  // Normalize oracle names in feed log (e.g. "Dev-Oracle" → "dev")
+  // Normalize oracle names in feed log (e.g. "Dev-Oracle" → "dev", "DocCon-Oracle" → "doc")
   const feedByKey = new Map<string, number>();
   for (const [name, ts] of lastFeedEvents) {
-    const key = name.replace("-Oracle", "").toLowerCase();
+    let key = name.replace("-Oracle", "").toLowerCase();
+    // Apply alias mapping (e.g. "doccon" → "doc")
+    key = FEED_NAME_ALIASES[key] || key;
     const existing = feedByKey.get(key) || 0;
     if (ts > existing) feedByKey.set(key, ts);
   }
@@ -228,10 +239,11 @@ export function detectIslands(): AntiPatternFlag[] {
   const logEntries = getRecentLogEntries(ISLAND_COMMS_DAYS);
   const lastFeedEvents = getLastFeedEvents();
 
-  // Normalize feed keys
+  // Normalize feed keys (e.g. "DocCon-Oracle" → "doc")
   const feedByKey = new Map<string, number>();
   for (const [name, ts] of lastFeedEvents) {
-    const key = name.replace("-Oracle", "").toLowerCase();
+    let key = name.replace("-Oracle", "").toLowerCase();
+    key = FEED_NAME_ALIASES[key] || key;
     const existing = feedByKey.get(key) || 0;
     if (ts > existing) feedByKey.set(key, ts);
   }
