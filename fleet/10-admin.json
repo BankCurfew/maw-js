@@ -1,1 +1,14 @@
-{ "name": "10-admin", "windows": [{ "name": "Admin-Oracle", "repo": "BankCurfew/Admin-Oracle" }] }
+{
+  "name": "10-admin",
+  "windows": [
+    {
+      "name": "Admin-Oracle",
+      "repo": "BankCurfew/Admin-Oracle"
+    }
+  ],
+  "sync_peers": [
+    "bob",
+    "dev",
+    "security"
+  ]
+}
