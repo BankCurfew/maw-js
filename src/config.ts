@@ -4,8 +4,13 @@ import { execSync } from "child_process";
 import { CONFIG_FILE } from "./paths";
 
 function detectGhqRoot(): string {
-  try { return execSync("ghq root", { encoding: "utf-8" }).trim(); }
-  catch { return join(require("os").homedir(), "Code"); }
+  try {
+    const root = execSync("ghq root", { encoding: "utf-8" }).trim();
+    // ghq may store repos under <root>/github.com/... — prefer that if it exists
+    const ghRoot = join(root, "github.com");
+    if (require("fs").existsSync(ghRoot)) return ghRoot;
+    return root;
+  } catch { return join(require("os").homedir(), "Code/github.com"); }
 }
 
 export type TriggerEvent = "issue-close" | "pr-merge" | "agent-idle" | "agent-wake" | "agent-crash";
@@ -483,9 +488,11 @@ export function buildCommand(agentName: string): string {
   return `${prefix} ${cmd}`;
 }
 
-/** Wrap buildCommand with cd to ensure correct working directory after reboot */
+/** Wrap buildCommand with cd to ensure correct working directory after reboot.
+ *  Parenthesize buildCommand so cd applies to both primary + fallback in `cmd || fallback`.
+ *  Otherwise shell precedence (`&&` tighter than `||`) makes the fallback run without cd. */
 export function buildCommandInDir(agentName: string, cwd: string): string {
-  return `cd '${cwd}' && ${buildCommand(agentName)}`;
+  return `cd '${cwd}' && { ${buildCommand(agentName)}; }`;
 }
 
 /** Get env vars from config (for tmux set-environment) */
