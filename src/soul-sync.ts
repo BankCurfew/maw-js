@@ -57,9 +57,11 @@ function findFleetByOracle(oracleName: string): FleetConfig | null {
   try {
     for (const file of readdirSync(FLEET_DIR).filter(f => f.endsWith(".json"))) {
       const config: FleetConfig = JSON.parse(readFileSync(join(FLEET_DIR, file), "utf-8"));
-      // Match by session name suffix or window name
+      // Match by session name suffix (exact) or window name (exact, strip -Oracle)
       if (config.name.endsWith(`-${oracleName}`)) return config;
-      const win = config.windows?.find(w => w.name.toLowerCase().includes(oracleName.toLowerCase()));
+      const win = config.windows?.find(w =>
+        w.name.toLowerCase().replace("-oracle", "") === oracleName.toLowerCase()
+      );
       if (win) return config;
     }
   } catch {}
