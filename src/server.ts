@@ -41,6 +41,15 @@ app.use("/api/*", cors());
 
 app.route("/api", api);
 
+// Fleet topology visualization
+app.get("/topology", async (c) => {
+  const path = require("path").resolve(process.cwd(), "ψ/outbox/fleet-topology.html");
+  try {
+    const html = require("fs").readFileSync(path, "utf-8");
+    return c.html(html);
+  } catch { return c.text("fleet-topology.html not found", 404); }
+});
+
 mountViews(app);
 
 app.onError((err, c) => c.json({ error: err.message }, 500));
