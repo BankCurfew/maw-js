@@ -60,11 +60,22 @@ export interface MigrationResult {
   backupPath?: string;
 }
 
+/** User-facing name aliases — allow "doc" to find "doccon" */
+const NAME_ALIASES: Record<string, string> = {
+  doc: "doccon",
+};
+
 // --- Helpers ---
 
 /** Resolve oracle name from repo dir name: "Dev-Oracle" → "dev", "DocCon-Oracle" → "doccon" */
 function repoToOracleName(repoDir: string): string {
   return repoDir.replace(/-[Oo]racle$/, "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+}
+
+/** Resolve user input to internal oracle name (applying aliases) */
+function resolveOracleName(input: string): string {
+  const name = input.toLowerCase().replace(/-oracle$/i, "");
+  return NAME_ALIASES[name] || name;
 }
 
 /** Get directory size in human-readable format */
@@ -114,28 +125,43 @@ function findOracleRepos(): Array<{ name: string; repoPath: string; repoDir: str
     }));
 }
 
-/** Ensure sovereign root and oracle dir exist */
+/** Ensure sovereign root and oracle dir exist with restrictive permissions */
 function ensureSovereignDir(oracleName: string): string {
+  // Create root with 700 (owner-only) permissions
+  if (!existsSync(SOVEREIGN_ROOT)) {
+    mkdirSync(SOVEREIGN_ROOT, { recursive: true });
+  }
+  // Enforce 700 regardless of umask
+  try { execSync(`chmod 700 "${SOVEREIGN_ROOT}"`, { timeout: 5000 }); } catch {}
+  // .gitignore in sovereign root — prevent accidental git tracking
+  const gitignorePath = join(SOVEREIGN_ROOT, ".gitignore");
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, "# Sovereign oracle memory — never commit\n*\n");
+  }
   const dir = join(SOVEREIGN_ROOT, oracleName);
   mkdirSync(dir, { recursive: true });
+  try { execSync(`chmod 700 "${dir}"`, { timeout: 5000 }); } catch {}
   return dir;
 }
 
-/** Create backup before migration */
+/** Create backup before migration (excludes large re-creatable dirs like learn/) */
 function createBackup(sourcePath: string, oracleName: string): string {
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").split("T")[0];
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19); // "2026-04-07T14-30-00"
   const backupDir = join(homedir(), ".oracle", "ψ-backup-migration");
   mkdirSync(backupDir, { recursive: true });
   const backupPath = join(backupDir, `${oracleName}-${ts}`);
+  mkdirSync(backupPath, { recursive: true });
 
-  // Use cp -a to preserve everything
-  execSync(`cp -a "${sourcePath}" "${backupPath}"`, { timeout: 60000 });
+  // Use rsync excluding large dirs (learn/ can be 400MB+)
+  const excludes = BACKUP_EXCLUDE_DIRS.map(d => `--exclude='${d}/'`).join(" ");
+  execSync(`rsync -a ${excludes} "${sourcePath}/" "${backupPath}/"`, { timeout: 300000 }); // 5 min
   return backupPath;
 }
 
-/** Copy directory recursively (preserving structure) */
+/** Copy directory recursively (preserving structure), excluding large re-creatable dirs */
 function copyDirRecursive(src: string, dest: string) {
-  execSync(`cp -a "${src}/." "${dest}/"`, { timeout: 120000 });
+  const excludes = BACKUP_EXCLUDE_DIRS.map(d => `--exclude='${d}/'`).join(" ");
+  execSync(`rsync -a ${excludes} "${src}/" "${dest}/"`, { timeout: 300000 }); // 5 min timeout
 }
 
 // --- Status ---
@@ -197,6 +223,19 @@ export function migrateOracle(oracleName: string, opts: { dryRun?: boolean; forc
 
   const psiPath = join(repo.repoPath, "ψ");
   const sovereignPath = join(SOVEREIGN_ROOT, oracleName);
+
+  // Pre-flight: check for active tmux sessions
+  try {
+    const sessions = execSync(`tmux list-sessions -F '#{session_name}' 2>/dev/null`, { encoding: "utf-8", timeout: 5000 });
+    const active = sessions.trim().split("\n").some(s => s.toLowerCase().includes(oracleName));
+    if (active) {
+      if (!opts.force) {
+        result.errors.push(`Active tmux session detected for ${oracleName} — stop with 'maw sleep ${oracleName}' before migrating, or use --force`);
+        return result;
+      }
+      result.steps.push(`⚠️ Active session detected — proceeding with --force`);
+    }
+  } catch {} // no tmux = safe
 
   // Pre-flight checks
   if (isSymlink(psiPath)) {
@@ -273,8 +312,9 @@ export function migrateOracle(oracleName: string, opts: { dryRun?: boolean; forc
   // Step 4: Verify copy (check file count matches)
   if (!opts.dryRun) {
     try {
-      const srcCount = execSync(`find "${psiPath}" -type f 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 30000 }).trim();
-      const dstCount = execSync(`find "${sovereignPath}" -type f 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 30000 }).trim();
+      const excludeFind = BACKUP_EXCLUDE_DIRS.map(d => `-not -path '*/${d}/*'`).join(" ");
+      const srcCount = execSync(`find "${psiPath}" -type f ${excludeFind} 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 30000 }).trim();
+      const dstCount = execSync(`find "${sovereignPath}" -type f ${excludeFind} 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 30000 }).trim();
       if (srcCount !== dstCount) {
         result.errors.push(`File count mismatch: source=${srcCount}, dest=${dstCount}. Aborting — backup at ${result.backupPath}`);
         return result;
@@ -286,13 +326,21 @@ export function migrateOracle(oracleName: string, opts: { dryRun?: boolean; forc
     }
   }
 
-  // Step 5: Remove original ψ/ and create symlink
-  result.steps.push(`Removing original ψ/ and creating symlink`);
+  // Step 5: Remove original ψ/ and create symlink (atomic swap)
+  result.steps.push(`Atomic swap: original ψ/ → symlink`);
   if (!opts.dryRun) {
     try {
+      // Create symlink at temp location, then atomic rename over original
+      const tmpLink = psiPath + ".sovereign-tmp";
+      // Clean up any leftover tmp from previous failed attempt
+      try { unlinkSync(tmpLink); } catch {}
+      symlinkSync(sovereignPath, tmpLink);
+      // Remove original dir, then rename tmp symlink into place
       rmSync(psiPath, { recursive: true, force: true });
-      symlinkSync(sovereignPath, psiPath);
+      renameSync(tmpLink, psiPath); // atomic on same filesystem
     } catch (e: any) {
+      // Clean up tmp if it exists
+      try { unlinkSync(psiPath + ".sovereign-tmp"); } catch {}
       result.errors.push(`Symlink creation failed: ${e.message}. Restore from backup: cp -a ${result.backupPath} ${psiPath}`);
       return result;
     }
@@ -550,7 +598,7 @@ export async function cmdSovereign(args: string[]) {
       console.log(`\n${"━".repeat(50)}`);
       console.log(`  \x1b[32m${migrated} migrated\x1b[0m | \x1b[90m${skipped} already sovereign\x1b[0m | \x1b[31m${failed} failed\x1b[0m`);
     } else {
-      const oracleName = target.toLowerCase().replace(/-oracle$/i, "");
+      const oracleName = resolveOracleName(target);
       console.log(`\x1b[36m🏛️  Sovereign Migration — ${oracleName}\x1b[0m${dryRun ? " (DRY RUN)" : ""}\n`);
       const result = migrateOracle(oracleName, { dryRun, force });
       console.log(formatMigrationResult(result));
@@ -565,7 +613,7 @@ export async function cmdSovereign(args: string[]) {
       process.exit(1);
     }
 
-    const oracleName = target.toLowerCase().replace(/-oracle$/i, "");
+    const oracleName = resolveOracleName(target);
     console.log(`\x1b[36m🏛️  Sovereign Rollback — ${oracleName}\x1b[0m${dryRun ? " (DRY RUN)" : ""}\n`);
     const result = rollbackOracle(oracleName, { dryRun });
     console.log(formatMigrationResult(result));
