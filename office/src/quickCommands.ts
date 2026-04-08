@@ -1,6 +1,6 @@
 /**
  * Shared quick command definitions for all terminal views.
- * Priority order per แบงค์'s workflow: y > n > Esc > Enter > ↑ > ↓ > Ctrl+C > /recap > Wake > Sleep > Tab > /help > Restart
+ * Priority order per แบงค์'s workflow: y > n > Esc > Enter > ↑ > ↓ > Ctrl+C > /recap > Wake > Sleep > ⇧Tab > Tab > /help > Restart
  */
 
 export interface QuickCommand {
@@ -29,6 +29,7 @@ export const CORE_COMMANDS: QuickCommand[] = [
 /** Extended commands — shown in views with more space */
 export const EXTENDED_COMMANDS: QuickCommand[] = [
   { label: "/recap", text: "/recap\r", color: "#fbbf24" },
+  { label: "⇧Tab", text: "\x1b[Z", color: "#a78bfa" },
   { label: "Tab", text: "\t", color: "#a78bfa" },
   { label: "/help", text: "/help\r", color: "#42a5f5" },
 ];
@@ -44,4 +45,4 @@ export const CONTROL_COMMANDS: QuickCommand[] = [
 export const FULL_COMMANDS: QuickCommand[] = [...CORE_COMMANDS, ...EXTENDED_COMMANDS, ...CONTROL_COMMANDS];
 
 /** Terminal-only set — core + tab (no agent control, no slash commands) */
-export const TERMINAL_COMMANDS: QuickCommand[] = [...CORE_COMMANDS, { label: "Tab", text: "\t", color: "#a78bfa" }];
+export const TERMINAL_COMMANDS: QuickCommand[] = [...CORE_COMMANDS, { label: "⇧Tab", text: "\x1b[Z", color: "#a78bfa" }, { label: "Tab", text: "\t", color: "#a78bfa" }];
