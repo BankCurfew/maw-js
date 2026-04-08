@@ -304,6 +304,7 @@ export const OracleSheet = memo(function OracleSheet({
           {[
             { label: "y", text: "y\r", color: "#22C55E" },
             { label: "n", text: "n\r", color: "#ef5350" },
+            { label: "Esc", text: "\x1b", color: "#64748B" },
             { label: "↑", text: "\x1b[A", color: "#64748B" },
             { label: "↓", text: "\x1b[B", color: "#64748B" },
             { label: "↵", text: "\r", color: "#64748B" },
