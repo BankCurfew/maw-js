@@ -5,19 +5,9 @@ import { useFleetStore } from "../lib/store";
 import { agentColor } from "../lib/constants";
 import { ChibiPortrait } from "./ChibiPortrait";
 import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
+import { useDevice } from "../hooks/useDevice";
+import { FULL_COMMANDS } from "../quickCommands";
 import type { AgentState } from "../lib/types";
-
-// --- Device detection ---
-function useDeviceOrientation() {
-  const [landscape, setLandscape] = useState(window.innerWidth > window.innerHeight);
-  useEffect(() => {
-    const handler = () => setLandscape(window.innerWidth > window.innerHeight);
-    window.addEventListener("resize", handler);
-    window.addEventListener("orientationchange", handler);
-    return () => { window.removeEventListener("resize", handler); window.removeEventListener("orientationchange", handler); };
-  }, []);
-  return landscape;
-}
 
 // --- Status colors ---
 const STATUS = {
@@ -173,18 +163,12 @@ function TerminalPanel({ agent, send }: { agent: AgentState; send: (msg: object)
 
       {/* Quick commands — touch-friendly 48px buttons */}
       <div className="flex items-center gap-2 px-3 py-2 flex-shrink-0 overflow-x-auto" style={{ background: "#0a0a12", borderTop: "1px solid rgba(255,255,255,0.04)", touchAction: "pan-x" }}>
-        {[
-          { label: "y", text: "y\r", color: "#22C55E" },
-          { label: "n", text: "n\r", color: "#ef5350" },
-          { label: "Esc", text: "\x1b", color: "#64748B" },
-          { label: "Enter", text: "\r", color: "#64748B" },
-          { label: "/recap", text: "/recap\r", color: "#fbbf24" },
-          { label: "Ctrl+C", text: "\x03", color: "#ef5350" },
-          { label: "Wake", text: "", color: "#4caf50", action: () => send({ type: "wake", target: agent.target }) },
-          { label: "Sleep", text: "", color: "#888", action: () => send({ type: "sleep", target: agent.target }) },
-          { label: "Restart", text: "", color: "#ff9800", action: () => { if (confirm(`Restart ${name}?`)) send({ type: "restart", target: agent.target }); } },
-        ].map(cmd => (
-          <button key={cmd.label} onClick={cmd.action || (() => quickCmd(cmd.text))}
+        {FULL_COMMANDS.map(cmd => (
+          <button key={cmd.label} onClick={() => {
+            if (cmd.action === "restart") { if (confirm(`Restart ${name}?`)) send({ type: "restart", target: agent.target }); }
+            else if (cmd.action) send({ type: cmd.action, target: agent.target });
+            else quickCmd(cmd.text);
+          }}
             className="shrink-0 rounded-xl font-mono active:scale-90 transition-transform"
             style={{ padding: "10px 16px", minHeight: 44, minWidth: 48, background: `${cmd.color}12`, color: cmd.color, border: `1px solid ${cmd.color}25`, fontSize: 12 }}>
             {cmd.label}
@@ -436,7 +420,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 
 // --- Main iPad Dashboard ---
 export function IPadDashboard() {
-  const landscape = useDeviceOrientation();
+  const { isLandscape: landscape } = useDevice();
   const [activeTab, setActiveTab] = useState<TabId>("fleet");
   const [moreView, setMoreView] = useState<MoreView>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentState | null>(null);

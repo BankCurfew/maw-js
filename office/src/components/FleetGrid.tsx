@@ -11,8 +11,7 @@ import { useFleetStore, RECENT_TTL_MS, type RecentEntry } from "../lib/store";
 import type { AgentState, Session, AgentEvent } from "../lib/types";
 import { describeActivity, type FeedEvent } from "../lib/feed";
 import { OracleSheet } from "./OracleSheet";
-
-const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
+import { useDevice } from "../hooks/useDevice";
 
 export type FeedLogEntry = { text: string; ts: number; project?: string; eventType?: string };
 
@@ -147,6 +146,7 @@ export const FleetGrid = memo(function FleetGrid({
   sessions, agents, connected, send, onSelectAgent, eventLog, addEvent, feedActive, agentFeedLog,
 }: FleetGridProps) {
   const fps = useFps();
+  const { isNarrow } = useDevice();
   const observe = useVisibleTargets(send);
   const containerRef = useRef<HTMLDivElement>(null);
 

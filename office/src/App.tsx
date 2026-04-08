@@ -25,6 +25,7 @@ import { JumpOverlay } from "./components/JumpOverlay";
 import { OracleSheet } from "./components/OracleSheet";
 import { unlockAudio, isAudioUnlocked, setSoundMuted } from "./lib/sounds";
 import { useFleetStore } from "./lib/store";
+import { useDevice } from "./hooks/useDevice";
 import type { AgentState } from "./lib/types";
 
 function parseHash(raw: string): { view: string; agentName: string | null } {
@@ -134,7 +135,7 @@ export function App() {
   const [showJump, setShowJump] = useState(false);
   const [showInbox, setShowInbox] = useState(false);
   const [forceTerminal, setForceTerminal] = useState(false);
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const { isNarrow: isMobile } = useDevice();
 
   // "?" key opens shortcut overlay, "j" or Ctrl+K opens jump overlay
   useEffect(() => {

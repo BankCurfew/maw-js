@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useRef, useCallback } from "react";
 import { agentColor, guessCommand } from "../lib/constants";
+import { FULL_COMMANDS } from "../quickCommands";
 import { ansiToHtml, processCapture } from "../lib/ansi";
 import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
 import type { AgentState } from "../lib/types";
@@ -300,30 +301,22 @@ export const OracleSheet = memo(function OracleSheet({
         </div>
 
         {/* Quick commands */}
-        <div className="flex items-center gap-1 px-3 py-1.5 flex-shrink-0 overflow-x-auto" style={{ background: "#0a0a12", borderTop: "1px solid rgba(255,255,255,0.03)", touchAction: "pan-x" }}>
-          {[
-            { label: "y", text: "y\r", color: "#22C55E" },
-            { label: "n", text: "n\r", color: "#ef5350" },
-            { label: "Esc", text: "\x1b", color: "#64748B" },
-            { label: "↑", text: "\x1b[A", color: "#64748B" },
-            { label: "↓", text: "\x1b[B", color: "#64748B" },
-            { label: "↵", text: "\r", color: "#64748B" },
-            { label: "/recap", text: "/recap\r", color: "#fbbf24" },
-            { label: "^C", text: "\x03", color: "#ef5350" },
-          ].map(cmd => (
+        <div className="flex items-center gap-1 px-3 py-1.5 flex-shrink-0 overflow-x-auto" style={{ background: "#0a0a12", borderTop: "1px solid rgba(255,255,255,0.03)", touchAction: "pan-x", overscrollBehavior: "contain" }}>
+          {FULL_COMMANDS.map(cmd => (
             <button
               key={cmd.label}
-              onClick={() => sendCmd(cmd.text)}
+              onClick={() => {
+                if (cmd.action === "wake") sendCmd(guessCommand(agent.name));
+                else if (cmd.action === "restart") { if (confirm(`Restart ${cleanName(agent.name)}?`)) send({ type: "restart", target: agent.target }); }
+                else if (cmd.action) send({ type: cmd.action, target: agent.target });
+                else sendCmd(cmd.text);
+              }}
               className="shrink-0 px-2.5 py-1 rounded text-[10px] font-mono active:scale-90"
               style={{ background: `${cmd.color}12`, color: cmd.color, border: `1px solid ${cmd.color}20` }}
             >
               {cmd.label}
             </button>
           ))}
-          <div className="w-px h-4 bg-white/[0.05] mx-0.5 shrink-0" />
-          <button onClick={() => sendCmd(guessCommand(agent.name))} className="shrink-0 px-2.5 py-1 rounded text-[10px] font-mono active:scale-90" style={{ background: "rgba(76,175,80,0.1)", color: "#4caf50" }}>Wake</button>
-          <button onClick={() => send({ type: "sleep", target: agent.target })} className="shrink-0 px-2.5 py-1 rounded text-[10px] font-mono active:scale-90" style={{ background: "rgba(100,100,100,0.1)", color: "#888" }}>Sleep</button>
-          <button onClick={() => { if (confirm(`Restart ${cleanName(agent.name)}?`)) send({ type: "restart", target: agent.target }); }} className="shrink-0 px-2.5 py-1 rounded text-[10px] font-mono active:scale-90" style={{ background: "rgba(255,152,0,0.1)", color: "#ff9800", border: "1px solid rgba(255,152,0,0.2)" }}>Restart</button>
         </div>
 
         {/* Siblings */}

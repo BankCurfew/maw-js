@@ -1,5 +1,6 @@
 import { memo, useState } from "react";
 import { AgentAvatar } from "./AgentAvatar";
+import { useDevice } from "../hooks/useDevice";
 import type { AgentState } from "../lib/types";
 
 interface AgentCardProps {
@@ -8,9 +9,8 @@ interface AgentCardProps {
   onClick: () => void;
 }
 
-const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
-
 export const AgentCard = memo(function AgentCard({ agent, accent, onClick }: AgentCardProps) {
+  const { isNarrow } = useDevice();
   const [hovered, setHovered] = useState(false);
   const displayName = agent.name.replace(/-oracle$/, "").replace(/-/g, " ");
   return (

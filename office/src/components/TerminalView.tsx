@@ -3,6 +3,7 @@ import { ansiToHtml, linkifyHtml } from "../lib/ansi";
 import { roomStyle } from "../lib/constants";
 import { wsUrl } from "../lib/api";
 import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
+import { TERMINAL_COMMANDS } from "../quickCommands";
 import type { Session, AgentState } from "../lib/types";
 
 interface TerminalViewProps {
@@ -232,7 +233,7 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
         <div
           ref={outputRef}
           className="flex-1 overflow-y-auto px-2 sm:px-3 py-2 font-mono text-[11px] sm:text-[13px] leading-[1.35]"
-          style={{ background: "#0a0a0f", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", color: "#aaa" }}
+          style={{ background: "#0a0a0f", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", color: "#aaa", overscrollBehavior: "contain", touchAction: "pan-y" }}
         >
           {captureHtml ? (
             <div dangerouslySetInnerHTML={{ __html: linkifyHtml(captureHtml) }} />
@@ -282,27 +283,20 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
             </span>
           )}
         </div>
-        {/* Control bar — arrow keys, Enter, Esc */}
+        {/* Control bar — quick commands */}
         {selectedTarget && (
           <div
             className="flex items-center gap-1.5 px-3 py-1.5 border-t border-white/[0.06]"
-            style={{ background: "#0a0a10" }}
+            style={{ background: "#0a0a10", touchAction: "pan-x", overscrollBehavior: "contain" }}
           >
-            {[
-              { label: "↑", seq: "\x1b[A" },
-              { label: "↓", seq: "\x1b[B" },
-              { label: "Enter", seq: "\n" },
-              { label: "Esc", seq: "\x1b" },
-              { label: "Ctrl+C", seq: "\x03" },
-              { label: "Tab", seq: "\t" },
-            ].map(({ label, seq }) => (
+            {TERMINAL_COMMANDS.map(cmd => (
               <button
-                key={label}
-                onClick={() => { sendRawKey(seq); termRef.current?.focus(); }}
+                key={cmd.label}
+                onClick={() => { sendRawKey(cmd.text); termRef.current?.focus(); }}
                 className="px-2.5 py-1 rounded text-[11px] font-mono cursor-pointer select-none active:scale-95 transition-transform"
                 style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}
               >
-                {label}
+                {cmd.label}
               </button>
             ))}
           </div>

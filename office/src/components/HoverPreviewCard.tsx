@@ -3,6 +3,7 @@ import { ansiToHtml, processCapture, linkifyHtml } from "../lib/ansi";
 import { agentColor, PREVIEW_CARD } from "../lib/constants";
 import { apiUrl } from "../lib/api";
 import { useFileAttach, FileInput, AttachmentChips } from "../hooks/useFileAttach";
+import { FULL_COMMANDS } from "../quickCommands";
 import type { AgentState, AgentEvent } from "../lib/types";
 
 interface HoverPreviewCardProps {
@@ -534,26 +535,16 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
 
       {/* Quick command shortcuts */}
       {pinned && send && (
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0a0a14] border-t border-white/[0.04] overflow-x-auto">
-          {[
-            { label: "y", text: "y\r", color: "#22C55E" },
-            { label: "n", text: "n\r", color: "#ef5350" },
-            { label: "Esc", text: "\x1b", color: "#64748B" },
-            { label: "↵", text: "\r", color: "#64748B" },
-            { label: "Tab", text: "\t", color: "#a78bfa" },
-            { label: "/recap", text: "/recap\r", color: "#fbbf24" },
-            { label: "/help", text: "/help\r", color: "#42a5f5" },
-            { label: "Ctrl+C", text: "\x03", color: "#ef5350" },
-            { label: "Ctrl+Z", text: "\x1a", color: "#ffa726" },
-            { label: "exit", text: "exit\r", color: "#94A3B8" },
-          ].map(cmd => (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0a0a14] border-t border-white/[0.04] overflow-x-auto" style={{ touchAction: "pan-x", overscrollBehavior: "contain" }}>
+          {FULL_COMMANDS.map(cmd => (
             <button
               key={cmd.label}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                send({ type: "send", target: agent.target, text: cmd.text });
-                addEvent?.(agent.target, "command", cmd.label);
+                if (cmd.action === "restart") { if (confirm(`Restart ${agent.name}?`)) send({ type: "restart", target: agent.target }); }
+                else if (cmd.action) send({ type: cmd.action, target: agent.target });
+                else { send({ type: "send", target: agent.target, text: cmd.text }); addEvent?.(agent.target, "command", cmd.label); }
                 inputRef.current?.focus();
               }}
               className="shrink-0 px-2.5 py-1 rounded-md text-[10px] font-mono cursor-pointer active:scale-90 transition-all"

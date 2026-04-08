@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, type ReactNode } from "react";
 import { apiUrl } from "../lib/api";
+import { useDevice } from "../hooks/useDevice";
 
 interface StatusBarProps {
   connected: boolean;
@@ -27,7 +28,7 @@ const NAV_ITEMS = [
   { href: "#config", label: "Config", id: "config" },
 ];
 
-const isNarrow = typeof window !== "undefined" && window.innerWidth < 768;
+// isNarrow moved into component via useDevice hook
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
@@ -53,6 +54,7 @@ function useTokenRate() {
 
 export const StatusBar = memo(function StatusBar({ connected, agentCount, sessionCount, activeView = "office", askCount = 0, onInbox, onJump, muted, onToggleMute, children }: StatusBarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { isNarrow } = useDevice();
   const { lastHourRate } = useTokenRate();
 
   return (
