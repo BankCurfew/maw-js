@@ -80,7 +80,7 @@ export function XTerminal({ target, onClose, onNavigate, siblings, onSelectSibli
 
     // Responsive font size — smaller on mobile
     const isMobile = window.innerWidth < 640;
-    const fontSize = isMobile ? 10 : 13;
+    const fontSize = isMobile ? 16 : 13;
 
     const term = new Terminal({
       theme: THEME,

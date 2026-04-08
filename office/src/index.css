@@ -67,3 +67,9 @@ body { overflow-x: hidden; }
 @keyframes orbital-res { 0% { width: 90px; height: 90px; opacity: 0.6; } 100% { width: 220px; height: 220px; opacity: 0; } }
 @keyframes orbital-glow { 0%, 100% { box-shadow: 0 0 8px var(--tw-shadow-color, rgba(76,175,80,0.3)); } 50% { box-shadow: 0 0 20px var(--tw-shadow-color, rgba(76,175,80,0.6)); } }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Prevent iOS Safari auto-zoom on input focus */
+.xterm-helper-textarea,
+input, textarea, select {
+  font-size: 16px !important;
+}

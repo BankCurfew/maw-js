@@ -176,6 +176,7 @@ function TerminalPanel({ agent, send }: { agent: AgentState; send: (msg: object)
         {[
           { label: "y", text: "y\r", color: "#22C55E" },
           { label: "n", text: "n\r", color: "#ef5350" },
+          { label: "Esc", text: "\x1b", color: "#64748B" },
           { label: "Enter", text: "\r", color: "#64748B" },
           { label: "/recap", text: "/recap\r", color: "#fbbf24" },
           { label: "Ctrl+C", text: "\x03", color: "#ef5350" },
