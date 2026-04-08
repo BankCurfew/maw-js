@@ -27,11 +27,23 @@ async function checkPeerReachable(url: string): Promise<{ reachable: boolean; la
 }
 
 /**
- * Get all configured peers from maw.config.json
+ * Get all configured peers from maw.config.json — merges flat peers[]
+ * with namedPeers[].url, deduped by URL (first occurrence wins).
+ * Both sources feed the same federation peer list.
  */
 export function getPeers(): string[] {
   const config = loadConfig();
-  return config.peers || [];
+  const flat = config.peers ?? [];
+  const named = (config.namedPeers ?? []).map(p => p.url);
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const url of [...flat, ...named]) {
+    if (!seen.has(url)) {
+      seen.add(url);
+      merged.push(url);
+    }
+  }
+  return merged;
 }
 
 /**

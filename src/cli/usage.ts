@@ -5,6 +5,7 @@ export function usage() {
   maw ls                      List sessions + windows
   maw peek [agent]            Peek agent screen (or all)
   maw hey <agent> <msg...>    Send message to agent (alias: tell)
+  maw hey <oracle>:<win> <m>  Target a specific tab (e.g. mawjs:mawjs-dev)
   maw wire <agent> <msg...>   Send via federation (curl over WireGuard)
   maw wake <oracle> [task]    Wake oracle in tmux window + claude
   maw wake <oracle> --issue N Wake oracle with GitHub issue as prompt
@@ -25,10 +26,22 @@ export function usage() {
   maw overview              War-room: all oracles in split panes
   maw overview neo hermes   Only specific oracles
   maw overview --kill       Tear down overview
+  maw bud <name>               Bud new oracle from current (yeast model)
+  maw bud <name> --from <o>   Bud from specific parent oracle
+  maw take <sess>:<win> [tgt] Move window to session (omit tgt = split to own session)
+  maw archive <oracle>         Graceful oracle death (soul-sync → disable → archive)
+  maw find <keyword>           Search ψ/memory/ across all oracles
+  maw fleet health             Fleet health: dormancy, zombies, islands
+  maw fleet consolidate        Merge branches + push disabled oracles
+  maw fleet consolidate --remove  Also delete .disabled configs after push
   maw done <window>            Auto-save (/rrr + commit + push) then clean up
   maw done <window> --force   Skip auto-save, kill immediately
   maw done <window> --dry-run Show what would happen
   maw reunion [window]         Sync ψ/memory/ from worktree → main oracle repo
+  maw soul-sync                Sync current oracle ψ/ → all configured peers
+  maw soul-sync <peer>         Sync current oracle ψ/ → specific peer
+  maw soul-sync --from <peer>  Pull ψ/ from peer → current oracle
+  maw soul-sync --project      Absorb project ψ/ → owning oracle (cell membrane)
   maw pulse add "task" [opts] Create issue + wake oracle
   maw pulse cleanup [--dry-run] Clean stale/orphan worktrees
   maw view <agent> [window]   Grouped tmux session (interactive attach)

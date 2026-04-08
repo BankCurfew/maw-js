@@ -31,7 +31,10 @@ let mockSessions: MockSession[] = [
 
 mock.module("../src/ssh", () => ({
   listSessions: async (): Promise<MockSession[]> => mockSessions,
+  hostExec: async (): Promise<string> => "",
   ssh: async (): Promise<string> => "",
+  // Stub: real findWindow is tested in 00-ssh.test.ts (loads first alphabetically)
+  findWindow: (): string | null => null,
 }));
 
 const { takeSnapshot, listSnapshots, loadSnapshot, latestSnapshot, SNAPSHOT_DIR } = await import("../src/snapshot");

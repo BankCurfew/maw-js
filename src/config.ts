@@ -5,7 +5,7 @@ import { CONFIG_FILE } from "./paths";
 
 function detectGhqRoot(): string {
   try { return execSync("ghq root", { encoding: "utf-8" }).trim(); }
-  catch { return join(require("os").homedir(), "Code/github.com"); }
+  catch { return join(require("os").homedir(), "Code"); }
 }
 
 export type TriggerEvent = "issue-close" | "pr-merge" | "agent-idle" | "agent-wake" | "agent-crash";
@@ -481,6 +481,11 @@ export function buildCommand(agentName: string): string {
   }
 
   return `${prefix} ${cmd}`;
+}
+
+/** Wrap buildCommand with cd to ensure correct working directory after reboot */
+export function buildCommandInDir(agentName: string, cwd: string): string {
+  return `cd '${cwd}' && ${buildCommand(agentName)}`;
 }
 
 /** Get env vars from config (for tmux set-environment) */
