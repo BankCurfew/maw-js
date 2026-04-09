@@ -12,7 +12,7 @@ const IDLE_TIMEOUT = 60_000; // 60s without feed → idle
 
 export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [captureData, setCaptureData] = useState<Record<string, { preview: string; status: PaneStatus }>>({});
+  const [captureData, setCaptureData] = useState<Record<string, { preview: string; status: PaneStatus; contextPercent?: number }>>({});
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
 
@@ -224,10 +224,16 @@ export function useSessions() {
           // Prefer a line showing "Compacting" (from /compact) over the default last line (prompt)
           const compactingLine = lines.find((l: string) => l.toLowerCase().includes("compacting"));
           const preview = (compactingLine || lines[lines.length - 1] || "").slice(0, 120);
+          // Extract context percentage from Claude Code status line (e.g. "45% ctx", "ctx: 45%", "Context: 45%")
+          let contextPercent: number | undefined;
+          for (const line of lines) {
+            const m = line.match(/(\d+)%\s*ctx/i) || line.match(/ctx[:\s]+(\d+)%/i) || line.match(/context[:\s]+(\d+)%/i);
+            if (m) { contextPercent = parseInt(m[1], 10); break; }
+          }
           const existing = next[target];
-          if (!existing || existing.preview !== preview) {
+          if (!existing || existing.preview !== preview || existing.contextPercent !== contextPercent) {
             if (next === prev) next = { ...prev };
-            next[target] = { preview, status: existing?.status || "idle" };
+            next[target] = { preview, status: existing?.status || "idle", contextPercent };
           }
         }
         return next;
@@ -285,6 +291,7 @@ export function useSessions() {
           preview: cd?.preview || "",
           status: cd?.status || "idle",
           project,
+          contextPercent: cd?.contextPercent,
         };
       })
     );

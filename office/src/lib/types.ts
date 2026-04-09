@@ -21,6 +21,7 @@ export interface AgentState {
   preview: string;
   status: PaneStatus;
   project?: string;
+  contextPercent?: number;
 }
 
 export interface AgentEvent {

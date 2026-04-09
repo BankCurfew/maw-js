@@ -3,7 +3,7 @@ import { ansiToHtml, processCapture } from "../lib/ansi";
 import { apiUrl } from "../lib/api";
 
 interface MiniPreviewProps {
-  agent: { target: string; name: string; status: string };
+  agent: { target: string; name: string; status: string; contextPercent?: number };
   accent: string;
   roomLabel: string;
 }
@@ -51,6 +51,12 @@ export const MiniPreview = memo(function MiniPreview({ agent, accent, roomLabel 
           </span>
         </span>
         <span className="text-[9px] text-white/25 font-mono">{roomLabel}</span>
+        {agent.contextPercent != null && (
+          <span className="text-[9px] font-mono px-1 py-0.5 rounded" style={{
+            background: agent.contextPercent >= 60 ? "rgba(34,197,94,0.12)" : agent.contextPercent >= 30 ? "rgba(251,191,36,0.12)" : "rgba(239,68,68,0.15)",
+            color: agent.contextPercent >= 60 ? "#22C55E" : agent.contextPercent >= 30 ? "#fbbf24" : "#ef4444",
+          }}>CTX:{agent.contextPercent}%</span>
+        )}
       </div>
 
       {/* Terminal snippet — 8 lines max */}

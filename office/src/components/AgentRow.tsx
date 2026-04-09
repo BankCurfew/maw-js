@@ -91,6 +91,12 @@ function AgentInfo({ agent, isBusy, displayName, accent, agoLabel, feedLog }: {
         }}>
           {agent.status}
         </span>
+        {agent.contextPercent != null && (
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded flex-shrink-0" style={{
+            background: agent.contextPercent >= 60 ? "rgba(34,197,94,0.12)" : agent.contextPercent >= 30 ? "rgba(251,191,36,0.12)" : "rgba(239,68,68,0.15)",
+            color: agent.contextPercent >= 60 ? "#22C55E" : agent.contextPercent >= 30 ? "#fbbf24" : "#ef4444",
+          }}>CTX:{agent.contextPercent}%</span>
+        )}
         {(() => {
           let label: string | undefined;
           let isWt = false;
