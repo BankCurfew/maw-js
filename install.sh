@@ -2,10 +2,19 @@
 # maw-js installer — install maw CLI from any branch or tag via bun
 #
 # Usage:
-#   curl -fsSL .../install.sh | bash                       # latest release
+#   curl -fsSL .../install.sh | bash                       # latest release (bun add -g)
 #   curl -fsSL .../install.sh | bash -s -- --branch alpha  # from branch
 #   curl -fsSL .../install.sh | bash -s -- --tag v1.7.2    # from tag
 #   curl -fsSL .../install.sh | bash -s -- alpha           # shorthand
+#   curl -fsSL .../install.sh | bash -s -- --bunx          # bunx wrapper (no global install)
+#
+# Two install modes:
+#   default     bun add -g   — persistent binary at ~/.bun/bin/maw
+#   --bunx      wrapper      — creates ~/.bun/bin/maw that delegates to bunx (always fetches latest)
+#
+# Also works without install.sh:
+#   bun add -g github:Soul-Brews-Studio/maw-js#alpha       # persistent
+#   bunx --bun github:Soul-Brews-Studio/maw-js#alpha ...   # zero-install, one-shot
 #
 # Env overrides:
 #   MAW_REF=alpha           Same as --branch alpha
@@ -17,8 +26,9 @@ set -e
 REPO="Soul-Brews-Studio/maw-js"
 REF=""
 REF_TYPE=""
+USE_BUNX=0
 
-# ── Parse args ──────────────────────────────────────────────
+# ── Parse args ─��──���───────────────────────────────���─────────
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -26,24 +36,32 @@ while [ $# -gt 0 ]; do
       REF="$2"; REF_TYPE="branch"; shift 2 ;;
     --tag|-t)
       REF="$2"; REF_TYPE="tag"; shift 2 ;;
+    --bunx)
+      USE_BUNX=1; shift ;;
     --ghq)
       MAW_GHQ=1; shift ;;
     --skip-pm2)
       MAW_SKIP_PM2=1; shift ;;
     --help|-h)
-      echo "Usage: install.sh [--branch <name>] [--tag <version>] [--ghq] [--skip-pm2]"
+      echo "Usage: install.sh [--branch <name>] [--tag <version>] [--bunx] [--ghq] [--skip-pm2]"
       echo ""
       echo "  --branch, -b <name>    Install from branch (e.g. alpha, main)"
       echo "  --tag, -t <version>    Install from tag (e.g. v1.7.2, v1.8.0)"
+      echo "  --bunx                 Create bunx wrapper instead of global install"
       echo "  --ghq                  Also clone repo via ghq"
       echo "  --skip-pm2             Skip PM2 setup hints"
       echo ""
-      echo "  No flag = latest release. Shorthand: install.sh alpha = --branch alpha"
+      echo "  No flag = latest release via bun add -g."
+      echo "  Shorthand: install.sh alpha = --branch alpha"
+      echo "  Shorthand: install.sh v1.7.2 = --tag v1.7.2"
+      echo ""
+      echo "Also works without this script:"
+      echo "  bun add -g github:Soul-Brews-Studio/maw-js#alpha    # persistent"
+      echo "  bunx --bun github:Soul-Brews-Studio/maw-js#alpha .. # zero-install"
       exit 0 ;;
     -*)
       echo "Unknown flag: $1"; exit 1 ;;
     *)
-      # Positional: treat as branch if starts with letter, tag if starts with v
       if echo "$1" | grep -q "^v[0-9]"; then
         REF="$1"; REF_TYPE="tag"
       else
@@ -93,9 +111,35 @@ echo "  bun: $(bun --version)"
 # ── Install maw via bun global ──────────────────────────────
 
 PKG="github:${REPO}#${REF}"
-echo ""
-echo "📦 Installing maw from ${PKG}..."
-bun add -g "${PKG}"
+
+if [ "$USE_BUNX" = "1" ]; then
+  # ── bunx wrapper mode ──────────────────────────────────────
+  echo ""
+  echo "📦 Creating bunx wrapper for ${PKG}..."
+
+  BIN_DIR="$HOME/.bun/bin"
+  mkdir -p "$BIN_DIR"
+
+  cat > "$BIN_DIR/maw" <<WRAPPER
+#!/bin/bash
+# maw — bunx wrapper (${REF_TYPE}: ${REF})
+# Delegates to bunx, always fetches latest from the ref.
+# Reinstall: curl -fsSL .../install.sh | bash -s -- --bunx ${REF}
+# Upgrade to persistent: bun add -g ${PKG}
+exec bunx --bun ${PKG} "\$@"
+WRAPPER
+  chmod +x "$BIN_DIR/maw"
+
+  echo "  ✅ Wrapper created at ${BIN_DIR}/maw"
+  echo "  Mode: bunx (fetches latest on every run)"
+else
+  # ── bun add -g mode (persistent) ───────────────────────────
+  echo ""
+  echo "📦 Installing maw from ${PKG}..."
+  bun add -g "${PKG}"
+
+  echo "  Mode: persistent (binary linked)"
+fi
 
 # Verify
 if command -v maw >/dev/null 2>&1; then
