@@ -45,7 +45,7 @@ interface StatusLineParsed {
 function parseStatusLine(raw: string): StatusLineParsed | null {
   // Find the 📡 line in raw terminal content (strip ANSI)
   const lines = raw.replace(/\x1b\[[0-9;]*m/g, "").split("\n");
-  const line = lines.find(l => l.includes("📡"));
+  const line = lines.reverse().find(l => l.includes("📡"));
   if (!line) return null;
 
   // New 1-line format: 📡 42% 83k/200k • 4h13m • Opus 4.6 • 70d6aff3 on main*
