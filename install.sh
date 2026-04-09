@@ -1,23 +1,83 @@
 #!/bin/bash
-# maw-js installer — install maw CLI from any branch/tag via bun
+# maw-js installer — install maw CLI from any branch or tag via bun
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Soul-Brews-Studio/maw-js/alpha/install.sh | bash
+#   curl -fsSL .../install.sh | bash                       # latest release
+#   curl -fsSL .../install.sh | bash -s -- --branch alpha  # from branch
+#   curl -fsSL .../install.sh | bash -s -- --tag v1.7.2    # from tag
+#   curl -fsSL .../install.sh | bash -s -- alpha           # shorthand
 #
-# Options:
-#   MAW_BRANCH=alpha        Branch or tag to install (default: alpha)
-#   MAW_SKIP_PM2=1          Skip PM2 setup
+# Env overrides:
+#   MAW_REF=alpha           Same as --branch alpha
+#   MAW_SKIP_PM2=1          Skip PM2 setup hints
 #   MAW_GHQ=1               Also clone repo via ghq (for development)
 
 set -e
 
-BRANCH="${MAW_BRANCH:-alpha}"
 REPO="Soul-Brews-Studio/maw-js"
+REF=""
+REF_TYPE=""
+
+# ── Parse args ──────────────────────────────────────────────
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --branch|-b)
+      REF="$2"; REF_TYPE="branch"; shift 2 ;;
+    --tag|-t)
+      REF="$2"; REF_TYPE="tag"; shift 2 ;;
+    --ghq)
+      MAW_GHQ=1; shift ;;
+    --skip-pm2)
+      MAW_SKIP_PM2=1; shift ;;
+    --help|-h)
+      echo "Usage: install.sh [--branch <name>] [--tag <version>] [--ghq] [--skip-pm2]"
+      echo ""
+      echo "  --branch, -b <name>    Install from branch (e.g. alpha, main)"
+      echo "  --tag, -t <version>    Install from tag (e.g. v1.7.2, v1.8.0)"
+      echo "  --ghq                  Also clone repo via ghq"
+      echo "  --skip-pm2             Skip PM2 setup hints"
+      echo ""
+      echo "  No flag = latest release. Shorthand: install.sh alpha = --branch alpha"
+      exit 0 ;;
+    -*)
+      echo "Unknown flag: $1"; exit 1 ;;
+    *)
+      # Positional: treat as branch if starts with letter, tag if starts with v
+      if echo "$1" | grep -q "^v[0-9]"; then
+        REF="$1"; REF_TYPE="tag"
+      else
+        REF="$1"; REF_TYPE="branch"
+      fi
+      shift ;;
+  esac
+done
+
+# Env fallback
+if [ -z "$REF" ] && [ -n "$MAW_REF" ]; then
+  REF="$MAW_REF"
+  if echo "$REF" | grep -q "^v[0-9]"; then
+    REF_TYPE="tag"
+  else
+    REF_TYPE="branch"
+  fi
+fi
+
+# Default: latest release tag from GitHub API
+if [ -z "$REF" ]; then
+  REF=$(curl -s https://api.github.com/repos/${REPO}/releases/latest 2>/dev/null | grep '"tag_name"' | cut -d'"' -f4)
+  REF_TYPE="tag"
+  if [ -z "$REF" ]; then
+    REF="alpha"
+    REF_TYPE="branch"
+    echo "  ⚠️  Could not fetch latest release, falling back to alpha"
+  fi
+fi
 
 echo ""
 echo "  🍺 maw-js installer"
 echo "  ─────────────────────"
-echo "  Branch: ${BRANCH}"
+echo "  ${REF_TYPE}: ${REF}"
 echo ""
 
 # ── Check bun ───────────────────────────────────────────────
@@ -32,16 +92,16 @@ echo "  bun: $(bun --version)"
 
 # ── Install maw via bun global ──────────────────────────────
 
+PKG="github:${REPO}#${REF}"
 echo ""
-echo "📦 Installing maw from github:${REPO}#${BRANCH}..."
-bun add -g "github:${REPO}#${BRANCH}"
+echo "📦 Installing maw from ${PKG}..."
+bun add -g "${PKG}"
 
 # Verify
 if command -v maw >/dev/null 2>&1; then
   echo ""
   echo "  ✅ $(maw --version 2>/dev/null || echo 'maw installed')"
 else
-  # bun global bin might not be in PATH
   if [ -f "$HOME/.bun/bin/maw" ]; then
     echo ""
     echo "  ✅ maw installed at ~/.bun/bin/maw"
@@ -52,7 +112,7 @@ else
   fi
 fi
 
-# ── Optional: clone repo via ghq (for development) ─────────
+# ── Optional: clone repo via ghq ────────────────────────────
 
 if [ "${MAW_GHQ}" = "1" ]; then
   if command -v ghq >/dev/null 2>&1; then
@@ -61,37 +121,35 @@ if [ "${MAW_GHQ}" = "1" ]; then
     ghq get -u "github.com/${REPO}"
     GHQ_PATH="$(ghq root)/github.com/${REPO}"
     cd "$GHQ_PATH"
-    git checkout "${BRANCH}" 2>/dev/null || true
+    if [ "$REF_TYPE" = "branch" ]; then
+      git checkout "${REF}" 2>/dev/null || true
+    fi
     bun install
-    echo "  ✅ Repo at ${GHQ_PATH} (branch: ${BRANCH})"
+    echo "  ✅ Repo at ${GHQ_PATH}"
   else
     echo "  ⚠️  ghq not found — skipping repo clone"
   fi
 fi
 
-# ── Optional: PM2 setup ────────────────────────────────────
+# ── Optional: PM2 hints ────────────────────────────────────
 
 if [ "${MAW_SKIP_PM2}" != "1" ] && command -v pm2 >/dev/null 2>&1; then
   echo ""
   echo "🔧 PM2 detected. To start maw server:"
-  echo "  cd $(ghq root 2>/dev/null || echo '~/Code')/github.com/${REPO}"
-  echo "  pm2 start ecosystem.config.cjs"
-  echo ""
-  echo "  Or if using bun global install:"
   echo "  pm2 start maw --interpreter bun -- serve"
 fi
 
 # ── Done ────────────────────────────────────────────────────
 
 echo ""
-echo "  🍺 Done! Run 'maw --version' to verify."
+echo "  🍺 Done!"
 echo ""
 echo "  Quick start:"
 echo "    maw oracle scan        # discover oracles"
 echo "    maw oracle fleet       # see the constellation"
 echo "    maw wake <oracle>      # start an oracle"
-echo "    maw peek               # see all oracle panes"
+echo "    maw peek               # see all panes"
 echo ""
-echo "  Update later:"
-echo "    bun add -g github:${REPO}#${BRANCH}"
+echo "  Update:"
+echo "    bun add -g ${PKG}"
 echo ""
