@@ -225,11 +225,16 @@ export function useSessions() {
           const compactingLine = lines.find((l: string) => l.toLowerCase().includes("compacting"));
           const preview = (compactingLine || lines[lines.length - 1] || "").slice(0, 120);
           // Extract context percentage from Claude Code status line
-          // Matches: "45% ctx", "ctx: 45%", "context: 45%", "45% 120k/200k" (statusline format)
+          // Matches: "45% ctx", "ctx: 45%", "context: 45%", "45% 120k/200k", "2% until auto-compact"
           let contextPercent: number | undefined;
           for (const line of lines) {
-            const m = line.match(/(\d+)%\s*ctx/i) || line.match(/ctx[:\s]+(\d+)%/i) || line.match(/context[:\s]+(\d+)%/i) || line.match(/(\d+)%\s+\d+k\/\d+k/);
-            if (m) { contextPercent = parseInt(m[1], 10); break; }
+            const m = line.match(/(\d+)%\s*ctx/i) || line.match(/ctx[:\s]+(\d+)%/i) || line.match(/context[:\s]+(\d+)%/i) || line.match(/(\d+)%\s+\d+k\/\d+k/) || line.match(/(\d+)%\s+until\s+auto[- ]compact/);
+            if (m) {
+              const raw = parseInt(m[1], 10);
+              // "N% until auto-compact" = N% remaining, so used = 100 - N
+              contextPercent = line.includes('until') ? (100 - raw) : raw;
+              break;
+            }
           }
           const existing = next[target];
           if (!existing || existing.preview !== preview || existing.contextPercent !== contextPercent) {
