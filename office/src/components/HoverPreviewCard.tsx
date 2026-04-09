@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { ansiToHtml, processCapture, linkifyHtml } from "../lib/ansi";
 import { agentColor, PREVIEW_CARD } from "../lib/constants";
 import { apiUrl } from "../lib/api";
@@ -32,6 +32,37 @@ const STATUS_LABELS: Record<string, string> = {
   idle: "IDLE",
 };
 
+/** Parse statusline "📡 sid • HH:MM • N% Nk/Mk • r:Nk f:Nk on • Model" into segments */
+interface StatusLineParsed {
+  sessionId?: string;
+  time?: string;
+  ctxPercent?: number;
+  tokens?: string;
+  model?: string;
+}
+
+function parseStatusLine(raw: string): StatusLineParsed | null {
+  // Find the 📡 line in raw terminal content (strip ANSI)
+  const lines = raw.replace(/\x1b\[[0-9;]*m/g, "").split("\n");
+  const line = lines.find(l => l.includes("📡"));
+  if (!line) return null;
+
+  // Split by bullet separator
+  const parts = line.replace(/📡\s*/, "").split("•").map(s => s.trim());
+  if (parts.length < 3) return null;
+
+  const sessionId = parts[0]?.replace(/→.*/, "").trim().slice(0, 8);
+  const time = parts[1]?.match(/\d{1,2}:\d{2}/)?.[0];
+  const ctxMatch = parts[2]?.match(/(\d+)%/);
+  const ctxPercent = ctxMatch ? parseInt(ctxMatch[1], 10) : undefined;
+  const tokensMatch = parts[2]?.match(/(\d+k\/\d+k)/);
+  const tokens = tokensMatch?.[1];
+  // Model is typically the last segment
+  const model = parts[parts.length - 1]?.replace(/^\s*/, "").trim();
+
+  return { sessionId, time, ctxPercent, tokens, model: model || undefined };
+}
+
 // trimCapture replaced by shared processCapture from ansi.ts
 
 export const HoverPreviewCard = memo(function HoverPreviewCard({
@@ -59,6 +90,7 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
   const { uploading, attachments, inputRef: fileRef, pickFile, onFileChange, removeAttachment, clearAttachments, buildMessage, drag, onPaste } = useFileAttach();
   const color = agentColor(agent.name);
   const displayName = agent.name.replace(/-oracle$/, "").replace(/-/g, " ");
+  const statusLine = useMemo(() => parseStatusLine(content), [content]);
   const statusColor = STATUS_COLORS[agent.status] || "#666";
 
   // Sync prevInputRef when external buffer initializes
@@ -429,6 +461,40 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
           </button>
         )}
       </div>
+
+      {/* Statusline pill badges */}
+      {statusLine && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04] flex-wrap">
+          {statusLine.sessionId && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-white/40">
+              📡 {statusLine.sessionId}
+            </span>
+          )}
+          {statusLine.time && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-white/80">
+              {statusLine.time}
+            </span>
+          )}
+          {statusLine.ctxPercent != null && (
+            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded" style={{
+              background: statusLine.ctxPercent >= 80 ? "rgba(239,68,68,0.15)" : statusLine.ctxPercent >= 50 ? "rgba(251,191,36,0.12)" : "rgba(34,197,94,0.12)",
+              color: statusLine.ctxPercent >= 80 ? "#ef4444" : statusLine.ctxPercent >= 50 ? "#fbbf24" : "#22C55E",
+            }}>
+              CTX:{statusLine.ctxPercent}%
+            </span>
+          )}
+          {statusLine.tokens && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400">
+              {statusLine.tokens}
+            </span>
+          )}
+          {statusLine.model && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">
+              {statusLine.model}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="relative flex-1" style={{ background: "#08080c" }}>
         <div
