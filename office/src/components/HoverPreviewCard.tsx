@@ -34,11 +34,12 @@ const STATUS_LABELS: Record<string, string> = {
 
 /** Parse statusline "📡 sid • HH:MM • N% Nk/Mk • r:Nk f:Nk on • Model" into segments */
 interface StatusLineParsed {
-  sessionId?: string;
-  time?: string;
   ctxPercent?: number;
   tokens?: string;
+  duration?: string;
   model?: string;
+  sessionId?: string;
+  branch?: string;
 }
 
 function parseStatusLine(raw: string): StatusLineParsed | null {
@@ -47,20 +48,31 @@ function parseStatusLine(raw: string): StatusLineParsed | null {
   const line = lines.find(l => l.includes("📡"));
   if (!line) return null;
 
-  // Split by bullet separator
+  // New 1-line format: 📡 42% 83k/200k • 4h13m • Opus 4.6 • 70d6aff3 on main*
+  const m = line.match(/📡\s+(\d+)%\s+(\d+k\/\d+k)\s+•\s+(\S+)\s+•\s+(.+?)\s+•\s+(\w+)(?:\s+on\s+(.+))?/);
+  if (m) {
+    return {
+      ctxPercent: parseInt(m[1], 10),
+      tokens: m[2],
+      duration: m[3],
+      model: m[4]?.trim(),
+      sessionId: m[5]?.slice(0, 8),
+      branch: m[6]?.trim(),
+    };
+  }
+
+  // Fallback: old 2-line format — 📡 sid • HH:MM • N% Nk/Mk • ... • Model
   const parts = line.replace(/📡\s*/, "").split("•").map(s => s.trim());
   if (parts.length < 3) return null;
-
-  const sessionId = parts[0]?.replace(/→.*/, "").trim().slice(0, 8);
-  const time = parts[1]?.match(/\d{1,2}:\d{2}/)?.[0];
   const ctxMatch = parts[2]?.match(/(\d+)%/);
-  const ctxPercent = ctxMatch ? parseInt(ctxMatch[1], 10) : undefined;
   const tokensMatch = parts[2]?.match(/(\d+k\/\d+k)/);
-  const tokens = tokensMatch?.[1];
-  // Model is typically the last segment
-  const model = parts[parts.length - 1]?.replace(/^\s*/, "").trim();
-
-  return { sessionId, time, ctxPercent, tokens, model: model || undefined };
+  return {
+    sessionId: parts[0]?.replace(/→.*/, "").trim().slice(0, 8),
+    duration: parts[1]?.match(/\d{1,2}:\d{2}/)?.[0],
+    ctxPercent: ctxMatch ? parseInt(ctxMatch[1], 10) : undefined,
+    tokens: tokensMatch?.[1],
+    model: parts[parts.length - 1]?.trim() || undefined,
+  };
 }
 
 // trimCapture replaced by shared processCapture from ansi.ts
@@ -465,32 +477,40 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
       {/* Statusline pill badges */}
       {statusLine && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04] flex-wrap">
-          {statusLine.sessionId && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-white/40">
-              📡 {statusLine.sessionId}
-            </span>
-          )}
-          {statusLine.time && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-white/80">
-              {statusLine.time}
-            </span>
-          )}
           {statusLine.ctxPercent != null && (
             <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded" style={{
               background: statusLine.ctxPercent >= 80 ? "rgba(239,68,68,0.15)" : statusLine.ctxPercent >= 50 ? "rgba(251,191,36,0.12)" : "rgba(34,197,94,0.12)",
               color: statusLine.ctxPercent >= 80 ? "#ef4444" : statusLine.ctxPercent >= 50 ? "#fbbf24" : "#22C55E",
             }}>
-              CTX:{statusLine.ctxPercent}%
+              {statusLine.ctxPercent}%
             </span>
           )}
           {statusLine.tokens && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400">
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{
+              background: statusLine.ctxPercent != null && statusLine.ctxPercent >= 80 ? "rgba(239,68,68,0.10)" : statusLine.ctxPercent != null && statusLine.ctxPercent >= 50 ? "rgba(251,191,36,0.08)" : "rgba(34,197,94,0.08)",
+              color: statusLine.ctxPercent != null && statusLine.ctxPercent >= 80 ? "#ef4444" : statusLine.ctxPercent != null && statusLine.ctxPercent >= 50 ? "#fbbf24" : "#22C55E",
+            }}>
               {statusLine.tokens}
+            </span>
+          )}
+          {statusLine.duration && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+              {statusLine.duration}
             </span>
           )}
           {statusLine.model && (
             <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">
               {statusLine.model}
+            </span>
+          )}
+          {statusLine.sessionId && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-white/40">
+              {statusLine.sessionId}
+            </span>
+          )}
+          {statusLine.branch && (
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-white/50">
+              {statusLine.branch}
             </span>
           )}
         </div>
