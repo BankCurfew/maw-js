@@ -224,10 +224,11 @@ export function useSessions() {
           // Prefer a line showing "Compacting" (from /compact) over the default last line (prompt)
           const compactingLine = lines.find((l: string) => l.toLowerCase().includes("compacting"));
           const preview = (compactingLine || lines[lines.length - 1] || "").slice(0, 120);
-          // Extract context percentage from Claude Code status line (e.g. "45% ctx", "ctx: 45%", "Context: 45%")
+          // Extract context percentage from Claude Code status line
+          // Matches: "45% ctx", "ctx: 45%", "context: 45%", "45% 120k/200k" (statusline format)
           let contextPercent: number | undefined;
           for (const line of lines) {
-            const m = line.match(/(\d+)%\s*ctx/i) || line.match(/ctx[:\s]+(\d+)%/i) || line.match(/context[:\s]+(\d+)%/i);
+            const m = line.match(/(\d+)%\s*ctx/i) || line.match(/ctx[:\s]+(\d+)%/i) || line.match(/context[:\s]+(\d+)%/i) || line.match(/(\d+)%\s+\d+k\/\d+k/);
             if (m) { contextPercent = parseInt(m[1], 10); break; }
           }
           const existing = next[target];
