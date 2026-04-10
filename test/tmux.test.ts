@@ -6,10 +6,8 @@ let commands: string[] = [];
 let sshResult = "";
 
 // Mock config to return no socket (tests expect plain "tmux" commands)
-mock.module("../src/config", () => ({
-  loadConfig: () => ({ host: "white.local" }),
-  resetConfig: () => {},
-}));
+import { mockConfigModule } from "./helpers/mock-config";
+mock.module("../src/config", () => mockConfigModule(() => ({ host: "white.local" })));
 
 // Mock ssh module — intercept the command string
 const mockExec = async (cmd: string, _host?: string) => {
@@ -19,6 +17,8 @@ const mockExec = async (cmd: string, _host?: string) => {
 mock.module("../src/ssh", () => ({
   hostExec: mockExec,
   ssh: mockExec,
+  // Stub: real findWindow is tested in 00-ssh.test.ts (loads first alphabetically)
+  findWindow: () => null,
 }));
 
 // Ensure no socket env var leaks into tests
