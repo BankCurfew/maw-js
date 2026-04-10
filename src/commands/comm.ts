@@ -28,6 +28,15 @@ async function logMessage(from: string, to: string, msg: string, route: string) 
   try { await mkdir(logDir, { recursive: true }); await appendFile(join(logDir, "maw-log.jsonl"), line); } catch {}
 }
 
+/** Emit feed event to server plugin pipeline (CLI → server bridge) */
+function emitFeed(event: string, oracle: string, node: string, message: string, port: number) {
+  fetch(`http://localhost:${port}/api/feed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event, oracle, host: node, message, ts: Date.now() }),
+  }).catch(() => {});
+}
+
 /** Resolve which sessions to search for an oracle query (#86). */
 function resolveSearchSessions(query: string, sessions: Session[]): Session[] {
   const config = loadConfig();
@@ -167,11 +176,7 @@ export async function cmdSend(query: string, message: string, force = false) {
     if (!config.node) throw new Error("config.node is required — set 'node' in maw.config.json");
     const senderName = process.env.CLAUDE_AGENT_NAME || config.node;
     logMessage(senderName, query, message, "local");
-    fetch(`http://localhost:${config.port || 3456}/api/feed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event: "MessageSend", oracle: senderName, host: config.node, message: `${query}: ${message.slice(0, 200)}` }),
-    }).catch(() => {});
+    emitFeed("MessageSend", senderName, config.node, `${query}: ${message.slice(0, 200)}`, config.port || 3456);
     await Bun.sleep(150);
     let lastLine = "";
     try { const content = await capture(target, 3); lastLine = content.split("\n").filter(l => l.trim()).pop() || ""; } catch {}
@@ -189,11 +194,7 @@ export async function cmdSend(query: string, message: string, force = false) {
     if (res.ok && res.data?.ok) {
       const agentName = process.env.CLAUDE_AGENT_NAME || config.node;
       logMessage(agentName, query, message, `peer:${result.node}`);
-      fetch(`http://localhost:${config.port || 3456}/api/feed`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: "MessageSend", oracle: agentName, host: config.node, message: `${result.node}:${query}: ${message.slice(0, 200)}` }),
-      }).catch(() => {});
+      emitFeed("MessageSend", agentName, config.node!, `${result.node}:${query}: ${message.slice(0, 200)}`, config.port || 3456);
       console.log(`\x1b[32mdelivered\x1b[0m ⚡ ${result.node} → ${res.data.target || result.target}: ${message}`);
       if (res.data.lastLine) console.log(`\x1b[90m  ⤷ ${res.data.lastLine.slice(0, cfgLimit("messageTruncate"))}\x1b[0m`);
       await runHook("after_send", { to: query, message });
