@@ -183,10 +183,15 @@ export async function cmdSend(query: string, message: string, force = false) {
     }
   }
 
-  // Not found
-  console.error(`\x1b[31merror\x1b[0m: window not found: ${query}`);
-  if (config.agents && Object.keys(config.agents).length > 0) {
-    console.error(`\x1b[33mhint\x1b[0m:  known agents: ${Object.keys(config.agents).join(", ")}`);
+  // Not found — surface error details from resolveTarget (#216)
+  if (result?.type === "error") {
+    console.error(`\x1b[31merror\x1b[0m: ${result.detail}`);
+    if (result.hint) console.error(`\x1b[33mhint\x1b[0m:  ${result.hint}`);
+  } else {
+    console.error(`\x1b[31merror\x1b[0m: window not found: ${query}`);
+    if (config.agents && Object.keys(config.agents).length > 0) {
+      console.error(`\x1b[33mhint\x1b[0m:  known agents: ${Object.keys(config.agents).join(", ")}`);
+    }
   }
   process.exit(1);
 }

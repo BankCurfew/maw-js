@@ -21,6 +21,22 @@ federationApi.get("/snapshots/:id", (c) => {
   return c.json(snap);
 });
 
+/** Node identity — public endpoint for federation dedup (#192) */
+federationApi.get("/identity", async (c) => {
+  const config = loadConfig();
+  const node = config.node ?? "local";
+  const agents = Object.entries(config.agents || {})
+    .filter(([, n]) => n === node)
+    .map(([name]) => name);
+  const pkg = require("../../package.json");
+  return c.json({
+    node,
+    version: pkg.version,
+    agents,
+    uptime: Math.floor(process.uptime()),
+  });
+});
+
 /** Auth status — public diagnostic endpoint (never reveals the token) */
 federationApi.get("/auth/status", (c) => {
   const config = loadConfig();
