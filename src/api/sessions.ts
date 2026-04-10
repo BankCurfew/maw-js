@@ -48,8 +48,10 @@ sessionsApi.post("/send", async (c) => {
     const result = resolveTarget(target, config, local);
 
     // Also try with -oracle stripped (backwards compat)
-    const altResult = !result ? resolveTarget(target.replace(/-oracle$/, ""), config, local) : null;
-    const resolved = result || altResult;
+    const isResolved = result && result.type !== "error";
+    const altResult = !isResolved ? resolveTarget(target.replace(/-oracle$/, ""), config, local) : null;
+    const altResolved = altResult && altResult.type !== "error";
+    const resolved = isResolved ? result : altResolved ? altResult : (result || altResult);
 
     // Local or self-node → send via tmux
     if (resolved?.type === "local" || resolved?.type === "self-node") {
@@ -81,7 +83,8 @@ sessionsApi.post("/send", async (c) => {
       return c.json({ error: "Failed to send to peer", target, source: peerUrl }, 502);
     }
 
-    return c.json({ error: `target not found: ${target}`, target }, 404);
+    const errDetail = resolved?.type === "error" ? { reason: resolved.reason, detail: resolved.detail, hint: resolved.hint } : {};
+    return c.json({ error: `target not found: ${target}`, target, ...errDetail }, 404);
   } catch (err) {
     return c.json({ error: String(err) }, 500);
   }

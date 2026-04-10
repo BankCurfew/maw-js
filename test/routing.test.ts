@@ -66,15 +66,15 @@ describe("resolveTarget", () => {
   });
 
   // #5: NODE:AGENT → SELF-NODE (no local match)
-  test("self-node prefix with no local match returns null", () => {
+  test("self-node prefix with no local match returns error", () => {
     const r = resolveTarget("white:ghost", BASE_CONFIG, SESSIONS);
-    expect(r).toBeNull();
+    expect(r).toMatchObject({ type: "error", reason: "self_not_running" });
   });
 
   // #6: NODE:AGENT → UNKNOWN NODE
-  test("unknown node returns null", () => {
+  test("unknown node returns error", () => {
     const r = resolveTarget("mars:neo", BASE_CONFIG, SESSIONS);
-    expect(r).toBeNull();
+    expect(r).toMatchObject({ type: "error", reason: "unknown_node" });
   });
 
   // #7: BARE NAME → AGENTS MAP → REMOTE
@@ -84,15 +84,15 @@ describe("resolveTarget", () => {
   });
 
   // #8: BARE NAME → AGENTS MAP → SELF (skip, treat as local miss)
-  test("bare name mapped to self-node returns null (local search handles it)", () => {
+  test("bare name mapped to self-node returns error", () => {
     const r = resolveTarget("neo", BASE_CONFIG, SESSIONS);
-    expect(r).toBeNull();
+    expect(r).toMatchObject({ type: "error", reason: "self_not_running" });
   });
 
   // #10: BARE NAME → NOT FOUND
-  test("bare name not found anywhere returns null", () => {
+  test("bare name not found anywhere returns error", () => {
     const r = resolveTarget("ghost", BASE_CONFIG, SESSIONS);
-    expect(r).toBeNull();
+    expect(r).toMatchObject({ type: "error", reason: "not_found" });
   });
 
   // #11: BARE NAME WITH -oracle SUFFIX STRIP
@@ -104,7 +104,7 @@ describe("resolveTarget", () => {
   // #12: SLASH IN QUERY (not node:agent)
   test("query with slash is not treated as node:agent", () => {
     const r = resolveTarget("13-mother/worktree", BASE_CONFIG, SESSIONS);
-    expect(r).toBeNull();
+    expect(r).toMatchObject({ type: "error", reason: "not_found" });
   });
 
   // #13: PEER URL FALLBACK (peers[] array — URL must contain node name)
@@ -115,27 +115,28 @@ describe("resolveTarget", () => {
   });
 
   // #14: AGENTS MAP → NODE EXISTS BUT NO PEER URL
-  test("agent mapped to node with no peer URL returns null", () => {
+  test("agent mapped to node with no peer URL returns error", () => {
     const config = { ...BASE_CONFIG, namedPeers: [], peers: [] };
     const r = resolveTarget("homekeeper", config, SESSIONS);
-    expect(r).toBeNull();
+    expect(r).toMatchObject({ type: "error", reason: "no_peer_url" });
   });
 
   // #15: EMPTY QUERY
-  test("empty query returns null", () => {
-    expect(resolveTarget("", BASE_CONFIG, SESSIONS)).toBeNull();
+  test("empty query returns error", () => {
+    const r = resolveTarget("", BASE_CONFIG, SESSIONS);
+    expect(r).toMatchObject({ type: "error", reason: "empty_query" });
   });
 
   // #16: COLON WITH EMPTY NODE
-  test("empty node prefix treated as local miss", () => {
+  test("empty node prefix returns error", () => {
     const r = resolveTarget(":agent", BASE_CONFIG, SESSIONS);
-    expect(r).toBeNull();
+    expect(r).toMatchObject({ type: "error", reason: "empty_node_or_agent" });
   });
 
   // #17: COLON WITH EMPTY AGENT
-  test("empty agent after colon returns null", () => {
+  test("empty agent after colon returns error", () => {
     const r = resolveTarget("node:", BASE_CONFIG, SESSIONS);
-    expect(r).toBeNull();
+    expect(r).toMatchObject({ type: "error", reason: "empty_node_or_agent" });
   });
 
   // #18: MULTIPLE COLONS

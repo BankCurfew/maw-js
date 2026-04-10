@@ -17,6 +17,7 @@ export type ResolveResult =
   | { type: "local"; target: string }
   | { type: "peer"; peerUrl: string; target: string; node: string }
   | { type: "self-node"; target: string }
+  | { type: "error"; reason: string; detail: string; hint?: string }
   | null;
 
 /**
@@ -28,7 +29,7 @@ export function resolveTarget(
   config: MawConfig,
   sessions: Session[],
 ): ResolveResult {
-  if (!query) return null;
+  if (!query) return { type: "error", reason: "empty_query", detail: "no target specified", hint: "usage: maw hey <agent> <message>" };
 
   const selfNode = config.node ?? "local";
 
@@ -43,13 +44,13 @@ export function resolveTarget(
     const colonIdx = query.indexOf(":");
     const nodeName = query.slice(0, colonIdx);
     const agentName = query.slice(colonIdx + 1);
-    if (!nodeName || !agentName) return null;
+    if (!nodeName || !agentName) return { type: "error", reason: "empty_node_or_agent", detail: `invalid format: '${query}'`, hint: "use node:agent format (e.g. mba:homekeeper)" };
 
     // Self-node check: "white:mawjs" from white → resolve locally
     if (nodeName === selfNode) {
       // Try local findWindow with just the agent part
       const selfTarget = findWindow(sessions, agentName);
-      return selfTarget ? { type: "self-node", target: selfTarget } : null;
+      return selfTarget ? { type: "self-node", target: selfTarget } : { type: "error", reason: "self_not_running", detail: `'${agentName}' not found in local sessions on ${selfNode}`, hint: `maw wake ${agentName}` };
     }
 
     // Remote node: find peer URL
@@ -59,7 +60,7 @@ export function resolveTarget(
     }
 
     // Unknown node
-    return null;
+    return { type: "error", reason: "unknown_node", detail: `node '${nodeName}' not in namedPeers or peers`, hint: "add to maw.config.json namedPeers" };
   }
 
   // --- Step 3: Agents map (bare name, e.g. "homekeeper") ---
@@ -69,7 +70,7 @@ export function resolveTarget(
 
   if (agentNode) {
     // Self-node: agent is mapped to our own node → treat as local miss
-    if (agentNode === selfNode) return null;
+    if (agentNode === selfNode) return { type: "error", reason: "self_not_running", detail: `'${query}' mapped to ${selfNode} (local) but not found in sessions`, hint: `maw wake ${query}` };
 
     // Remote node: find peer URL
     const peerUrl = findPeerUrl(agentNode, config);
@@ -78,11 +79,11 @@ export function resolveTarget(
     }
 
     // Agent mapped to unknown node (no peer URL found)
-    return null;
+    return { type: "error", reason: "no_peer_url", detail: `'${query}' mapped to node '${agentNode}' but no URL found`, hint: `add ${agentNode} to maw.config.json namedPeers` };
   }
 
   // --- Step 4: Not resolved (caller handles peer discovery fallback) ---
-  return null;
+  return { type: "error", reason: "not_found", detail: `'${query}' not in local sessions or agents map`, hint: "check: maw ls" };
 }
 
 /** Find a peer URL by node name from namedPeers or legacy peers[] */
