@@ -203,7 +203,7 @@ function sanitizeBranchName(name: string): string {
     .slice(0, 50);
 }
 
-export async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; prompt?: string; incubate?: string }): Promise<string> {
+export async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; prompt?: string; incubate?: string; noAttach?: boolean }): Promise<string> {
   let resolved: { repoPath: string; repoName: string; parentDir: string };
 
   if (opts.incubate) {
@@ -272,7 +272,12 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
         for (const wt of allWt) {
           const taskPart = wt.name.replace(/^\d+-/, "");
           let wtWindowName = `${oracle}-${taskPart}`;
-          if (usedNames.has(wtWindowName)) wtWindowName = `${oracle}-${wt.name}`; // collision fallback
+          if (usedNames.has(wtWindowName)) {
+            // If collision is with an existing window, this worktree is already covered
+            if (existingWindows.includes(wtWindowName)) continue;
+            // True collision with another worktree in this loop → use numbered fallback
+            wtWindowName = `${oracle}-${wt.name}`;
+          }
           // Also check old-style name with number
           const altName = `${oracle}-${wt.name}`;
           if (existingWindows.includes(wtWindowName) || existingWindows.includes(altName)) continue;
@@ -351,10 +356,12 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
         const cmd = buildCommand(existingWindow);
         const escaped = opts.prompt.replace(/'/g, "'\\''");
         await tmux.sendText(`${session}:${existingWindow}`, `${cmd} -p '${escaped}'`);
+        if (!opts.noAttach && process.env.TMUX) await tmux.switchClient(session);
         return `${session}:${existingWindow}`;
       }
       console.log(`\x1b[33m⚡\x1b[0m '${existingWindow}' already running in ${session}`);
       await tmux.selectWindow(`${session}:${existingWindow}`);
+      if (!opts.noAttach && process.env.TMUX) await tmux.switchClient(session);
       return `${session}:${existingWindow}`;
     }
   } catch { /* session might be fresh */ }
@@ -371,6 +378,9 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
   }
 
   console.log(`\x1b[32m✅\x1b[0m woke '${windowName}' in ${session} → ${targetPath}`);
+
+  // Attach client to target session (unless --no-attach)
+  if (!opts.noAttach && process.env.TMUX) await tmux.switchClient(session);
 
   // Snapshot after wake
   takeSnapshot("wake").catch(() => {});

@@ -242,7 +242,7 @@ if (cmd === "--version" || cmd === "-v") {
   if (args[1].toLowerCase() === "all") {
     await cmdWakeAll({ kill: args.includes("--kill"), all: args.includes("--all"), resume: args.includes("--resume") });
   } else {
-    const wakeOpts: { task?: string; newWt?: string; prompt?: string; incubate?: string } = {};
+    const wakeOpts: { task?: string; newWt?: string; prompt?: string; incubate?: string; noAttach?: boolean } = {};
     let issueNum: number | null = null;
     let repo: string | undefined;
     for (let i = 2; i < args.length; i++) {
@@ -250,6 +250,7 @@ if (cmd === "--version" || cmd === "-v") {
       else if (args[i] === "--incubate" && args[i + 1]) { wakeOpts.incubate = args[++i]; }
       else if (args[i] === "--issue" && args[i + 1]) { issueNum = +args[++i]; }
       else if (args[i] === "--repo" && args[i + 1]) { repo = args[++i]; }
+      else if (args[i] === "--no-attach") { wakeOpts.noAttach = true; }
       else if (!wakeOpts.task) { wakeOpts.task = args[i]; }
       else if (!wakeOpts.prompt) { wakeOpts.prompt = args.slice(i).join(" "); break; }
     }
