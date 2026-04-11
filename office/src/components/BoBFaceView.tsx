@@ -1,136 +1,55 @@
-import { memo, useState, useEffect, useCallback } from "react";
-import { useDevice } from "../hooks/useDevice";
+import { memo, useState, useEffect, useCallback, useRef } from "react";
 
-// 8 emotion states — Designer will provide SVG specs per state
-export type BoBEmotion =
-  | "neutral"    // default resting state
-  | "curious"    // wide eyes — new activity detected
-  | "thinking"   // squinted — oracles processing
-  | "happy"      // curved/smiling — tasks completed
-  | "alert"      // sharp/focused — errors or urgent items
-  | "tired"      // droopy — late night / low activity
-  | "excited"    // sparkle — milestone reached
-  | "worried";   // slight shake — blockers detected
+// 8 WALL-E emotion states (Designer Spec)
+export type BobEmotion =
+  | "neutral"
+  | "thinking"
+  | "happy"
+  | "alert"
+  | "confused"
+  | "working"
+  | "sleeping"
+  | "error";
 
-interface EmotionConfig {
-  pupilScale: number;    // 0.3–1.0 (small–large)
-  lidTop: number;        // 0–40 (pixels drooped from top)
-  lidBottom: number;     // 0–30 (pixels raised from bottom)
-  irisY: number;         // vertical offset (-10 to 10)
-  highlight: boolean;    // sparkle in eye
-  brow: number;          // -15 to 15 (angle degrees)
-  color: string;         // iris glow color
-}
+const ALL_EMOTIONS: BobEmotion[] = [
+  "neutral", "thinking", "happy", "alert",
+  "confused", "working", "sleeping", "error",
+];
 
-const EMOTIONS: Record<BoBEmotion, EmotionConfig> = {
-  neutral:  { pupilScale: 0.6, lidTop: 0,  lidBottom: 0,  irisY: 0,   highlight: false, brow: 0,   color: "#60a5fa" },
-  curious:  { pupilScale: 0.9, lidTop: 0,  lidBottom: 0,  irisY: -3,  highlight: true,  brow: -10, color: "#60a5fa" },
-  thinking: { pupilScale: 0.5, lidTop: 15, lidBottom: 10, irisY: 5,   highlight: false, brow: 5,   color: "#818cf8" },
-  happy:    { pupilScale: 0.7, lidTop: 0,  lidBottom: 20, irisY: -2,  highlight: true,  brow: -5,  color: "#34d399" },
-  alert:    { pupilScale: 0.4, lidTop: 0,  lidBottom: 0,  irisY: 0,   highlight: false, brow: -15, color: "#f87171" },
-  tired:    { pupilScale: 0.5, lidTop: 25, lidBottom: 5,  irisY: 8,   highlight: false, brow: 10,  color: "#94a3b8" },
-  excited:  { pupilScale: 1.0, lidTop: 0,  lidBottom: 0,  irisY: -5,  highlight: true,  brow: -12, color: "#fbbf24" },
-  worried:  { pupilScale: 0.55,lidTop: 5,  lidBottom: 0,  irisY: 3,   highlight: false, brow: 12,  color: "#fb923c" },
+// Labels for SR-only live region
+const EMOTION_LABELS: Record<BobEmotion, string> = {
+  neutral: "BoB is idle",
+  thinking: "BoB is thinking...",
+  happy: "BoB is happy!",
+  alert: "BoB is alert",
+  confused: "BoB is confused",
+  working: "BoB is working",
+  sleeping: "BoB is sleeping",
+  error: "BoB encountered an error",
 };
-
-function Eye({ emotion, side }: { emotion: BoBEmotion; side: "left" | "right" }) {
-  const cfg = EMOTIONS[emotion];
-  const eyeSize = "min(35vw, 35vh)";
-  const mirror = side === "right" ? -1 : 1;
-
-  return (
-    <div
-      className="relative rounded-full overflow-hidden transition-all duration-700 ease-in-out"
-      style={{
-        width: eyeSize,
-        height: eyeSize,
-        background: "radial-gradient(ellipse at 40% 40%, #1e293b 0%, #0f172a 70%, #020617 100%)",
-        border: `3px solid ${cfg.color}33`,
-        boxShadow: `0 0 40px ${cfg.color}22, inset 0 0 60px ${cfg.color}11`,
-      }}
-    >
-      {/* Top eyelid */}
-      <div
-        className="absolute top-0 left-0 right-0 z-20 transition-all duration-500"
-        style={{
-          height: `${cfg.lidTop}%`,
-          background: "#020617",
-          borderRadius: "0 0 50% 50%",
-        }}
-      />
-      {/* Bottom eyelid */}
-      <div
-        className="absolute bottom-0 left-0 right-0 z-20 transition-all duration-500"
-        style={{
-          height: `${cfg.lidBottom}%`,
-          background: "#020617",
-          borderRadius: "50% 50% 0 0",
-        }}
-      />
-      {/* Iris */}
-      <div
-        className="absolute inset-0 flex items-center justify-center z-10 transition-all duration-500"
-        style={{ transform: `translateY(${cfg.irisY}px)` }}
-      >
-        <div
-          className="rounded-full transition-all duration-500"
-          style={{
-            width: `${cfg.pupilScale * 55}%`,
-            height: `${cfg.pupilScale * 55}%`,
-            background: `radial-gradient(circle at 40% 35%, ${cfg.color} 0%, ${cfg.color}88 40%, ${cfg.color}33 70%, transparent 100%)`,
-            boxShadow: `0 0 30px ${cfg.color}66`,
-          }}
-        >
-          {/* Pupil */}
-          <div
-            className="absolute inset-0 m-auto rounded-full bg-black"
-            style={{
-              width: "40%",
-              height: "40%",
-            }}
-          />
-          {/* Highlight */}
-          {cfg.highlight && (
-            <div
-              className="absolute rounded-full bg-white/80 animate-pulse"
-              style={{
-                width: "15%",
-                height: "15%",
-                top: "20%",
-                right: "25%",
-              }}
-            />
-          )}
-        </div>
-      </div>
-      {/* Brow (subtle arc above eye) */}
-      <div
-        className="absolute -top-2 left-[10%] right-[10%] h-1 rounded-full z-30 transition-all duration-500"
-        style={{
-          background: `${cfg.color}44`,
-          transform: `rotate(${cfg.brow * mirror}deg)`,
-        }}
-      />
-    </div>
-  );
-}
 
 // SSE hook for real-time emotion state from server
 function useBoBState() {
-  const [emotion, setEmotion] = useState<BoBEmotion>("neutral");
+  const [emotion, setEmotion] = useState<BobEmotion>("neutral");
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const es = new EventSource("/api/bob/state");
+    const es = new EventSource("/api/brain/feed/stream");
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        if (data.emotion) setEmotion(data.emotion);
+        // Map BobVisualState mood to our emotion
+        if (data.emotion && ALL_EMOTIONS.includes(data.emotion)) {
+          setEmotion(data.emotion);
+        } else if (data.mood) {
+          // BobVisualState mood parser fallback
+          const mapped = mapMoodToEmotion(data.mood);
+          if (mapped) setEmotion(mapped);
+        }
         if (data.message !== undefined) setMessage(data.message);
       } catch { /* ignore parse errors */ }
     };
     es.onerror = () => {
-      // Fallback: cycle through idle emotions
       setEmotion("neutral");
     };
     return () => es.close();
@@ -139,58 +58,177 @@ function useBoBState() {
   return { emotion, message };
 }
 
-export const BoBFaceView = memo(function BoBFaceView() {
-  const device = useDevice();
-  const { emotion, message } = useBoBState();
-  const [manualEmotion, setManualEmotion] = useState<BoBEmotion | null>(null);
-  const activeEmotion = manualEmotion || emotion;
+function mapMoodToEmotion(mood: string): BobEmotion | null {
+  const m = mood.toLowerCase();
+  if (m.includes("think") || m.includes("process")) return "thinking";
+  if (m.includes("happy") || m.includes("success") || m.includes("done")) return "happy";
+  if (m.includes("alert") || m.includes("warn") || m.includes("urgent")) return "alert";
+  if (m.includes("confus") || m.includes("error_parse")) return "confused";
+  if (m.includes("work") || m.includes("busy") || m.includes("execut")) return "working";
+  if (m.includes("sleep") || m.includes("idle") || m.includes("away")) return "sleeping";
+  if (m.includes("error") || m.includes("fail") || m.includes("crash")) return "error";
+  return null;
+}
 
-  // Portrait mode hint
-  if (!device.isLandscape && (device.isMobile || device.isTablet)) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[#020617] text-slate-500">
-        <div className="text-center space-y-4">
-          <div className="text-6xl">📱↔️</div>
-          <p className="text-lg">Rotate to landscape to see BoB</p>
-        </div>
-      </div>
-    );
-  }
+// Idle timer: 5 min no activity → sleeping, activity → alert then neutral
+function useIdleTimer(
+  sseEmotion: BobEmotion,
+  setOverride: (e: BobEmotion | null) => void,
+) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasAsleep = useRef(false);
+
+  useEffect(() => {
+    // Reset idle timer on any SSE emotion change
+    if (timerRef.current) clearTimeout(timerRef.current);
+    wasAsleep.current = false;
+    setOverride(null);
+
+    timerRef.current = setTimeout(() => {
+      wasAsleep.current = true;
+      setOverride("sleeping");
+    }, 5 * 60 * 1000);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [sseEmotion, setOverride]);
+
+  // Wake up effect
+  useEffect(() => {
+    if (wasAsleep.current && sseEmotion !== "sleeping") {
+      wasAsleep.current = false;
+      setOverride("alert");
+      const t = setTimeout(() => setOverride(null), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [sseEmotion, setOverride]);
+}
+
+export const BoBFaceView = memo(function BoBFaceView() {
+  const { emotion: sseEmotion, message } = useBoBState();
+  const [manualEmotion, setManualEmotion] = useState<BobEmotion | null>(null);
+  const [idleOverride, setIdleOverride] = useState<BobEmotion | null>(null);
+
+  const stableSetIdleOverride = useCallback(
+    (e: BobEmotion | null) => setIdleOverride(e),
+    [],
+  );
+  useIdleTimer(sseEmotion, stableSetIdleOverride);
+
+  const activeEmotion = manualEmotion || idleOverride || sseEmotion;
 
   return (
     <div
-      className="flex flex-col items-center justify-center h-screen select-none"
-      style={{ background: "#020617" }}
+      className="bob-face"
+      style={{
+        width: "var(--bob-face-width, 80px)",
+        height: "100vh",
+        position: "fixed",
+        left: 0,
+        top: 0,
+        zIndex: 50,
+        background:
+          "linear-gradient(180deg, rgba(13,13,26,0.95) 0%, rgba(20,20,40,0.90) 100%)",
+        borderRight: "1px solid rgba(42, 42, 58, 0.8)",
+        backdropFilter: "blur(12px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
     >
-      {/* Eyes container */}
-      <div className="flex items-center gap-[5vw]">
-        <Eye emotion={activeEmotion} side="left" />
-        <Eye emotion={activeEmotion} side="right" />
+      {/* Eyes */}
+      <div
+        className="bob-eyes"
+        data-emotion={activeEmotion}
+        aria-hidden="true"
+      >
+        <div className="bob-eye bob-eye--left">
+          <div className="bob-pupil" />
+        </div>
+        <div className="bob-eye bob-eye--right">
+          <div className="bob-pupil" />
+        </div>
       </div>
+
+      {/* SR-only live region */}
+      <span className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }} aria-live="polite">
+        {EMOTION_LABELS[activeEmotion]}
+      </span>
 
       {/* Chat bubble */}
       {message && (
-        <div className="mt-8 max-w-md px-6 py-3 rounded-2xl bg-slate-800/80 border border-slate-700/50 text-slate-300 text-sm text-center animate-fade-in">
+        <div
+          style={{
+            position: "absolute",
+            left: "calc(var(--bob-face-width, 80px) + 12px)",
+            top: "50%",
+            transform: "translateY(-50%)",
+            maxWidth: 220,
+            padding: "8px 14px",
+            borderRadius: 12,
+            background: "rgba(30, 41, 59, 0.9)",
+            border: "1px solid rgba(51, 65, 85, 0.5)",
+            color: "#cbd5e1",
+            fontSize: 12,
+            whiteSpace: "pre-wrap",
+            animation: "fadeSlideIn 0.3s ease-out",
+          }}
+        >
           {message}
         </div>
       )}
 
-      {/* Emotion label (dev mode / debug) */}
-      <div className="absolute bottom-4 left-4 text-xs text-slate-700 font-mono">
+      {/* Emotion label (debug) */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 8,
+          left: "50%",
+          transform: "translateX(-50%)",
+          fontSize: 9,
+          fontFamily: "monospace",
+          color: "rgba(100, 116, 139, 0.6)",
+          userSelect: "none",
+        }}
+      >
         {activeEmotion}
       </div>
 
-      {/* Debug: emotion switcher (remove in production) */}
-      <div className="absolute bottom-4 right-4 flex gap-1 flex-wrap max-w-xs">
-        {(Object.keys(EMOTIONS) as BoBEmotion[]).map((e) => (
+      {/* Debug: emotion switcher */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          alignItems: "center",
+        }}
+      >
+        {ALL_EMOTIONS.map((e) => (
           <button
             key={e}
             onClick={() => setManualEmotion(e === manualEmotion ? null : e)}
-            className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-              activeEmotion === e
-                ? "bg-slate-600 text-white"
-                : "bg-slate-800/50 text-slate-600 hover:text-slate-400"
-            }`}
+            style={{
+              padding: "1px 4px",
+              borderRadius: 3,
+              fontSize: 7,
+              fontFamily: "monospace",
+              border: "none",
+              cursor: "pointer",
+              background:
+                activeEmotion === e
+                  ? "rgba(71, 85, 105, 0.8)"
+                  : "rgba(30, 41, 59, 0.4)",
+              color:
+                activeEmotion === e
+                  ? "#e2e8f0"
+                  : "rgba(100, 116, 139, 0.5)",
+              lineHeight: 1.2,
+            }}
           >
             {e}
           </button>
