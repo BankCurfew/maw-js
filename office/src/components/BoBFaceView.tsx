@@ -16,7 +16,6 @@ const ALL_EMOTIONS: BobEmotion[] = [
   "confused", "working", "sleeping", "error",
 ];
 
-// Labels for SR-only live region
 const EMOTION_LABELS: Record<BobEmotion, string> = {
   neutral: "BoB is idle",
   thinking: "BoB is thinking...",
@@ -28,10 +27,10 @@ const EMOTION_LABELS: Record<BobEmotion, string> = {
   error: "BoB encountered an error",
 };
 
-// SSE hook for real-time emotion state from server
+// --- SSE hook for real-time emotion state ---
 function useBoBState() {
   const [emotion, setEmotion] = useState<BobEmotion>("neutral");
-  const [message, setMessage] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const es = new EventSource("/api/bob/state");
@@ -41,19 +40,17 @@ function useBoBState() {
         if (data.emotion && ALL_EMOTIONS.includes(data.emotion)) {
           setEmotion(data.emotion as BobEmotion);
         }
-        if (data.message !== undefined) setMessage(data.message);
-      } catch { /* ignore parse errors */ }
+        if (data.message !== undefined) setStatusMsg(data.message);
+      } catch { /* ignore */ }
     };
-    es.onerror = () => {
-      setEmotion("neutral");
-    };
+    es.onerror = () => setEmotion("neutral");
     return () => es.close();
   }, []);
 
-  return { emotion, message };
+  return { emotion, statusMsg };
 }
 
-// Idle timer: 5 min no activity → sleeping, activity → alert then neutral
+// --- Idle timer ---
 function useIdleTimer(
   sseEmotion: BobEmotion,
   setOverride: (e: BobEmotion | null) => void,
@@ -62,22 +59,16 @@ function useIdleTimer(
   const wasAsleep = useRef(false);
 
   useEffect(() => {
-    // Reset idle timer on any SSE emotion change
     if (timerRef.current) clearTimeout(timerRef.current);
     wasAsleep.current = false;
     setOverride(null);
-
     timerRef.current = setTimeout(() => {
       wasAsleep.current = true;
       setOverride("sleeping");
     }, 5 * 60 * 1000);
-
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [sseEmotion, setOverride]);
 
-  // Wake up effect
   useEffect(() => {
     if (wasAsleep.current && sseEmotion !== "sleeping") {
       wasAsleep.current = false;
@@ -88,10 +79,105 @@ function useIdleTimer(
   }, [sseEmotion, setOverride]);
 }
 
+// --- Chat message type ---
+interface ChatMsg {
+  role: "user" | "assistant";
+  content: string;
+}
+
+// --- Streaming chat hook ---
+function useBoBChat() {
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [streaming, setStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const send = useCallback(async (text: string) => {
+    const userMsg: ChatMsg = { role: "user", content: text };
+    setMessages((prev) => [...prev, userMsg]);
+    setStreaming(true);
+
+    // Add empty assistant message for streaming into
+    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+    try {
+      abortRef.current = new AbortController();
+      const resp = await fetch("/api/bob/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: messages.slice(-10),
+        }),
+        signal: abortRef.current.signal,
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "Request failed" }));
+        setMessages((prev) => {
+          const copy = [...prev];
+          copy[copy.length - 1] = { role: "assistant", content: `Error: ${err.error || resp.statusText}` };
+          return copy;
+        });
+        setStreaming(false);
+        return;
+      }
+
+      const reader = resp.body?.getReader();
+      if (!reader) { setStreaming(false); return; }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6);
+          if (payload === "[DONE]") continue;
+
+          try {
+            const evt = JSON.parse(payload);
+            // Claude streaming: content_block_delta
+            if (evt.type === "content_block_delta" && evt.delta?.text) {
+              setMessages((prev) => {
+                const copy = [...prev];
+                const last = copy[copy.length - 1];
+                copy[copy.length - 1] = { ...last, content: last.content + evt.delta.text };
+                return copy;
+              });
+            }
+          } catch { /* skip malformed events */ }
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[copy.length - 1] = { role: "assistant", content: "Connection lost. Try again." };
+        return copy;
+      });
+    } finally {
+      setStreaming(false);
+      abortRef.current = null;
+    }
+  }, [messages]);
+
+  return { messages, streaming, send };
+}
+
 export const BoBFaceView = memo(function BoBFaceView() {
-  const { emotion: sseEmotion, message } = useBoBState();
+  const { emotion: sseEmotion, statusMsg } = useBoBState();
   const [manualEmotion, setManualEmotion] = useState<BobEmotion | null>(null);
   const [idleOverride, setIdleOverride] = useState<BobEmotion | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const stableSetIdleOverride = useCallback(
     (e: BobEmotion | null) => setIdleOverride(e),
@@ -99,96 +185,222 @@ export const BoBFaceView = memo(function BoBFaceView() {
   );
   useIdleTimer(sseEmotion, stableSetIdleOverride);
 
-  const activeEmotion = manualEmotion || idleOverride || sseEmotion;
+  const { messages, streaming, send } = useBoBChat();
+
+  // Chat emotion override: thinking while streaming, happy when done
+  const chatEmotion: BobEmotion | null = streaming ? "thinking" : null;
+
+  const activeEmotion = manualEmotion || chatEmotion || idleOverride || sseEmotion;
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Flash happy when streaming completes
+  const prevStreaming = useRef(streaming);
+  useEffect(() => {
+    if (prevStreaming.current && !streaming && messages.length > 0) {
+      setManualEmotion("happy");
+      const t = setTimeout(() => setManualEmotion(null), 3000);
+      return () => clearTimeout(t);
+    }
+    prevStreaming.current = streaming;
+  }, [streaming, messages.length]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || streaming) return;
+    setInput("");
+    if (!chatOpen) setChatOpen(true);
+    send(text);
+  };
 
   return (
     <div
-      className="bob-face"
       style={{
-        width: "var(--bob-face-width, 80px)",
+        width: "100vw",
         height: "100vh",
-        position: "fixed",
-        left: 0,
-        top: 0,
-        zIndex: 50,
-        background:
-          "linear-gradient(180deg, rgba(13,13,26,0.95) 0%, rgba(20,20,40,0.90) 100%)",
-        borderRight: "1px solid rgba(42, 42, 58, 0.8)",
-        backdropFilter: "blur(12px)",
+        background: "#020617",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      {/* Eyes */}
+      {/* Eyes area */}
       <div
-        className="bob-eyes"
-        data-emotion={activeEmotion}
-        aria-hidden="true"
+        style={{
+          flex: chatOpen ? "0 0 auto" : "1",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: chatOpen ? "32px 0 16px" : 0,
+          transition: "all 300ms ease",
+        }}
       >
-        <div className="bob-eye bob-eye--left">
-          <div className="bob-pupil" />
+        <div
+          className="bob-eyes"
+          data-emotion={activeEmotion}
+          aria-hidden="true"
+          style={chatOpen ? { transform: "scale(0.8)" } : undefined}
+        >
+          <div className="bob-eye bob-eye--left">
+            <div className="bob-pupil" />
+          </div>
+          <div className="bob-eye bob-eye--right">
+            <div className="bob-pupil" />
+          </div>
         </div>
-        <div className="bob-eye bob-eye--right">
-          <div className="bob-pupil" />
-        </div>
+
+        {/* Status message (from SSE, not chat) */}
+        {statusMsg && !chatOpen && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: "6px 14px",
+              borderRadius: 10,
+              background: "rgba(30, 41, 59, 0.7)",
+              border: "1px solid rgba(51, 65, 85, 0.4)",
+              color: "#94a3b8",
+              fontSize: 11,
+              fontFamily: "monospace",
+            }}
+          >
+            {statusMsg}
+          </div>
+        )}
       </div>
 
-      {/* SR-only live region */}
-      <span className="sr-only" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }} aria-live="polite">
-        {EMOTION_LABELS[activeEmotion]}
-      </span>
-
-      {/* Chat bubble */}
-      {message && (
+      {/* Chat history */}
+      {chatOpen && (
         <div
           style={{
-            position: "absolute",
-            left: "calc(var(--bob-face-width, 80px) + 12px)",
-            top: "50%",
-            transform: "translateY(-50%)",
-            maxWidth: 220,
-            padding: "8px 14px",
-            borderRadius: 12,
-            background: "rgba(30, 41, 59, 0.9)",
-            border: "1px solid rgba(51, 65, 85, 0.5)",
-            color: "#cbd5e1",
-            fontSize: 12,
-            whiteSpace: "pre-wrap",
-            animation: "fadeSlideIn 0.3s ease-out",
+            flex: 1,
+            width: "100%",
+            maxWidth: 520,
+            overflowY: "auto",
+            padding: "0 16px 8px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
           }}
         >
-          {message}
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              style={{
+                alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+                maxWidth: "85%",
+                padding: "8px 12px",
+                borderRadius: msg.role === "user" ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
+                background:
+                  msg.role === "user"
+                    ? "rgba(99, 102, 241, 0.25)"
+                    : "rgba(30, 41, 59, 0.8)",
+                border: `1px solid ${
+                  msg.role === "user"
+                    ? "rgba(99, 102, 241, 0.3)"
+                    : "rgba(51, 65, 85, 0.4)"
+                }`,
+                color: msg.role === "user" ? "#c7d2fe" : "#cbd5e1",
+                fontSize: 13,
+                lineHeight: 1.5,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {msg.content || (streaming && i === messages.length - 1 ? "..." : "")}
+            </div>
+          ))}
+          <div ref={chatEndRef} />
         </div>
       )}
+
+      {/* Chat input */}
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          width: "100%",
+          maxWidth: 520,
+          padding: "12px 16px 24px",
+          display: "flex",
+          gap: 8,
+        }}
+      >
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Talk to BoB..."
+          disabled={streaming}
+          style={{
+            flex: 1,
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(51, 65, 85, 0.5)",
+            background: "rgba(15, 23, 42, 0.8)",
+            color: "#e2e8f0",
+            fontSize: 14,
+            outline: "none",
+          }}
+        />
+        <button
+          type="submit"
+          disabled={streaming || !input.trim()}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 12,
+            border: "none",
+            background: streaming
+              ? "rgba(51, 65, 85, 0.4)"
+              : "rgba(99, 102, 241, 0.3)",
+            color: streaming ? "#475569" : "#a5b4fc",
+            fontSize: 14,
+            cursor: streaming ? "not-allowed" : "pointer",
+          }}
+        >
+          {streaming ? "..." : "Send"}
+        </button>
+      </form>
+
+      {/* SR-only live region */}
+      <span
+        className="sr-only"
+        style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}
+        aria-live="polite"
+      >
+        {EMOTION_LABELS[activeEmotion]}
+      </span>
 
       {/* Emotion label (debug) */}
       <div
         style={{
           position: "absolute",
-          bottom: 8,
-          left: "50%",
-          transform: "translateX(-50%)",
+          top: 8,
+          right: 8,
           fontSize: 9,
           fontFamily: "monospace",
-          color: "rgba(100, 116, 139, 0.6)",
+          color: "rgba(100, 116, 139, 0.5)",
           userSelect: "none",
         }}
       >
         {activeEmotion}
       </div>
 
-      {/* Debug: emotion switcher */}
+      {/* Debug: emotion switcher (top-left) */}
       <div
         style={{
           position: "absolute",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
+          top: 8,
+          left: 8,
           display: "flex",
-          flexDirection: "column",
+          flexWrap: "wrap",
           gap: 2,
-          alignItems: "center",
+          maxWidth: 100,
         }}
       >
         {ALL_EMOTIONS.map((e) => (

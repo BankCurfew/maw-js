@@ -759,6 +759,58 @@ app.get("/api/bob/state", (c) => {
   });
 });
 
+// --- BoB Chat (Claude streaming) ---
+app.post("/api/bob/chat", async (c) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return c.json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+  }
+
+  const body = await c.req.json<{ message: string; history?: Array<{ role: string; content: string }> }>();
+  if (!body.message?.trim()) {
+    return c.json({ error: "message required" }, 400);
+  }
+
+  // Build messages: system prompt + history + new message
+  const messages = [
+    ...(body.history || []).slice(-10), // keep last 10 turns
+    { role: "user", content: body.message },
+  ];
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 512,
+      stream: true,
+      system: "You are BoB — the Apex Observer of the Oracle family. You speak concisely in 1-3 sentences. You know the status of all oracles. You are calm, wise, and slightly playful. Answer in the same language the user writes in. If asked about oracle status, describe what you observe.",
+      messages,
+    }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    return c.json({ error: `Claude API error: ${resp.status}`, detail: err }, 502);
+  }
+
+  // Stream SSE back to client
+  const upstream = resp.body;
+  if (!upstream) return c.json({ error: "no response body" }, 502);
+
+  return new Response(upstream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+});
+
 // --- Anti-Pattern Scan API ---
 app.get("/api/anti-patterns", (c) => {
   const { runAntiPatternScan } = require("./anti-patterns");
