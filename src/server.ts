@@ -283,6 +283,42 @@ app.post("/api/rooms", async (c) => {
 
 // --- UI State persistence (cross-device) ---
 
+// --- PIN lock (session auth for office dashboard) ---
+const pinAttempts = new Map<string, { count: number; resetAt: number }>();
+
+app.get("/api/pin-info", (c) => {
+  const config = loadConfig() as any;
+  const pin = config.pin || "";
+  return c.json({ length: pin.length, enabled: pin.length > 0 });
+});
+
+app.post("/api/pin-set", async (c) => {
+  const { pin } = await c.req.json();
+  const newPin = typeof pin === "string" ? pin.replace(/\D/g, "") : "";
+  saveConfig({ pin: newPin } as any);
+  return c.json({ ok: true, length: newPin.length, enabled: newPin.length > 0 });
+});
+
+app.post("/api/pin-verify", async (c) => {
+  const ip = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "local";
+  const now = Date.now();
+  const entry = pinAttempts.get(ip) || { count: 0, resetAt: now + 60_000 };
+  if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + 60_000; }
+  entry.count++;
+  pinAttempts.set(ip, entry);
+  if (entry.count > 5) {
+    return c.json({ ok: false, error: "Too many attempts. Wait 1 minute." }, 429);
+  }
+  const { pin } = await c.req.json();
+  const config = loadConfig() as any;
+  const correct = config.pin || "";
+  if (!correct) return c.json({ ok: true });
+  const ok = pin === correct;
+  if (ok) pinAttempts.delete(ip);
+  return c.json({ ok });
+});
+
+// --- UI State persistence ---
 const uiStatePath = join(import.meta.dir, "../ui-state.json");
 
 app.get("/api/ui-state", (c) => {
