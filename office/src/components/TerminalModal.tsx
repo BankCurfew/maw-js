@@ -36,8 +36,8 @@ export function TerminalModal({ agent, send, onClose, onNavigate, onSelectSiblin
   const lastAttachCountRef = useRef(0);
   if (attachments.length > lastAttachCountRef.current) {
     const newAtts = attachments.slice(lastAttachCountRef.current);
-    const urls = newAtts.map(a => `${location.origin}${a.url}`).join(" ");
-    // Send the URL to the terminal as if typed
+    const urls = newAtts.map(a => a.localUrl).join(" ");
+    // Send the local path to the terminal as if typed
     setTimeout(() => {
       send({ type: "send", target: agent.target, text: urls, force: true });
       clearAttachments();

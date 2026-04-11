@@ -777,7 +777,9 @@ app.post("/api/attach", async (c) => {
     writeFileSync(fullPath, Buffer.from(buf));
 
     const url = `/api/attachments/${id}`;
-    return c.json({ ok: true, id, url, name: file.name, size: file.size, mimeType: file.type });
+    const port = +(process.env.MAW_PORT || loadConfig().port || 3456);
+    const localUrl = `http://localhost:${port}${url}`;
+    return c.json({ ok: true, id, url, localUrl, name: file.name, size: file.size, mimeType: file.type });
   } catch (e: any) {
     return c.json({ error: e.message }, 400);
   }

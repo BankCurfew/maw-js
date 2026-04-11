@@ -371,6 +371,23 @@ async function resumeActiveItems() {
 }
 
 export async function cmdWakeAll(opts: { kill?: boolean; all?: boolean; resume?: boolean } = {}) {
+  // Rebuild office frontend so dist-office always reflects latest source
+  console.log(`\n  \x1b[36mBuilding office frontend...\x1b[0m`);
+  try {
+    const proc = Bun.spawnSync(["bun", "run", "build:office"], {
+      cwd: join(import.meta.dir, "../.."),
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    if (proc.exitCode === 0) {
+      console.log(`  \x1b[32m✓\x1b[0m office build complete\n`);
+    } else {
+      console.log(`  \x1b[33m⚠\x1b[0m office build failed (exit ${proc.exitCode}), continuing with existing dist\n`);
+    }
+  } catch {
+    console.log(`  \x1b[33m⚠\x1b[0m office build skipped (bun not available)\n`);
+  }
+
   const allSessions = loadFleet();
   // Skip dormant (20+) unless --all flag is passed
   const sessions = opts.all
