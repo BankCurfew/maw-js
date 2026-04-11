@@ -124,86 +124,45 @@ interface ChatMsg {
   content: string;
 }
 
-// --- Streaming chat hook ---
+// --- Chat hook (sends to BoB's tmux session, waits for response) ---
 function useBoBChat() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [streaming, setStreaming] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const [waiting, setWaiting] = useState(false);
 
   const send = useCallback(async (text: string) => {
-    const userMsg: ChatMsg = { role: "user", content: text };
-    setMessages((prev) => [...prev, userMsg]);
-    setStreaming(true);
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setWaiting(true);
+    setMessages((prev) => [...prev, { role: "assistant", content: "..." }]);
 
     try {
-      abortRef.current = new AbortController();
       const resp = await fetch("/api/bob/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          history: messages.slice(-10),
-        }),
-        signal: abortRef.current.signal,
+        body: JSON.stringify({ message: text }),
       });
 
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: "Request failed" }));
-        setMessages((prev) => {
-          const copy = [...prev];
-          copy[copy.length - 1] = { role: "assistant", content: `Error: ${err.error || resp.statusText}` };
-          return copy;
-        });
-        setStreaming(false);
-        return;
-      }
+      const data = await resp.json();
+      const content = resp.ok
+        ? (data.response || "(no response)")
+        : `Error: ${data.error || resp.statusText}`;
 
-      const reader = resp.body?.getReader();
-      if (!reader) { setStreaming(false); return; }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const payload = line.slice(6);
-          if (payload === "[DONE]") continue;
-          try {
-            const evt = JSON.parse(payload);
-            if (evt.type === "content_block_delta" && evt.delta?.text) {
-              setMessages((prev) => {
-                const copy = [...prev];
-                const last = copy[copy.length - 1];
-                copy[copy.length - 1] = { ...last, content: last.content + evt.delta.text };
-                return copy;
-              });
-            }
-          } catch { /* skip */ }
-        }
-      }
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === "AbortError") return;
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[copy.length - 1] = { role: "assistant", content };
+        return copy;
+      });
+    } catch {
       setMessages((prev) => {
         const copy = [...prev];
         copy[copy.length - 1] = { role: "assistant", content: "Connection lost. Try again." };
         return copy;
       });
     } finally {
-      setStreaming(false);
-      abortRef.current = null;
+      setWaiting(false);
     }
-  }, [messages]);
+  }, []);
 
-  return { messages, streaming, send };
+  return { messages, streaming: waiting, send };
 }
 
 export const BoBFaceView = memo(function BoBFaceView() {

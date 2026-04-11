@@ -759,56 +759,54 @@ app.get("/api/bob/state", (c) => {
   });
 });
 
-// --- BoB Chat (Claude streaming) ---
+// --- BoB Chat (via tmux send-keys to BoB's Claude session) ---
+const BOB_PANE = process.env.BOB_PANE || "01-bob:0";
 app.post("/api/bob/chat", async (c) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return c.json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-  }
-
-  const body = await c.req.json<{ message: string; history?: Array<{ role: string; content: string }> }>();
+  const body = await c.req.json<{ message: string }>();
   if (!body.message?.trim()) {
     return c.json({ error: "message required" }, 400);
   }
 
-  // Build messages: system prompt + history + new message
-  const messages = [
-    ...(body.history || []).slice(-10), // keep last 10 turns
-    { role: "user", content: body.message },
-  ];
+  try {
+    // Capture pane BEFORE sending to get baseline
+    const before = await capture(BOB_PANE, 40);
+    const beforeLines = before.split("\n").length;
 
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
-      stream: true,
-      system: "You are BoB — the Apex Observer of the Oracle family. You speak concisely in 1-3 sentences. You know the status of all oracles. You are calm, wise, and slightly playful. Answer in the same language the user writes in. If asked about oracle status, describe what you observe.",
-      messages,
-    }),
-  });
+    // Send message to BoB's tmux pane (like maw hey bob)
+    await sendKeys(BOB_PANE, body.message + "\r");
 
-  if (!resp.ok) {
-    const err = await resp.text();
-    return c.json({ error: `Claude API error: ${resp.status}`, detail: err }, 502);
+    // Poll for new output (BoB responds via Claude in tmux)
+    // Wait up to 30s, polling every 1s for new lines
+    let response = "";
+    const maxAttempts = 30;
+    let settled = 0; // consecutive polls with same content = response done
+
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const after = await capture(BOB_PANE, 60);
+      const afterLines = after.split("\n");
+
+      // New content = lines after baseline
+      const newLines = afterLines.slice(beforeLines).join("\n").trim();
+      if (newLines.length > 0) {
+        if (newLines === response) {
+          settled++;
+          // 3 consecutive same = response complete
+          if (settled >= 3) break;
+        } else {
+          response = newLines;
+          settled = 0;
+        }
+      }
+    }
+
+    // Clean ANSI escape codes from response
+    const clean = response.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").trim();
+
+    return c.json({ response: clean || "(BoB didn't respond — he may be busy)" });
+  } catch (err: any) {
+    return c.json({ error: `tmux error: ${err.message}` }, 500);
   }
-
-  // Stream SSE back to client
-  const upstream = resp.body;
-  if (!upstream) return c.json({ error: "no response body" }, 502);
-
-  return new Response(upstream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
 });
 
 // --- Anti-Pattern Scan API ---

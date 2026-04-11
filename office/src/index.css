@@ -84,12 +84,12 @@ input, textarea, select {
   --bob-transition-color: 300ms ease-in-out;
   --bob-transition-pupil: 150ms ease-out;
 
-  /* BoB Eye Sizes (default = neutral) */
-  --bob-eye-width: 28px;
-  --bob-eye-height: 32px;
-  --bob-eye-gap: 8px;
-  --bob-eye-radius: 8px;
-  --bob-pupil-size: 8px;
+  /* BoB Eye Sizes — fullscreen WALL-E binoculars (60-70% of viewport) */
+  --bob-eye-width: 25vmin;
+  --bob-eye-height: 30vmin;
+  --bob-eye-gap: 5vmin;
+  --bob-eye-radius: 4vmin;
+  --bob-pupil-size: 5vmin;
 
   /* BoB Eye Colors (default = neutral purple) */
   --bob-eye-bg: #a78bfa;
@@ -119,8 +119,8 @@ input, textarea, select {
   border-radius: var(--bob-eye-radius);
   background: var(--bob-eye-bg);
   box-shadow:
-    0 0 12px var(--bob-eye-glow),
-    0 0 24px var(--bob-eye-glow-outer);
+    0 0 3vmin var(--bob-eye-glow),
+    0 0 6vmin var(--bob-eye-glow-outer);
   position: relative;
   overflow: hidden;
   transition:
@@ -156,8 +156,8 @@ input, textarea, select {
 
 /* --- Blink (neutral, working, happy only) --- */
 @keyframes bob-blink {
-  0%, 90%, 100% { height: var(--bob-eye-height, 32px); }
-  95% { height: 4px; border-radius: 2px; }
+  0%, 90%, 100% { height: var(--bob-eye-height, 30vmin); }
+  95% { height: 2vmin; border-radius: 1vmin; }
 }
 
 .bob-eyes[data-emotion="neutral"] .bob-eye,
@@ -170,18 +170,18 @@ input, textarea, select {
 
 /* ========== State 1: neutral ========== */
 .bob-eyes[data-emotion="neutral"] .bob-eye {
-  width: 28px; height: 32px; border-radius: 8px;
+  width: 25vmin; height: 30vmin; border-radius: 4vmin;
   --bob-eye-bg: #a78bfa;
   --bob-eye-glow: rgba(167, 139, 250, 0.4);
   --bob-eye-glow-outer: rgba(167, 139, 250, 0.15);
 }
 .bob-eyes[data-emotion="neutral"] .bob-pupil {
-  width: 8px; height: 8px; top: 50%; left: 50%;
+  width: 5vmin; height: 5vmin; top: 50%; left: 50%;
 }
 
 /* ========== State 2: thinking ========== */
 .bob-eyes[data-emotion="thinking"] .bob-eye {
-  width: 28px; height: 24px; border-radius: 6px;
+  width: 25vmin; height: 22vmin; border-radius: 3vmin;
   --bob-eye-bg: #60a5fa;
   --bob-eye-glow: rgba(96, 165, 250, 0.4);
   --bob-eye-glow-outer: rgba(96, 165, 250, 0.15);
@@ -196,48 +196,48 @@ input, textarea, select {
 
 /* ========== State 3: happy ========== */
 .bob-eyes[data-emotion="happy"] .bob-eye {
-  width: 30px; height: 28px; border-radius: 12px;
+  width: 27vmin; height: 26vmin; border-radius: 6vmin;
   --bob-eye-bg: #4ade80;
   --bob-eye-glow: rgba(74, 222, 128, 0.4);
   --bob-eye-glow-outer: rgba(74, 222, 128, 0.15);
 }
 .bob-eyes[data-emotion="happy"] .bob-pupil {
-  width: 6px; height: 6px;
+  width: 4vmin; height: 4vmin;
 }
 .bob-eyes[data-emotion="happy"] {
   animation: bob-happy-bounce 0.4s ease-out 1, bob-breathe var(--bob-breathe-duration) ease-in-out infinite;
 }
 @keyframes bob-happy-bounce {
   0% { transform: translateY(0); }
-  40% { transform: translateY(-4px); }
+  40% { transform: translateY(-1.5vmin); }
   100% { transform: translateY(0); }
 }
 
 /* ========== State 4: alert ========== */
 .bob-eyes[data-emotion="alert"] .bob-eye {
-  width: 24px; height: 36px; border-radius: 6px;
+  width: 22vmin; height: 34vmin; border-radius: 3vmin;
   --bob-eye-bg: #fbbf24;
   --bob-eye-glow: rgba(251, 191, 36, 0.5);
   --bob-eye-glow-outer: rgba(251, 191, 36, 0.2);
   animation: bob-alert-pulse 0.6s ease-in-out 2;
 }
 .bob-eyes[data-emotion="alert"] .bob-pupil {
-  width: 10px; height: 10px;
+  width: 7vmin; height: 7vmin;
 }
 @keyframes bob-alert-pulse {
-  0%, 100% { box-shadow: 0 0 12px rgba(251, 191, 36, 0.5); }
-  50% { box-shadow: 0 0 24px rgba(251, 191, 36, 0.8), 0 0 48px rgba(251, 191, 36, 0.3); }
+  0%, 100% { box-shadow: 0 0 2vmin rgba(251, 191, 36, 0.5); }
+  50% { box-shadow: 0 0 4vmin rgba(251, 191, 36, 0.8), 0 0 8vmin rgba(251, 191, 36, 0.3); }
 }
 
 /* ========== State 5: confused ========== */
 .bob-eyes[data-emotion="confused"] .bob-eye--left {
-  width: 28px; height: 32px; border-radius: 8px;
+  width: 25vmin; height: 30vmin; border-radius: 4vmin;
   transform: rotate(-12deg);
   --bob-eye-bg: #a78bfa;
   --bob-eye-glow: rgba(167, 139, 250, 0.4);
 }
 .bob-eyes[data-emotion="confused"] .bob-eye--right {
-  width: 28px; height: 28px; border-radius: 8px;
+  width: 25vmin; height: 26vmin; border-radius: 4vmin;
   --bob-eye-bg: #a78bfa;
   --bob-eye-glow: rgba(167, 139, 250, 0.4);
 }
@@ -255,7 +255,7 @@ input, textarea, select {
 
 /* ========== State 6: working ========== */
 .bob-eyes[data-emotion="working"] .bob-eye {
-  width: 26px; height: 30px; border-radius: 7px;
+  width: 23vmin; height: 28vmin; border-radius: 3.5vmin;
   --bob-eye-bg: #22d3ee;
   --bob-eye-glow: rgba(34, 211, 238, 0.4);
   --bob-eye-glow-outer: rgba(34, 211, 238, 0.15);
@@ -264,16 +264,16 @@ input, textarea, select {
     bob-work-glow 2s ease-in-out infinite;
 }
 .bob-eyes[data-emotion="working"] .bob-pupil {
-  width: 6px; height: 6px;
+  width: 4vmin; height: 4vmin;
 }
 @keyframes bob-work-glow {
-  0%, 100% { box-shadow: 0 0 12px rgba(34, 211, 238, 0.4); }
-  50% { box-shadow: 0 0 18px rgba(34, 211, 238, 0.6), 0 0 36px rgba(34, 211, 238, 0.2); }
+  0%, 100% { box-shadow: 0 0 2vmin rgba(34, 211, 238, 0.4); }
+  50% { box-shadow: 0 0 3vmin rgba(34, 211, 238, 0.6), 0 0 6vmin rgba(34, 211, 238, 0.2); }
 }
 
 /* ========== State 7: sleeping ========== */
 .bob-eyes[data-emotion="sleeping"] .bob-eye {
-  width: 28px; height: 4px; border-radius: 2px;
+  width: 25vmin; height: 2vmin; border-radius: 1vmin;
   --bob-eye-bg: #6d5a8f;
   --bob-eye-glow: rgba(109, 90, 143, 0.2);
   --bob-eye-glow-outer: rgba(109, 90, 143, 0.1);
@@ -291,14 +291,14 @@ input, textarea, select {
 
 /* ========== State 8: error ========== */
 .bob-eyes[data-emotion="error"] .bob-eye {
-  width: 32px; height: 36px; border-radius: 6px;
+  width: 29vmin; height: 34vmin; border-radius: 3vmin;
   --bob-eye-bg: #ef4444;
   --bob-eye-glow: rgba(239, 68, 68, 0.6);
   --bob-eye-glow-outer: rgba(239, 68, 68, 0.25);
   animation: bob-error-flash 0.3s ease-in-out 2;
 }
 .bob-eyes[data-emotion="error"] .bob-pupil {
-  width: 12px; height: 12px;
+  width: 8vmin; height: 8vmin;
 }
 @keyframes bob-error-flash {
   0%, 100% { opacity: 1; }
