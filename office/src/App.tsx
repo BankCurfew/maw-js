@@ -21,6 +21,7 @@ import { HallOfFameView } from "./components/HallOfFameView";
 import { IPadDashboard } from "./components/iPadDashboard";
 import { ChatView } from "./components/ChatView";
 import { BoBFaceView } from "./components/BoBFaceView";
+import FederationView from "./components/FederationView";
 import { ShortcutOverlay } from "./components/ShortcutOverlay";
 import { JumpOverlay } from "./components/JumpOverlay";
 import { OracleSheet } from "./components/OracleSheet";
@@ -365,6 +366,14 @@ export function App() {
     return (
       <Layout activeView="jarvis" {...layoutProps}>
         <JarvisView />
+      </Layout>
+    );
+  }
+
+  if (route === "federation") {
+    return (
+      <Layout activeView="federation" {...layoutProps}>
+        <FederationView />
       </Layout>
     );
   }
