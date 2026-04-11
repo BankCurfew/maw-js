@@ -641,6 +641,61 @@ app.get("/api/oracle-health", (c) => {
   return c.json(summary);
 });
 
+// --- BoB Face SSE (WALL-E Eyes emotion state) ---
+app.get("/api/bob/state", (c) => {
+  // SSE endpoint: pushes emotion state every 5s based on fleet activity
+  const stream = new ReadableStream({
+    start(controller) {
+      const send = (data: Record<string, unknown>) => {
+        controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      const tick = () => {
+        const active = feedTailer.getActive();
+        const activeCount = active.size;
+        const hour = new Date().getUTCHours() + 7; // Bangkok hour
+
+        // Derive emotion from real state
+        let emotion = "neutral";
+        let message: string | null = null;
+
+        if (hour >= 0 && hour < 6) {
+          emotion = "tired";
+          message = "zzZ...";
+        } else if (activeCount >= 5) {
+          emotion = "excited";
+          message = `${activeCount} oracles active — full house!`;
+        } else if (activeCount >= 3) {
+          emotion = "happy";
+          message = `${activeCount} oracles working`;
+        } else if (activeCount >= 1) {
+          emotion = "curious";
+          const names = [...active.keys()].slice(0, 3).join(", ");
+          message = `watching ${names}...`;
+        } else {
+          emotion = "neutral";
+          message = null;
+        }
+
+        send({ emotion, message, activeCount, timestamp: new Date().toISOString() });
+      };
+
+      tick();
+      const id = setInterval(tick, 5000);
+      // Clean up when client disconnects
+      c.req.raw.signal.addEventListener("abort", () => clearInterval(id));
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+});
+
 // --- Anti-Pattern Scan API ---
 app.get("/api/anti-patterns", (c) => {
   const { runAntiPatternScan } = require("./anti-patterns");

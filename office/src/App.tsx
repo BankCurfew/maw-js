@@ -20,6 +20,7 @@ import { JarvisView } from "./components/JarvisView";
 import { HallOfFameView } from "./components/HallOfFameView";
 import { IPadDashboard } from "./components/iPadDashboard";
 import { ChatView } from "./components/ChatView";
+import { BoBFaceView } from "./components/BoBFaceView";
 import { ShortcutOverlay } from "./components/ShortcutOverlay";
 import { JumpOverlay } from "./components/JumpOverlay";
 import { OracleSheet } from "./components/OracleSheet";
@@ -378,6 +379,10 @@ export function App() {
 
   if (route === "ipad") {
     return <IPadDashboard />;
+  }
+
+  if (route === "bob") {
+    return <BoBFaceView />;
   }
 
   // Fallback → office
