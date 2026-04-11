@@ -9,6 +9,8 @@ import { MawEngine } from "./engine";
 import { LoopEngine } from "./loops";
 import { isAuthenticated, handleLogin, handleLogout, getActiveSessions, LOGIN_PAGE, isAuthEnabled, generateQrToken, getQrTokenStatus, approveQrToken, QR_APPROVE_PAGE } from "./auth";
 import type { WSData } from "./types";
+import { requireHmac } from "./lib/federation-auth";
+import { checkPeerHealth, aggregateAgents, crossNodeSend, aggregateSessions } from "./lib/peers";
 
 const app = new Hono();
 
@@ -141,6 +143,24 @@ app.get("/api/mirror", async (c) => {
 });
 
 app.post("/api/send", async (c) => {
+  const { target, text } = await c.req.json();
+  if (!target || !text) return c.json({ error: "target and text required" }, 400);
+
+  // Cross-node routing: "curfew:01-bob" → forward to peer
+  if (target.includes(":")) {
+    // Inbound from peer (HMAC-signed) → target won't have ":" again, just deliver locally
+    // Outbound (from local UI) → route to peer
+    const result = await crossNodeSend(target, text);
+    if (!result.ok) return c.json({ error: result.error }, 502);
+    return c.json({ ok: true, target, text, forwarded: true });
+  }
+
+  await sendKeys(target, text);
+  return c.json({ ok: true, target, text });
+});
+
+// Inbound cross-node send (HMAC-authenticated from peer)
+app.post("/api/federation/send", requireHmac(), async (c) => {
   const { target, text } = await c.req.json();
   if (!target || !text) return c.json({ error: "target and text required" }, 400);
   await sendKeys(target, text);
@@ -505,9 +525,28 @@ app.put("/api/config-file", async (c) => {
 });
 
 // --- Config API ---
-app.get("/api/config", (c) => {
+app.get("/api/config", async (c) => {
   if (c.req.query("raw") === "1") return c.json(loadConfig());
-  return c.json(configForDisplay());
+
+  // Federation-compatible: include node, agents map, namedPeers
+  const config = loadConfig() as any;
+  const display = configForDisplay();
+  const sessions = await listSessions().catch(() => []);
+  const sessionNames = sessions.map((s: any) => typeof s === "string" ? s : s.name || "");
+  const agents = await aggregateAgents(sessionNames);
+  const namedPeers: Record<string, string> = {};
+  for (const p of (config.namedPeers || [])) {
+    namedPeers[p.name] = p.url;
+  }
+
+  return c.json({
+    ...display,
+    node: config.node || "local",
+    agents,
+    namedPeers,
+    // Mask federation token
+    federationToken: undefined,
+  });
 });
 
 app.post("/api/config", async (c) => {
@@ -626,6 +665,21 @@ app.get("/api/feed", (c) => {
   if (oracle) events = events.filter(e => e.oracle === oracle);
   const active = [...feedTailer.getActive().keys()];
   return c.json({ events: events.reverse(), total: events.length, active_oracles: active });
+});
+
+// --- Federation Status ---
+
+app.get("/api/federation/status", async (c) => {
+  const peers = await checkPeerHealth();
+  return c.json({ peers });
+});
+
+// --- Aggregated Sessions (local + remote) ---
+
+app.get("/api/sessions/federated", async (c) => {
+  const localSessions = await listSessions().catch(() => []);
+  const result = await aggregateSessions(localSessions);
+  return c.json(result);
 });
 
 // --- Oracle Health API ---

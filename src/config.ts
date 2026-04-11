@@ -10,6 +10,10 @@ export interface MawConfig {
   env: Record<string, string>;
   commands: Record<string, string>;
   sessions: Record<string, string>;
+  node?: string;
+  federationToken?: string;
+  namedPeers?: { name: string; url: string }[];
+  agents?: Record<string, string>;
 }
 
 const DEFAULTS: MawConfig = {
