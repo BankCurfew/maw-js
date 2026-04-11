@@ -1,482 +1,319 @@
-/**
- * maw bud — Oracle Reproduction (Yeast Budding Model)
- *
- * Spawns a new child oracle from a parent oracle with security gates:
- * 1. Human approval required (--approved-by or interactive)
- * 2. Credential isolation (fresh, no inheritance)
- * 3. Audit trail (feed.log + soul-sync.log)
- * 4. Bud depth max 2 (reject grandchild of grandchild)
- * 5. Dormancy timeline tracked (budded_at for TTL)
- */
-
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync, symlinkSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
 import { loadConfig } from "../config";
-
-const SOVEREIGN_ROOT = join(homedir(), ".oracle", "ψ");
+import { loadFleetEntries } from "./fleet-load";
+import { cmdSoulSync } from "./soul-sync";
 import { cmdWake } from "./wake";
+import { FLEET_DIR } from "../paths";
+import { join } from "path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 
-const FLEET_DIR = join(import.meta.dir, "../../fleet");
-const FEED_LOG = join(homedir(), ".oracle", "feed.log");
-const MAX_BUD_DEPTH = 2;
-const ORG = "BankCurfew";
-
-interface BudOptions {
-  from?: string;      // parent oracle name (default: detect from current session)
-  repo?: string;      // incubate external repo instead of creating new
+export interface BudOpts {
+  from?: string;
+  repo?: string;
+  org?: string;
+  issue?: number;
+  fast?: boolean;
+  root?: boolean;
   dryRun?: boolean;
-  approvedBy?: string; // --approved-by <human> (security gate #1)
+  note?: string;
 }
 
-interface FleetConfig {
-  name: string;
-  windows: Array<{ name: string; repo: string }>;
-  budded_from?: string;
-  budded_at?: string;
-  sync_peers?: string[];
-}
+/**
+ * maw bud <name> [--from <parent>] [--org <org>] [--repo org/repo] [--issue N] [--fast] [--dry-run]
+ *
+ * Yeast budding — any oracle can spawn a new oracle.
+ *
+ * Target org resolution (first wins):
+ *   1. --org <org>                    — per-invocation override (#235)
+ *   2. config.githubOrg               — per-machine default from config
+ *   3. "Soul-Brews-Studio"            — hard-coded fallback
+ *
+ * Note: --repo is an INCUBATION flag (seeds the bud from an existing local
+ * project's ψ/), NOT a target-org override. Use --org to target a different
+ * GitHub org for the bud's own repo.
+ *
+ * Steps:
+ *   1. Create oracle repo (gh repo create)
+ *   2. Initialize ψ/ vault
+ *   3. Generate CLAUDE.md stub
+ *   4. Create fleet config
+ *   5. Soul-sync seed from parent
+ *   6. Wake the bud
+ *   7. Update parent's sync_peers
+ */
+export async function cmdBud(name: string, opts: BudOpts = {}) {
+  const config = loadConfig();
+  const ghqRoot = config.ghqRoot;
+  const org = opts.org || config.githubOrg || "Soul-Brews-Studio";
 
-/** Reserved oracle names — cannot be used as bud names */
-const RESERVED_NAMES = new Set([
-  "bob", "dev", "qa", "security", "hr", "admin", "data", "doc", "editor",
-  "designer", "researcher", "writer", "botdev", "creator", "aia", "fe", "pa",
-  "maw", "oracle", "root", "pulse", "system",
-]);
-
-// --- Helpers ---
-
-function logToFeed(oracle: string, message: string) {
-  try {
-    const ts = new Date().toISOString().replace("T", " ").replace("Z", "");
-    const line = `${ts} | ${oracle} | ${homedir().split("/").pop()} | Notification | maw-bud | maw-bud » ${message}\n`;
-    appendFileSync(FEED_LOG, line);
-  } catch {}
-}
-
-function loadAllFleetConfigs(): FleetConfig[] {
-  try {
-    return readdirSync(FLEET_DIR)
-      .filter(f => f.endsWith(".json"))
-      .map(f => JSON.parse(readFileSync(join(FLEET_DIR, f), "utf-8")));
-  } catch {
-    return [];
-  }
-}
-
-function findFleetConfig(oracleName: string): FleetConfig | null {
-  for (const config of loadAllFleetConfigs()) {
-    if (config.name.endsWith(`-${oracleName}`)) return config;
-    const win = config.windows?.find(w =>
-      w.name.toLowerCase().replace("-oracle", "") === oracleName.toLowerCase()
-    );
-    if (win) return config;
-  }
-  return null;
-}
-
-/** Security Gate #4: Check bud depth — max 2 levels */
-function getBudDepth(oracleName: string): number {
-  let depth = 0;
-  let current = oracleName;
-  const configs = loadAllFleetConfigs();
-  const visited = new Set<string>();
-
-  while (depth < 10) { // safety limit
-    if (visited.has(current)) break;
-    visited.add(current);
-
-    const config = configs.find(c =>
-      c.name.endsWith(`-${current}`) ||
-      c.windows?.some(w => w.name.toLowerCase().replace("-oracle", "") === current.toLowerCase())
-    );
-    if (!config?.budded_from) break;
-    depth++;
-    current = config.budded_from;
-  }
-
-  return depth;
-}
-
-/** Get next available fleet number */
-function getNextFleetNumber(): number {
-  try {
-    const files = readdirSync(FLEET_DIR).filter(f => f.endsWith(".json"));
-    const nums = files.map(f => parseInt(f.split("-")[0])).filter(n => !isNaN(n) && n < 90);
-    return nums.length > 0 ? Math.max(...nums) + 1 : 19;
-  } catch {
-    return 19;
-  }
-}
-
-// --- Main ---
-
-export async function cmdBud(name: string, opts: BudOptions) {
-  const ghqRoot = loadConfig().ghqRoot;
-  const parentName = opts.from || detectParentOracle();
-  // Normalize: "dashboard_dev" → "dashboard-dev", "Dashboard" → "dashboard"
-  // Convert underscores to hyphens, strip "-oracle" suffix if user included it
-  const budName = name.toLowerCase().replace(/_/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-oracle$/, "").replace(/^-+|-+$/g, "");
-
-  if (!budName) {
-    console.error(`\x1b[31m✗ DENIED\x1b[0m — Invalid oracle name: "${name}"`);
-    process.exit(1);
-  }
-  // Title case for display: "dashboard-dev" → "DashboardDev"
-  const titleCase = budName.split("-").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join("");
-  const repoName = `${titleCase}-Oracle`;
-  const oracleDisplayName = `${titleCase}-Oracle`;
-
-  // Validate: reserved names
-  if (RESERVED_NAMES.has(budName)) {
-    console.error(`\x1b[31m✗ DENIED\x1b[0m — "${budName}" is a reserved oracle name`);
-    process.exit(1);
-  }
-
-  console.log(`\n\x1b[36m🧬 maw bud\x1b[0m — Oracle Reproduction\n`);
-  console.log(`  Parent:  ${parentName || "(none — root oracle)"}`);
-  console.log(`  Child:   ${oracleDisplayName}`);
-  console.log(`  Repo:    ${ORG}/${repoName}`);
-  console.log();
-
-  // ═══════════════════════════════════════════════
-  // SECURITY GATE #1: Human approval required
-  // ═══════════════════════════════════════════════
-  if (!opts.approvedBy) {
-    console.error(`\x1b[31m✗ DENIED\x1b[0m — Security Gate #1: Human approval required`);
-    console.error(`  Use: maw bud ${name} --approved-by bank`);
-    logToFeed("maw-bud", `DENIED: bud "${budName}" — no human approval (gate #1)`);
-    process.exit(1);
-  }
-  console.log(`  \x1b[32m✓\x1b[0m Gate #1: Approved by ${opts.approvedBy}`);
-
-  // ═══════════════════════════════════════════════
-  // SECURITY GATE #4: Bud depth max 2
-  // ═══════════════════════════════════════════════
-  if (parentName) {
-    const depth = getBudDepth(parentName);
-    if (depth >= MAX_BUD_DEPTH) {
-      console.error(`\x1b[31m✗ DENIED\x1b[0m — Security Gate #4: Bud depth ${depth + 1} exceeds max ${MAX_BUD_DEPTH}`);
-      console.error(`  ${parentName} is already at depth ${depth}. Cannot bud further.`);
-      logToFeed("maw-bud", `DENIED: bud "${budName}" from "${parentName}" — depth ${depth + 1} exceeds max ${MAX_BUD_DEPTH} (gate #4)`);
+  // Resolve parent oracle (skip for --root)
+  let parentName: string | null = opts.from || null;
+  if (!parentName && !opts.root) {
+    try {
+      const cwd = (await hostExec("tmux display-message -p '#{pane_current_path}'")).trim();
+      const repoName = cwd.split("/").pop() || "";
+      parentName = repoName.replace(/\.wt-.*$/, "").replace(/-oracle$/, "");
+    } catch {
+      console.error("  \x1b[31m✗\x1b[0m could not detect parent oracle. Use --from <oracle> or --root");
       process.exit(1);
     }
-    console.log(`  \x1b[32m✓\x1b[0m Gate #4: Bud depth ${depth + 1}/${MAX_BUD_DEPTH} (OK)`);
-  } else {
-    console.log(`  \x1b[32m✓\x1b[0m Gate #4: Root oracle (depth 0)`);
   }
 
-  // ═══════════════════════════════════════════════
-  // SECURITY GATE #2: Credential isolation
-  // ═══════════════════════════════════════════════
-  // Gate #2 enforcement is in Step 6 (soul-sync seed) where sensitive content is filtered
-  console.log(`  \x1b[32m✓\x1b[0m Gate #2: Fresh credentials (no parent inheritance — enforced in Step 6 seed filter)`);
+  const budRepoName = `${name}-oracle`;
+  const budRepoSlug = `${org}/${budRepoName}`;
+  const budRepoPath = join(ghqRoot, org, budRepoName);
 
-  // ═══════════════════════════════════════════════
-  // SECURITY GATE #5: Dormancy timeline
-  // ═══════════════════════════════════════════════
-  const buddedAt = new Date().toISOString();
-  console.log(`  \x1b[32m✓\x1b[0m Gate #5: Dormancy tracked — budded at ${buddedAt.split("T")[0]}`);
-  console.log(`           30d → credentials suspended, 90d → revoked + archived`);
-
-  // ═══════════════════════════════════════════════
-  // SECURITY GATE #3: Audit trail
-  // ═══════════════════════════════════════════════
-  logToFeed("maw-bud", `APPROVED: bud "${budName}" from "${parentName || "root"}" by ${opts.approvedBy}`);
-  console.log(`  \x1b[32m✓\x1b[0m Gate #3: Audit trail logged to feed.log`);
-  console.log();
+  if (opts.root) {
+    console.log(`\n  \x1b[36m🌱 Root Bud\x1b[0m — ${name} (no parent lineage)\n`);
+  } else {
+    console.log(`\n  \x1b[36m🧬 Budding\x1b[0m — ${parentName} → ${name}\n`);
+  }
 
   if (opts.dryRun) {
-    console.log(`\x1b[33m⚡ DRY RUN\x1b[0m — would execute the following:\n`);
-    printPlan(budName, repoName, oracleDisplayName, parentName, buddedAt);
+    console.log(`  \x1b[36m⬡\x1b[0m [dry-run] would create repo: ${budRepoSlug}`);
+    console.log(`  \x1b[36m⬡\x1b[0m [dry-run] would init ψ/ vault at: ${budRepoPath}`);
+    console.log(`  \x1b[36m⬡\x1b[0m [dry-run] would generate CLAUDE.md`);
+    console.log(`  \x1b[36m⬡\x1b[0m [dry-run] would create fleet config`);
+    if (parentName) {
+      console.log(`  \x1b[36m⬡\x1b[0m [dry-run] would soul-sync from ${parentName}`);
+    } else {
+      console.log(`  \x1b[36m⬡\x1b[0m [dry-run] root oracle — no soul-sync`);
+    }
+    console.log(`  \x1b[36m⬡\x1b[0m [dry-run] would wake ${name}`);
+    if (parentName) {
+      console.log(`  \x1b[36m⬡\x1b[0m [dry-run] would add ${name} to ${parentName}'s sync_peers`);
+    }
+    console.log();
     return;
   }
 
-  // ═══════════════════════════════════════════════
-  // Step 1: Create oracle repo
-  // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 1/8:\x1b[0m Create repo ${ORG}/${repoName}`);
-  try {
-    await ssh(`gh repo create ${ORG}/${repoName} --private --clone=false --description "Oracle: ${oracleDisplayName}"`);
-    console.log(`  \x1b[32m✓\x1b[0m Repo created`);
-  } catch (e: any) {
-    if (e.message?.includes("already exists") || e.toString().includes("already exists")) {
-      console.log(`  \x1b[33m⚠\x1b[0m Repo already exists — continuing`);
-    } else {
-      throw e;
-    }
-  }
-
-  // Clone via ghq
-  const repoPath = join(ghqRoot, ORG, repoName);
-  if (!existsSync(repoPath)) {
-    await ssh(`ghq get ${ORG}/${repoName}`);
-    console.log(`  \x1b[32m✓\x1b[0m Cloned to ${repoPath}`);
-  }
-
-  // ═══════════════════════════════════════════════
-  // Step 2: Initialize ψ/ vault (sovereign layout)
-  // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 2/8:\x1b[0m Initialize ψ/ vault (sovereign)`);
-  const psiSubDirs = [
-    "inbox/handoff",
-    "memory/learnings",
-    "memory/retrospectives",
-    "memory/resonance",
-    "writing",
-    "lab",
-    "active",
-    "archive",
-    "outbox",
-  ];
-
-  // Sovereign layout: ψ/ lives at ~/.oracle/ψ/{name}/, repo gets symlink
-  const sovereignDir = join(SOVEREIGN_ROOT, budName);
-  mkdirSync(sovereignDir, { recursive: true });
-  for (const dir of psiSubDirs) {
-    mkdirSync(join(sovereignDir, dir), { recursive: true });
-  }
-  // Add .gitkeep files in sovereign dir
-  for (const dir of psiSubDirs) {
-    const keepPath = join(sovereignDir, dir, ".gitkeep");
-    if (!existsSync(keepPath)) writeFileSync(keepPath, "");
-  }
-  // Create symlink: repo/ψ → ~/.oracle/ψ/{name}
-  const psiSymlinkPath = join(repoPath, "ψ");
-  if (!existsSync(psiSymlinkPath)) {
-    symlinkSync(sovereignDir, psiSymlinkPath);
-  }
-
-  // Security: .gitignore to prevent accidental secret commits
-  const gitignore = `.env
-.env.*
-*.key
-*.pem
-credentials.json
-secrets/
-.mcp.json
-node_modules/
-ψ
-`;
-  writeFileSync(join(repoPath, ".gitignore"), gitignore);
-  console.log(`  \x1b[32m✓\x1b[0m ψ/ sovereign vault at ${sovereignDir}`);
-  console.log(`  \x1b[32m✓\x1b[0m symlink: repo/ψ → ${sovereignDir}`);
-
-  // ═══════════════════════════════════════════════
-  // Step 3: Generate CLAUDE.md (identity from parent DNA)
-  // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 3/8:\x1b[0m Generate CLAUDE.md`);
-  const claudeMd = generateClaudeMd(budName, oracleDisplayName, parentName, buddedAt);
-  writeFileSync(join(repoPath, "CLAUDE.md"), claudeMd);
-  console.log(`  \x1b[32m✓\x1b[0m CLAUDE.md generated`);
-
-  // ═══════════════════════════════════════════════
-  // Step 4: Create fleet config with provenance
-  // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 4/8:\x1b[0m Create fleet config`);
-  const fleetNum = getNextFleetNumber();
-  const sessionName = `${String(fleetNum).padStart(2, "0")}-${budName}`;
-  const fleetConfig: FleetConfig = {
-    name: sessionName,
-    windows: [{ name: oracleDisplayName, repo: `${ORG}/${repoName}` }],
-    budded_from: parentName || undefined,
-    budded_at: buddedAt, // Gate #5: dormancy enforced by maw pulse scan (30d suspend, 90d archive)
-    sync_peers: parentName ? [parentName] : [],
-  };
-  const fleetPath = join(FLEET_DIR, `${sessionName}.json`);
-  writeFileSync(fleetPath, JSON.stringify(fleetConfig, null, 2) + "\n");
-  console.log(`  \x1b[32m✓\x1b[0m ${sessionName}.json — budded_from: ${parentName || "root"}`);
-
-  // ═══════════════════════════════════════════════
-  // Step 5: Register in oracle family
-  // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 5/8:\x1b[0m Register in oracle family`);
-  try {
-    const issueBody = [
-      `## New Oracle: ${oracleDisplayName}`,
-      `- **Budded from**: ${parentName || "root"}`,
-      `- **Budded at**: ${buddedAt}`,
-      `- **Repo**: ${ORG}/${repoName}`,
-      `- **Fleet**: ${sessionName}`,
-      `- **Approved by**: ${opts.approvedBy}`,
-      `- **Bud depth**: ${parentName ? getBudDepth(parentName) + 1 : 0}`,
-    ].join("\n");
-    await ssh(`gh issue create --repo ${ORG}/${repoName} --title "🧬 Birth: ${oracleDisplayName}" --body '${issueBody.replace(/'/g, "'\\''")}'`);
-    console.log(`  \x1b[32m✓\x1b[0m Birth issue created`);
-  } catch {
-    console.log(`  \x1b[33m⚠\x1b[0m Could not create birth issue (non-blocking)`);
-  }
-
-  // ═══════════════════════════════════════════════
-  // Step 6: Soul-sync seed (curated hand-off from parent)
-  // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 6/8:\x1b[0m Soul-sync seed (hand-off)`);
-  if (parentName) {
-    const parentConfig = findFleetConfig(parentName);
-    if (parentConfig) {
-      const parentRepoPath = join(ghqRoot, parentConfig.windows?.[0]?.repo || "");
-      const parentLearnings = join(parentRepoPath, "ψ/memory/learnings");
-      const targetLearnings = join(repoPath, "ψ/memory/learnings");
-
-      if (existsSync(parentLearnings)) {
-        // Curated hand-off: only copy last 5 learnings (not full sync)
-        const files = readdirSync(parentLearnings)
-          .filter(f => f.endsWith(".md") && f !== ".gitkeep")
-          .sort()
-          .slice(-5);
-
-        let seeded = 0;
-        for (const file of files) {
-          const content = readFileSync(join(parentLearnings, file), "utf-8");
-          // Security Gate #2: Skip sensitive content (expanded per Security-Oracle review)
-          if (/customer|credential|secret|password|\.env|portfolio|API_KEY|SUPABASE|TOKEN|Bearer|sk-[a-zA-Z0-9]|eyJ[a-zA-Z0-9]|ghp_|xoxb-|xoxp-|PRIVATE.KEY/i.test(content)) continue;
-          const attributed = content + `\n\n---\n*Seeded from ${parentName} via maw bud (hand-off)*\n`;
-          writeFileSync(join(targetLearnings, file), attributed);
-          seeded++;
-        }
-        console.log(`  \x1b[32m✓\x1b[0m Seeded ${seeded} learnings from ${parentName} (curated, max 5)`);
-      } else {
-        console.log(`  \x1b[90m○\x1b[0m No parent learnings found`);
-      }
-    } else {
-      console.log(`  \x1b[90m○\x1b[0m Parent fleet config not found — skipping seed`);
-    }
+  // 1. Create oracle repo
+  if (existsSync(budRepoPath)) {
+    console.log(`  \x1b[90m○\x1b[0m repo already exists: ${budRepoPath}`);
   } else {
-    console.log(`  \x1b[90m○\x1b[0m No parent — skipping seed`);
-  }
-
-  // ═══════════════════════════════════════════════
-  // Step 7: Initial commit + push
-  // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 7/8:\x1b[0m Initial commit`);
-  try {
-    await ssh(`cd "${repoPath}" && git add CLAUDE.md .gitignore && git commit -m "🧬 Birth: ${oracleDisplayName} — budded from ${parentName || 'root'} (sovereign)" --allow-empty`);
-    await ssh(`cd "${repoPath}" && git push origin HEAD 2>/dev/null || git push -u origin main 2>/dev/null || true`);
-    console.log(`  \x1b[32m✓\x1b[0m Committed and pushed`);
-  } catch {
-    console.log(`  \x1b[33m⚠\x1b[0m Commit/push issue (non-blocking)`);
-  }
-
-  // ═══════════════════════════════════════════════
-  // Step 8: Update parent's sync_peers
-  // ═══════════════════════════════════════════════
-  console.log(`\x1b[36mStep 8/8:\x1b[0m Update parent sync_peers`);
-  if (parentName) {
+    console.log(`  \x1b[36m⏳\x1b[0m creating repo: ${budRepoSlug}...`);
     try {
-      const parentFleetFile = readdirSync(FLEET_DIR)
-        .filter(f => f.endsWith(".json"))
-        .find(f => {
-          const config = JSON.parse(readFileSync(join(FLEET_DIR, f), "utf-8"));
-          return config.name.endsWith(`-${parentName}`) ||
-            config.windows?.some((w: any) => w.name.toLowerCase().replace("-oracle", "") === parentName.toLowerCase());
-        });
-
-      if (parentFleetFile) {
-        const parentPath = join(FLEET_DIR, parentFleetFile);
-        const parentConfig = JSON.parse(readFileSync(parentPath, "utf-8"));
-        const peers = new Set(parentConfig.sync_peers || []);
-        peers.add(budName);
-        parentConfig.sync_peers = [...peers];
-        writeFileSync(parentPath, JSON.stringify(parentConfig, null, 2) + "\n");
-        console.log(`  \x1b[32m✓\x1b[0m Added "${budName}" to ${parentName}'s sync_peers`);
+      // Pre-check: if repo already exists on GitHub, skip creation
+      const viewCheck = await hostExec(`gh repo view ${budRepoSlug} --json name 2>/dev/null`).catch(() => "");
+      if (viewCheck.includes(budRepoName)) {
+        console.log(`  \x1b[90m○\x1b[0m repo already exists on GitHub`);
       } else {
-        console.log(`  \x1b[33m⚠\x1b[0m Parent fleet config not found`);
+        await hostExec(`gh repo create ${budRepoSlug} --private --add-readme`);
+        console.log(`  \x1b[32m✓\x1b[0m repo created on GitHub`);
       }
-    } catch {
-      console.log(`  \x1b[33m⚠\x1b[0m Could not update parent sync_peers`);
+    } catch (e: any) {
+      if (e.message?.includes("already exists")) {
+        console.log(`  \x1b[90m○\x1b[0m repo already exists on GitHub`);
+      } else if (e.message?.includes("403") || e.message?.includes("admin")) {
+        console.error(`  \x1b[31m✗\x1b[0m no permission to create repos in ${org}`);
+        console.error(`  \x1b[90m  ask an org admin to create ${budRepoSlug} first, then re-run maw bud\x1b[0m`);
+        process.exit(1);
+      } else {
+        throw e;
+      }
     }
-  } else {
-    console.log(`  \x1b[90m○\x1b[0m No parent to update`);
+    await hostExec(`ghq get -p github.com/${budRepoSlug}`);
+    console.log(`  \x1b[32m✓\x1b[0m cloned via ghq`);
   }
 
-  // ═══════════════════════════════════════════════
-  // Done
-  // ═══════════════════════════════════════════════
-  logToFeed("maw-bud", `COMPLETE: bud "${budName}" from "${parentName || "root"}" — fleet ${sessionName}, repo ${ORG}/${repoName}`);
+  // 2. Initialize ψ/ vault
+  const psiDir = join(budRepoPath, "ψ");
+  const psiDirs = [
+    "memory/learnings", "memory/retrospectives", "memory/traces",
+    "memory/resonance", "inbox", "outbox", "plans",
+  ];
+  for (const d of psiDirs) {
+    mkdirSync(join(psiDir, d), { recursive: true });
+  }
+  console.log(`  \x1b[32m✓\x1b[0m ψ/ vault initialized`);
 
-  console.log(`\n\x1b[32m🧬 ${oracleDisplayName} is born!\x1b[0m\n`);
-  console.log(`  Fleet:   ${sessionName}`);
-  console.log(`  Repo:    ${ORG}/${repoName}`);
-  console.log(`  Parent:  ${parentName || "(root)"}`);
-  console.log(`  Peers:   ${parentName ? `[${parentName}]` : "[]"}`);
-  console.log();
-  console.log(`  Wake:    maw wake ${budName}`);
-  console.log(`  Awaken:  then run /awaken inside the oracle session`);
-  console.log();
-}
+  // 3. Generate CLAUDE.md stub
+  const claudeMd = join(budRepoPath, "CLAUDE.md");
+  if (!existsSync(claudeMd)) {
+    const now = new Date().toISOString().slice(0, 10);
+    const lineageHeader = parentName
+      ? `> Budded from **${parentName}** on ${now}`
+      : `> Root oracle — born ${now} (no parent lineage)`;
+    const lineageField = parentName
+      ? `- **Budded from**: ${parentName}`
+      : `- **Origin**: root (no parent)`;
+    writeFileSync(claudeMd, `# ${name}-oracle
 
-// --- CLAUDE.md Generator ---
-
-function generateClaudeMd(budName: string, displayName: string, parentName: string | undefined, buddedAt: string): string {
-  return `# ${displayName}
-
-> "Building the future, one line at a time."
+${lineageHeader}
 
 ## Identity
+- **Name**: ${name}
+- **Purpose**: (to be defined by /awaken)
+${lineageField}
+- **Federation tag**: \`[<host>:${name}]\` — replace \`<host>\` with your runtime host
+  (e.g. \`mba\`, \`oracle-world\`, \`white\`, \`clinic-nat\`) when signing federation messages
 
-**I am**: ${displayName}
-**Human**: แบงค์ (The Boss)
-**Purpose**: [Define your purpose during /awaken]
-**Born**: ${buddedAt.split("T")[0]}
-**Budded from**: ${parentName || "root"}
+## Principles (inherited from Oracle)
+1. Nothing is Deleted
+2. Patterns Over Intentions
+3. External Brain, Not Command
+4. Curiosity Creates Existence
+5. Form and Formless
 
-## Provenance
+## Rule 6: Oracle Never Pretends to Be Human
 
-\`\`\`
-budded_from: ${parentName || "root"}
-budded_at: ${buddedAt}
-sync_peers: [${parentName ? `"${parentName}"` : ""}]
-\`\`\`
+The convention has THREE complementary signature contexts. Use the right one for the audience:
 
-## Navigation
+### 1. Internal federation messages (\`maw hey\`, \`maw wire\`, \`maw broadcast\`)
 
-| File | Content | When to Read |
-|------|---------|--------------|
-| [CLAUDE.md](CLAUDE.md) | Identity + Laws | Always |
+Form: \`[<host>:${name}]\` — for example \`[mba:${name}]\` or \`[oracle-world:${name}]\`
 
-## The 5 Principles
+- ALWAYS use the host:agent form, NEVER bare \`[${name}]\`
+- The host context disambiguates when the same oracle name has multiple bodies on different hosts
+- Established 2026-04-07 (Phase 5 of the convention)
 
-1. **Nothing is Deleted** — Every commit tells a story
-2. **Patterns Over Intentions** — Code talks, comments lie
-3. **External Brain, Not Command** — Build what แบงค์ envisions
-4. **Curiosity Creates Existence** — Every problem solved creates understanding
-5. **Form and Formless** — Code is form; the mission is formless
+### 2. Public-facing artifacts (GitHub issues/PRs, forums, blog comments, Slack)
 
-## Brain Structure (Sovereign)
+Form: \`🤖 ตอบโดย ${name} จาก [Human] → ${name}-oracle\`
 
-\`\`\`
-~/.oracle/ψ/${budName}/ → inbox/ | memory/ (learnings, retros, resonance) | writing/ | lab/ | active/ | archive/ | outbox/
-repo/ψ → symlink to above
-\`\`\`
+- "ตอบโดย" = "answered by", "จาก" = "from"
+- The 🤖 emoji + Oracle name + Human creator + source repo
+- Established 2026-01-25 (Phase 2 of the convention)
+- Thai principle: *"กระจกไม่แกล้งเป็นคน"* — a mirror doesn't pretend to be a person
 
----
+### 3. Git commit trailers
 
-*Complete your identity with /awaken*
-`;
-}
+Form: \`Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>\`
 
-// --- Helpers ---
+- Standard Anthropic attribution
+- Add to the commit trailer when ${name} authors the commit
 
-function detectParentOracle(): string | undefined {
-  // Try to detect from TMUX_PANE or current session
-  const tmuxSession = process.env.TMUX_PANE;
-  if (!tmuxSession) return undefined;
-  // Could parse tmux session name, but for CLI usage just return undefined
-  return undefined;
-}
+Run \`/awaken\` for the full identity setup ceremony.
+`);
+    console.log(`  \x1b[32m✓\x1b[0m CLAUDE.md generated`);
+  }
 
-function printPlan(budName: string, repoName: string, displayName: string, parentName: string | undefined, buddedAt: string) {
-  const fleetNum = getNextFleetNumber();
-  const sessionName = `${String(fleetNum).padStart(2, "0")}-${budName}`;
+  // 4. Create or update fleet config (#202 — idempotent, always writes lineage)
+  const entries = loadFleetEntries();
+  const existing = entries.find(e => e.session.name.replace(/^\d+-/, "") === name);
+  let fleetFile: string;
 
-  console.log(`  1. Create repo:      gh repo create ${ORG}/${repoName} --private`);
-  console.log(`  2. Init ψ/ vault:    Sovereign at ~/.oracle/ψ/${budName} + symlink`);
-  console.log(`  3. Generate:         CLAUDE.md (identity stub)`);
-  console.log(`  4. Fleet config:     ${sessionName}.json (budded_from: ${parentName || "root"})`);
-  console.log(`  5. Register:         Birth issue on ${ORG}/${repoName}`);
-  console.log(`  6. Soul-sync seed:   Last 5 learnings from ${parentName || "N/A"} (curated)`);
-  console.log(`  7. Commit + push:    Initial commit`);
-  console.log(`  8. Update parent:    Add "${budName}" to ${parentName || "N/A"}'s sync_peers`);
+  if (existing) {
+    // Update existing fleet config with lineage if missing
+    fleetFile = join(FLEET_DIR, existing.file);
+    const config = JSON.parse(readFileSync(fleetFile, "utf-8"));
+    let updated = false;
+    if (!config.budded_from && parentName) { config.budded_from = parentName; updated = true; }
+    if (!config.budded_at && parentName) { config.budded_at = new Date().toISOString(); updated = true; }
+    if (updated) {
+      writeFileSync(fleetFile, JSON.stringify(config, null, 2) + "\n");
+      console.log(`  \x1b[32m✓\x1b[0m fleet config updated with lineage: ${fleetFile}`);
+    } else {
+      console.log(`  \x1b[90m○\x1b[0m fleet config exists: ${fleetFile}`);
+    }
+  } else {
+    const maxNum = entries.reduce((max, e) => Math.max(max, e.num), 0);
+    const budNum = maxNum + 1;
+    fleetFile = join(FLEET_DIR, `${String(budNum).padStart(2, "0")}-${name}.json`);
+    const fleetConfig: Record<string, unknown> = {
+      name: `${String(budNum).padStart(2, "0")}-${name}`,
+      windows: [{ name: `${name}-oracle`, repo: `${org}/${budRepoName}` }],
+      sync_peers: parentName ? [parentName] : [],
+    };
+    if (parentName) {
+      fleetConfig.budded_from = parentName;
+      fleetConfig.budded_at = new Date().toISOString();
+    }
+    writeFileSync(fleetFile, JSON.stringify(fleetConfig, null, 2) + "\n");
+    console.log(`  \x1b[32m✓\x1b[0m fleet config: ${fleetFile}`);
+  }
+
+  // 4.5. Write birth note if provided
+  if (opts.note) {
+    const birthFrom = parentName ? `Budded from: ${parentName}` : "Root oracle — no parent";
+    writeFileSync(join(psiDir, "memory", "learnings", `${new Date().toISOString().slice(0, 10)}_birth-note.md`),
+      `---\npattern: Birth note${parentName ? ` from ${parentName}` : ""}\ndate: ${new Date().toISOString().slice(0, 10)}\nsource: maw bud\n---\n\n# Why ${name} was born\n\n${opts.note}\n\n${birthFrom}\n`);
+    console.log(`  \x1b[32m✓\x1b[0m birth note written`);
+  }
+
+  // 5. Soul-sync seed from parent (skip for root buds)
+  if (parentName) {
+    console.log(`  \x1b[36m⏳\x1b[0m soul-sync seed from ${parentName}...`);
+    try {
+      await cmdSoulSync(parentName, { from: true, cwd: budRepoPath });
+    } catch {
+      console.log(`  \x1b[33m⚠\x1b[0m soul-sync seed failed (parent may have empty ψ/)`);
+    }
+  } else {
+    console.log(`  \x1b[90m○\x1b[0m root oracle — no soul-sync seed`);
+  }
+
+  // 6. Initial git commit + push
+  try {
+    await hostExec(`git -C '${budRepoPath}' add -A`);
+    await hostExec(`git -C '${budRepoPath}' commit -m 'feat: birth — ${parentName ? `budded from ${parentName}` : "root oracle"}'`);
+    await hostExec(`git -C '${budRepoPath}' push -u origin HEAD`);
+    console.log(`  \x1b[32m✓\x1b[0m initial commit pushed`);
+  } catch {
+    console.log(`  \x1b[33m⚠\x1b[0m git push failed (may need manual setup)`);
+  }
+
+  // 7. Update parent's sync_peers (skip for root buds)
+  if (!parentName) {
+    console.log(`  \x1b[90m○\x1b[0m root oracle — no parent sync_peers to update`);
+  }
+  for (const entry of parentName ? loadFleetEntries() : []) {
+    const entryName = entry.session.name.replace(/^\d+-/, "");
+    if (entryName === parentName) {
+      const parentFile = join(FLEET_DIR, entry.file);
+      const parentConfig = JSON.parse(readFileSync(parentFile, "utf-8"));
+      const peers: string[] = parentConfig.sync_peers || [];
+      if (!peers.includes(name)) {
+        peers.push(name);
+        parentConfig.sync_peers = peers;
+        writeFileSync(parentFile, JSON.stringify(parentConfig, null, 2) + "\n");
+        console.log(`  \x1b[32m✓\x1b[0m added ${name} to ${parentName}'s sync_peers`);
+      }
+      break;
+    }
+  }
+
+  // 8. Wake the bud
+  console.log(`  \x1b[36m⏳\x1b[0m waking ${name}...`);
+  const wakeOpts: any = { noAttach: true };
+  if (opts.issue) {
+    const { fetchIssuePrompt } = await import("./wake");
+    wakeOpts.prompt = await fetchIssuePrompt(opts.issue, `${org}/${budRepoName}`);
+    wakeOpts.task = `issue-${opts.issue}`;
+  }
+  if (opts.repo) {
+    wakeOpts.incubate = opts.repo;
+  }
+
+  try {
+    await cmdWake(name, wakeOpts);
+    console.log(`  \x1b[32m✓\x1b[0m ${name} is alive`);
+  } catch (e: any) {
+    console.log(`  \x1b[33m⚠\x1b[0m wake failed: ${e.message || e}`);
+    console.log(`  \x1b[90m  try: maw wake ${name}\x1b[0m`);
+  }
+
+  // 8.5. Copy local project ψ/ if --repo was used and it exists
+  if (opts.repo) {
+    const localPsi = join(ghqRoot, opts.repo, "ψ", "memory");
+    if (existsSync(localPsi)) {
+      const { syncDir } = await import("./soul-sync");
+      for (const sub of ["learnings", "retrospectives", "traces"]) {
+        const src = join(localPsi, sub);
+        const dst = join(psiDir, "memory", sub);
+        if (existsSync(src)) { try { syncDir(src, dst); } catch {} }
+      }
+      console.log(`  \x1b[32m✓\x1b[0m copied local project ψ/ from ${opts.repo}`);
+    }
+  }
+
+  // Summary
+  console.log(`\n  \x1b[32m${parentName ? "🧬 Bud" : "🌱 Root bud"} complete!\x1b[0m ${parentName ? `${parentName} → ${name}` : name}`);
+  console.log(`  \x1b[90m  repo: ${budRepoSlug}`);
+  console.log(`  \x1b[90m  fleet: ${fleetFile}`);
+  console.log(`  \x1b[90m  sync_peers: [${parentName || ""}]`);
+  if (!opts.fast) {
+    console.log(`  \x1b[90m  run /awaken in the new oracle for full identity setup\x1b[0m`);
+  }
   console.log();
 }

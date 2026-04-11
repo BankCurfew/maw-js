@@ -1,4 +1,5 @@
-import { sendKeys, selectWindow, ssh, getPaneCommand } from "./ssh";
+import { sendKeys, selectWindow, hostExec, getPaneCommand } from "./ssh";
+import { tmux } from "./tmux";
 import { buildCommand } from "./config";
 import type { MawWS, Handler, MawEngine } from "./types";
 import {
@@ -38,7 +39,7 @@ const subscribePreviews: Handler = (ws, data, engine) => {
 };
 
 const select: Handler = (_ws, data) => {
-  selectWindow(data.target).catch(() => {});
+  selectWindow(data.target).catch(() => { /* expected: window may not exist */ });
 };
 
 const send: Handler = async (ws, data, engine) => {
@@ -65,7 +66,7 @@ const sleep: Handler = (ws, data) => {
 };
 
 const stop: Handler = (ws, data) => {
-  runAction(ws, "stop", data.target, () => ssh(`tmux kill-window -t '${data.target}'`));
+  runAction(ws, "stop", data.target, () => tmux.killWindow(data.target));
 };
 
 const wake: Handler = (ws, data) => {

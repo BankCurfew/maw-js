@@ -1,26 +1,24 @@
 node_modules/
-node_modules_root/
-dist-office/
+dist/
+dist-*/
 maw.config.json
 ui-state.json
+asks.json
+.tmp/
+
+# Build artifacts
+wasm-office/target/
+office-8bit/target/
+wasm-vm/
+.DS_Store
 
 # Bun global link artifacts
 ~/
+~/.bun/
+.wrangler/
 fleet/*.json
 !fleet/*.example.json
-
-# Runtime data
-attachments/
-auth.json
-loops-log.json
-asks.json
-
-# Backups
-fleet.bak.*/
-fleet.rooms.*/
-
-# External tools
-gmail-mcp/
-
-# Psi (personal workspace)
 ψ/
+.claude/skills/
+*.pem
+.claude/scheduled_tasks.lock

@@ -1,4 +1,5 @@
-import { ssh } from "../ssh";
+import { hostExec } from "../ssh";
+import { tmux, tmuxCmd } from "../tmux";
 import { cmdPeek, cmdSend } from "./comm";
 import { cmdTalkTo } from "./talk-to";
 
@@ -8,7 +9,7 @@ import { cmdTalkTo } from "./talk-to";
  */
 async function currentSession(): Promise<string> {
   try {
-    return (await ssh("tmux display-message -p '#S'")).trim();
+    return (await tmux.run("display-message", "-p", "#S")).trim();
   } catch {
     console.error("\x1b[31merror\x1b[0m: not inside a tmux session");
     process.exit(1);
@@ -19,8 +20,8 @@ async function currentSession(): Promise<string> {
  * List windows in current session, mapping index → name.
  */
 async function listTabs(session: string): Promise<{ index: number; name: string; active: boolean }[]> {
-  const raw = await ssh(
-    `tmux list-windows -t '${session}' -F '#{window_index}:#{window_name}:#{window_active}'`
+  const raw = await hostExec(
+    `${tmuxCmd()} list-windows -t '${session}' -F '#{window_index}:#{window_name}:#{window_active}'`
   );
   return raw.split("\n").filter(Boolean).map(line => {
     const [idx, name, active] = line.split(":");
