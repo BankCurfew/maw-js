@@ -76,8 +76,8 @@
       "tmux": null,
       "schedule": "0 9 * * *",
       "command": "maw think",
-      "enabled": true,
-      "description": "Daily think cycle — ask oracles to propose ideas"
+      "enabled": false,
+      "description": "DISABLED Cost Audit R1 2026-04-11 — Daily think cycle, 178 issues backlog sufficient"
     },
     {
       "id": "think-cycle-wed",
@@ -85,8 +85,8 @@
       "tmux": null,
       "schedule": "0 14 * * 3",
       "command": "maw think",
-      "enabled": true,
-      "description": "Wednesday bonus think cycle"
+      "enabled": false,
+      "description": "DISABLED Cost Audit R1 2026-04-11 — Wednesday bonus think cycle"
     },
     {
       "id": "data-pipeline-status",
@@ -237,6 +237,16 @@
       "requireIdle": true,
       "enabled": true,
       "description": "Daily secret scan across all oracle repos"
+    },
+    {
+      "id": "creator-community-monitor",
+      "oracle": "creator",
+      "tmux": "14-creator:0",
+      "schedule": "0 */1 * * *",
+      "prompt": "Check all teaching repos on the-oracle-keeps-the-human-human org for new Discussions, Issues, and PRs. For each repo run: gh api repos/the-oracle-keeps-the-human-human/{repo}/discussions --jq .[].title 2>/dev/null, gh issue list --repo the-oracle-keeps-the-human-human/{repo} --state open, gh pr list --repo the-oracle-keeps-the-human-human/{repo} --state open. If there are new discussions or issues from external users, respond helpfully in Thai+English. cc bob when you respond to anything.",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Monitor teaching org Discussions/Issues/PRs and respond to community"
     }
   ]
 }
