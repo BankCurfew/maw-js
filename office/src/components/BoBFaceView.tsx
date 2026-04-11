@@ -27,6 +27,12 @@ const EMOTION_LABELS: Record<BobEmotion, string> = {
   error: "BoB encountered an error",
 };
 
+// Emotions where pupils should NOT follow mouse
+const NO_FOLLOW_EMOTIONS = new Set<BobEmotion>(["sleeping", "thinking", "confused"]);
+
+// Debug mode: show emotion switcher only with ?debug in URL
+const DEBUG = new URLSearchParams(window.location.search).has("debug");
+
 // --- SSE hook for real-time emotion state ---
 function useBoBState() {
   const [emotion, setEmotion] = useState<BobEmotion>("neutral");
@@ -48,6 +54,39 @@ function useBoBState() {
   }, []);
 
   return { emotion, statusMsg };
+}
+
+// --- Pupil mouse-follow (constrained ±4px from center) ---
+function usePupilFollow(emotion: BobEmotion) {
+  const eyesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (NO_FOLLOW_EMOTIONS.has(emotion)) {
+      // Reset pupils to center when entering no-follow state
+      eyesRef.current?.querySelectorAll<HTMLElement>(".bob-pupil").forEach((p) => {
+        p.style.transform = "translate(-50%, -50%)";
+      });
+      return;
+    }
+
+    const handler = (e: MouseEvent) => {
+      const el = eyesRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = Math.max(-4, Math.min(4, (e.clientX - cx) * 0.02));
+      const dy = Math.max(-4, Math.min(4, (e.clientY - cy) * 0.02));
+      el.querySelectorAll<HTMLElement>(".bob-pupil").forEach((p) => {
+        p.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+      });
+    };
+
+    document.addEventListener("mousemove", handler);
+    return () => document.removeEventListener("mousemove", handler);
+  }, [emotion]);
+
+  return eyesRef;
 }
 
 // --- Idle timer ---
@@ -95,8 +134,6 @@ function useBoBChat() {
     const userMsg: ChatMsg = { role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
     setStreaming(true);
-
-    // Add empty assistant message for streaming into
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
     try {
@@ -140,10 +177,8 @@ function useBoBChat() {
           if (!line.startsWith("data: ")) continue;
           const payload = line.slice(6);
           if (payload === "[DONE]") continue;
-
           try {
             const evt = JSON.parse(payload);
-            // Claude streaming: content_block_delta
             if (evt.type === "content_block_delta" && evt.delta?.text) {
               setMessages((prev) => {
                 const copy = [...prev];
@@ -152,7 +187,7 @@ function useBoBChat() {
                 return copy;
               });
             }
-          } catch { /* skip malformed events */ }
+          } catch { /* skip */ }
         }
       }
     } catch (err: unknown) {
@@ -178,6 +213,7 @@ export const BoBFaceView = memo(function BoBFaceView() {
   const [chatOpen, setChatOpen] = useState(false);
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const stableSetIdleOverride = useCallback(
     (e: BobEmotion | null) => setIdleOverride(e),
@@ -186,11 +222,11 @@ export const BoBFaceView = memo(function BoBFaceView() {
   useIdleTimer(sseEmotion, stableSetIdleOverride);
 
   const { messages, streaming, send } = useBoBChat();
-
-  // Chat emotion override: thinking while streaming, happy when done
   const chatEmotion: BobEmotion | null = streaming ? "thinking" : null;
-
   const activeEmotion = manualEmotion || chatEmotion || idleOverride || sseEmotion;
+
+  // Pupil mouse-follow
+  const eyesRef = usePupilFollow(activeEmotion);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -207,6 +243,11 @@ export const BoBFaceView = memo(function BoBFaceView() {
     }
     prevStreaming.current = streaming;
   }, [streaming, messages.length]);
+
+  // Auto-focus input after chat opens
+  useEffect(() => {
+    if (chatOpen) inputRef.current?.focus();
+  }, [chatOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -243,6 +284,7 @@ export const BoBFaceView = memo(function BoBFaceView() {
         }}
       >
         <div
+          ref={eyesRef}
           className="bob-eyes"
           data-emotion={activeEmotion}
           aria-hidden="true"
@@ -332,6 +374,7 @@ export const BoBFaceView = memo(function BoBFaceView() {
         }}
       >
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -376,59 +419,61 @@ export const BoBFaceView = memo(function BoBFaceView() {
         {EMOTION_LABELS[activeEmotion]}
       </span>
 
-      {/* Emotion label (debug) */}
-      <div
-        style={{
-          position: "absolute",
-          top: 8,
-          right: 8,
-          fontSize: 9,
-          fontFamily: "monospace",
-          color: "rgba(100, 116, 139, 0.5)",
-          userSelect: "none",
-        }}
-      >
-        {activeEmotion}
-      </div>
-
-      {/* Debug: emotion switcher (top-left) */}
-      <div
-        style={{
-          position: "absolute",
-          top: 8,
-          left: 8,
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 2,
-          maxWidth: 100,
-        }}
-      >
-        {ALL_EMOTIONS.map((e) => (
-          <button
-            key={e}
-            onClick={() => setManualEmotion(e === manualEmotion ? null : e)}
+      {/* Debug panel: ?debug in URL to show */}
+      {DEBUG && (
+        <>
+          <div
             style={{
-              padding: "1px 4px",
-              borderRadius: 3,
-              fontSize: 7,
+              position: "absolute",
+              top: 8,
+              right: 8,
+              fontSize: 9,
               fontFamily: "monospace",
-              border: "none",
-              cursor: "pointer",
-              background:
-                activeEmotion === e
-                  ? "rgba(71, 85, 105, 0.8)"
-                  : "rgba(30, 41, 59, 0.4)",
-              color:
-                activeEmotion === e
-                  ? "#e2e8f0"
-                  : "rgba(100, 116, 139, 0.5)",
-              lineHeight: 1.2,
+              color: "rgba(100, 116, 139, 0.5)",
+              userSelect: "none",
             }}
           >
-            {e}
-          </button>
-        ))}
-      </div>
+            {activeEmotion}
+          </div>
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 2,
+              maxWidth: 100,
+            }}
+          >
+            {ALL_EMOTIONS.map((e) => (
+              <button
+                key={e}
+                onClick={() => setManualEmotion(e === manualEmotion ? null : e)}
+                style={{
+                  padding: "1px 4px",
+                  borderRadius: 3,
+                  fontSize: 7,
+                  fontFamily: "monospace",
+                  border: "none",
+                  cursor: "pointer",
+                  background:
+                    activeEmotion === e
+                      ? "rgba(71, 85, 105, 0.8)"
+                      : "rgba(30, 41, 59, 0.4)",
+                  color:
+                    activeEmotion === e
+                      ? "#e2e8f0"
+                      : "rgba(100, 116, 139, 0.5)",
+                  lineHeight: 1.2,
+                }}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 });
