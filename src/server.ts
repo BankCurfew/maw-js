@@ -642,47 +642,110 @@ app.get("/api/oracle-health", (c) => {
 });
 
 // --- BoB Face SSE (WALL-E Eyes emotion state) ---
+// Emotions: neutral, thinking, happy, alert, confused, working, sleeping, error
 app.get("/api/bob/state", (c) => {
-  // SSE endpoint: pushes emotion state every 5s based on fleet activity
   const stream = new ReadableStream({
     start(controller) {
       const send = (data: Record<string, unknown>) => {
         controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
       };
 
-      const tick = () => {
-        const active = feedTailer.getActive();
-        const activeCount = active.size;
-        const hour = new Date().getUTCHours() + 7; // Bangkok hour
+      let lastEmotion = "";
+      let idleSince = Date.now();
 
-        // Derive emotion from real state
+      const tick = () => {
+        const active = feedTailer.getActive();       // 5-min window
+        const recent = feedTailer.getActive(15_000);  // 15s window for "live" activity
+        const activeCount = active.size;
+        const recentCount = recent.size;
+        const hour = (new Date().getUTCHours() + 7) % 24; // Bangkok hour
+
+        // Check for recent errors (PostToolUseFailure in last 30s)
+        const recentEvents = feedTailer.getRecent(50);
+        const now = Date.now();
+        const hasRecentError = recentEvents.some(
+          (e) => e.event === "PostToolUseFailure" && now - e.ts < 30_000,
+        );
+
+        // Check for recent task completions (last 10s)
+        const hasRecentComplete = recentEvents.some(
+          (e) => e.event === "TaskCompleted" && now - e.ts < 10_000,
+        );
+
+        // Derive emotion from real fleet state
         let emotion = "neutral";
         let message: string | null = null;
 
-        if (hour >= 0 && hour < 6) {
-          emotion = "tired";
-          message = "zzZ...";
-        } else if (activeCount >= 5) {
-          emotion = "excited";
-          message = `${activeCount} oracles active — full house!`;
-        } else if (activeCount >= 3) {
+        if (hasRecentError) {
+          // Error state — something just failed
+          emotion = "error";
+          const errEvent = recentEvents.find(
+            (e) => e.event === "PostToolUseFailure" && now - e.ts < 30_000,
+          );
+          message = errEvent
+            ? `${errEvent.oracle}: ${errEvent.message.slice(0, 60)}`
+            : "Something went wrong";
+        } else if (hasRecentComplete) {
+          // Happy — task just completed
           emotion = "happy";
-          message = `${activeCount} oracles working`;
+          const doneEvent = recentEvents.find(
+            (e) => e.event === "TaskCompleted" && now - e.ts < 10_000,
+          );
+          message = doneEvent ? `${doneEvent.oracle} finished a task!` : "Task done!";
+        } else if (activeCount === 0 && hour >= 0 && hour < 6) {
+          // Late night + no activity → sleeping
+          emotion = "sleeping";
+          message = "zzZ...";
+        } else if (activeCount === 0) {
+          // No oracles active — check how long idle
+          const idleDuration = now - idleSince;
+          if (idleDuration > 5 * 60_000) {
+            emotion = "sleeping";
+            message = null;
+          } else {
+            emotion = "neutral";
+            message = null;
+          }
+        } else if (recentCount >= 3) {
+          // Many oracles actively working right now
+          emotion = "working";
+          const names = [...recent.keys()].slice(0, 3).join(", ");
+          message = `${recentCount} oracles busy: ${names}`;
+        } else if (recentCount >= 1) {
+          // Oracles doing tool calls right now → thinking
+          const latestOracle = [...recent.values()][0];
+          const isToolUse = latestOracle?.event === "PreToolUse";
+          if (isToolUse) {
+            emotion = "thinking";
+            message = `${latestOracle.oracle} is working...`;
+          } else {
+            emotion = "working";
+            const names = [...recent.keys()].join(", ");
+            message = `watching ${names}`;
+          }
         } else if (activeCount >= 1) {
-          emotion = "curious";
+          // Oracles active but not in last 15s → alert (winding down)
+          emotion = "alert";
           const names = [...active.keys()].slice(0, 3).join(", ");
-          message = `watching ${names}...`;
-        } else {
-          emotion = "neutral";
-          message = null;
+          message = `${activeCount} oracle${activeCount > 1 ? "s" : ""} online: ${names}`;
         }
 
-        send({ emotion, message, activeCount, timestamp: new Date().toISOString() });
+        // Track idle start
+        if (activeCount > 0) idleSince = now;
+
+        // Only send if emotion changed (reduce noise)
+        const payload = { emotion, message, activeCount, timestamp: new Date().toISOString() };
+        if (emotion !== lastEmotion) {
+          send(payload);
+          lastEmotion = emotion;
+        } else {
+          // Still send periodic heartbeat every 5 ticks (25s)
+          send(payload);
+        }
       };
 
       tick();
       const id = setInterval(tick, 5000);
-      // Clean up when client disconnects
       c.req.raw.signal.addEventListener("abort", () => clearInterval(id));
     },
   });

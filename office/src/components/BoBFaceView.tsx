@@ -34,17 +34,12 @@ function useBoBState() {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const es = new EventSource("/api/brain/feed/stream");
+    const es = new EventSource("/api/bob/state");
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        // Map BobVisualState mood to our emotion
         if (data.emotion && ALL_EMOTIONS.includes(data.emotion)) {
-          setEmotion(data.emotion);
-        } else if (data.mood) {
-          // BobVisualState mood parser fallback
-          const mapped = mapMoodToEmotion(data.mood);
-          if (mapped) setEmotion(mapped);
+          setEmotion(data.emotion as BobEmotion);
         }
         if (data.message !== undefined) setMessage(data.message);
       } catch { /* ignore parse errors */ }
@@ -56,18 +51,6 @@ function useBoBState() {
   }, []);
 
   return { emotion, message };
-}
-
-function mapMoodToEmotion(mood: string): BobEmotion | null {
-  const m = mood.toLowerCase();
-  if (m.includes("think") || m.includes("process")) return "thinking";
-  if (m.includes("happy") || m.includes("success") || m.includes("done")) return "happy";
-  if (m.includes("alert") || m.includes("warn") || m.includes("urgent")) return "alert";
-  if (m.includes("confus") || m.includes("error_parse")) return "confused";
-  if (m.includes("work") || m.includes("busy") || m.includes("execut")) return "working";
-  if (m.includes("sleep") || m.includes("idle") || m.includes("away")) return "sleeping";
-  if (m.includes("error") || m.includes("fail") || m.includes("crash")) return "error";
-  return null;
 }
 
 // Idle timer: 5 min no activity → sleeping, activity → alert then neutral
