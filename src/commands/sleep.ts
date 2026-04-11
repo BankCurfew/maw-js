@@ -1,10 +1,8 @@
 import { tmux } from "../tmux";
 import { detectSession } from "./wake";
-import { saveTabOrder } from "../tab-order";
 import { appendFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
-import { takeSnapshot } from "../snapshot";
 
 /**
  * maw sleep <oracle> [window]
@@ -26,9 +24,6 @@ export async function cmdSleepOne(oracle: string, window?: string) {
   // Determine window name
   const windowName = window ? `${oracle}-${window}` : `${oracle}-oracle`;
 
-  // Save tab order before sleeping (so wake can restore positions)
-  await saveTabOrder(session);
-
   // Verify window exists
   let windows;
   try {
@@ -38,17 +33,13 @@ export async function cmdSleepOne(oracle: string, window?: string) {
     process.exit(1);
   }
 
-  // Normalize trailing dashes — tmux window names like "fireman-1w-test-"
-  // cause exact-match failures and strand maw sleep (#206)
-  const stripDash = (s: string) => s.replace(/-+$/, "");
-
-  const target = windows.find(w => w.name === windowName || stripDash(w.name) === stripDash(windowName));
+  const target = windows.find(w => w.name === windowName);
   if (!target) {
     // Try partial match (e.g. oracle-N-name pattern)
     const nameSuffix = window || "oracle";
     const fuzzy = windows.find(w =>
-      stripDash(w.name) === stripDash(windowName) ||
-      new RegExp(`^${oracle}-\\d+-${nameSuffix}-?$`).test(w.name)
+      w.name === windowName ||
+      new RegExp(`^${oracle}-\\d+-${nameSuffix}$`).test(w.name)
     );
     if (!fuzzy) {
       console.error(`\x1b[31merror\x1b[0m: window '${windowName}' not found in session '${session}'`);
@@ -83,8 +74,7 @@ async function doSleep(session: string, windowName: string, oracle: string) {
   // 3. If window still exists, force kill
   try {
     const windows = await tmux.listWindows(session);
-    const stripDash = (s: string) => s.replace(/-+$/, "");
-    const stillExists = windows.some(w => w.name === windowName || stripDash(w.name) === stripDash(windowName));
+    const stillExists = windows.some(w => w.name === windowName);
     if (stillExists) {
       await tmux.killWindow(target);
       console.log(`  \x1b[33m!\x1b[0m force-killed ${windowName} (did not exit gracefully)`);
@@ -108,10 +98,7 @@ async function doSleep(session: string, windowName: string, oracle: string) {
   try {
     await mkdir(logDir, { recursive: true });
     await appendFile(logFile, line);
-  } catch (e) { console.error(`\x1b[33m⚠\x1b[0m sleep log write failed: ${e}`); }
+  } catch {}
 
   console.log(`\x1b[32msleep\x1b[0m ${oracle} (${windowName})`);
-
-  // Snapshot after sleep
-  takeSnapshot("sleep").catch(() => {});
 }

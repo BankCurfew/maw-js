@@ -1,25 +1,4 @@
-import { hostExec } from "./ssh";
-import { loadConfig, cfgLimit } from "./config";
-
-/** Resolve tmux socket path from env or config. */
-export function resolveSocket(): string | undefined {
-  return process.env.MAW_TMUX_SOCKET || loadConfig().tmuxSocket || undefined;
-}
-
-/** Build the `tmux` (or `tmux -S <socket>`) prefix for raw commands. */
-export function tmuxCmd(): string {
-  const socket = resolveSocket();
-  return socket ? `tmux -S '${socket}'` : "tmux";
-}
-
-export interface TmuxPane {
-  id: string;
-  command: string;
-  target: string;
-  title: string;
-  pid?: number;
-  cwd?: string;
-}
+import { ssh } from "./ssh";
 
 export interface TmuxWindow {
   index: number;
@@ -47,16 +26,12 @@ function q(s: string | number): string {
  * All methods build arg arrays and delegate to `run()`.
  */
 export class Tmux {
-  private socket?: string;
-  constructor(private host?: string, socket?: string) {
-    this.socket = socket !== undefined ? socket : resolveSocket();
-  }
+  constructor(private host?: string) {}
 
-  /** Base runner — executes `tmux [-S socket] <subcommand> [args...]` via hostExec. */
+  /** Base runner — executes `tmux <subcommand> [args...]` via ssh. */
   async run(subcommand: string, ...args: (string | number)[]): Promise<string> {
-    const socketFlag = this.socket ? `-S ${q(this.socket)} ` : "";
-    const cmd = `tmux ${socketFlag}${subcommand} ${args.map(q).join(" ")}`;
-    return hostExec(cmd, this.host);
+    const cmd = `tmux ${subcommand} ${args.map(q).join(" ")} 2>/dev/null`;
+    return ssh(cmd, this.host);
   }
 
   /** Like run() but swallows errors — for best-effort cleanup ops. */
@@ -67,29 +42,25 @@ export class Tmux {
   // --- Sessions ---
 
   async listSessions(): Promise<TmuxSession[]> {
-    try {
-      const raw = await this.run("list-sessions", "-F", "#{session_name}");
-      const sessions: TmuxSession[] = [];
-      for (const s of raw.split("\n").filter(Boolean)) {
-        const windows = await this.listWindows(s);
-        sessions.push({ name: s, windows });
-      }
-      return sessions;
-    } catch { return []; } // no tmux server running
+    const raw = await this.run("list-sessions", "-F", "#{session_name}");
+    const sessions: TmuxSession[] = [];
+    for (const s of raw.split("\n").filter(Boolean)) {
+      const windows = await this.listWindows(s);
+      sessions.push({ name: s, windows });
+    }
+    return sessions;
   }
 
   /** List all windows across all sessions in a single tmux call. */
   async listAll(): Promise<TmuxSession[]> {
-    try {
-      const raw = await this.run("list-windows", "-a", "-F", "#{session_name}|||#{window_index}|||#{window_name}|||#{window_active}|||#{pane_current_path}");
-      const map = new Map<string, TmuxWindow[]>();
-      for (const line of raw.split("\n").filter(Boolean)) {
-        const [session, idx, name, active, cwd] = line.split("|||");
-        if (!map.has(session)) map.set(session, []);
-        map.get(session)!.push({ index: +idx, name, active: active === "1", cwd: cwd || undefined });
-      }
-      return [...map.entries()].map(([name, windows]) => ({ name, windows }));
-    } catch { return []; } // no tmux server running
+    const raw = await this.run("list-windows", "-a", "-F", "#{session_name}|||#{window_index}|||#{window_name}|||#{window_active}|||#{pane_current_path}");
+    const map = new Map<string, TmuxWindow[]>();
+    for (const line of raw.split("\n").filter(Boolean)) {
+      const [session, idx, name, active, cwd] = line.split("|||");
+      if (!map.has(session)) map.set(session, []);
+      map.get(session)!.push({ index: +idx, name, active: active === "1", cwd: cwd || undefined });
+    }
+    return [...map.entries()].map(([name, windows]) => ({ name, windows }));
   }
 
   async hasSession(name: string): Promise<boolean> {
@@ -112,7 +83,6 @@ export class Tmux {
     if (opts.window) args.push("-n", opts.window);
     if (opts.cwd) args.push("-c", opts.cwd);
     await this.run("new-session", ...args);
-    await this.setOption(name, "renumber-windows", "on");
   }
 
   /** Create a grouped session — shares windows with parent, independent sizing.
@@ -143,10 +113,7 @@ export class Tmux {
   }
 
   async newWindow(session: string, name: string, opts: { cwd?: string } = {}): Promise<void> {
-    // Trailing colon on -t forces "next free index" semantics.
-    // Without it, `-t session` is interpreted as `-t session:<current_window>`,
-    // and tmux tries to create AT that index → "index 1 in use" error.
-    const args: (string | number)[] = ["-t", `${session}:`, "-n", name];
+    const args: (string | number)[] = ["-t", session, "-n", name];
     if (opts.cwd) args.push("-c", opts.cwd);
     await this.run("new-window", ...args);
   }
@@ -155,41 +122,11 @@ export class Tmux {
     await this.tryRun("select-window", "-t", target);
   }
 
-  /** Switch the current tmux client to a different session. Only works when inside tmux. */
-  async switchClient(session: string): Promise<void> {
-    await this.tryRun("switch-client", "-t", session);
-  }
-
   async killWindow(target: string): Promise<void> {
     await this.tryRun("kill-window", "-t", target);
   }
 
   // --- Panes ---
-
-  /** Get all pane IDs across all sessions — single tmux call. */
-  async listPaneIds(): Promise<Set<string>> {
-    try {
-      const raw = await this.run("list-panes", "-a", "-F", "#{pane_id}");
-      return new Set(raw.split("\n").filter(Boolean));
-    } catch { return new Set(); }
-  }
-
-  /** Get structured info for all panes across all sessions. */
-  async listPanes(): Promise<TmuxPane[]> {
-    try {
-      const raw = await this.run("list-panes", "-a", "-F",
-        "#{pane_id}|||#{pane_current_command}|||#{session_name}:#{window_index}.#{pane_index}|||#{pane_title}|||#{pane_pid}|||#{pane_current_path}");
-      return raw.split("\n").filter(Boolean).map(line => {
-        const [id, command, target, title, pid, cwd] = line.split("|||");
-        return { id, command, target, title, pid: pid ? Number(pid) : undefined, cwd: cwd || undefined };
-      });
-    } catch { return []; }
-  }
-
-  /** Kill a single pane (best-effort — swallows errors). */
-  async killPane(target: string): Promise<void> {
-    await this.tryRun("kill-pane", "-t", target);
-  }
 
   /** Get the command running in a pane (e.g. "claude", "zsh") */
   async getPaneCommand(target: string): Promise<string> {
@@ -197,18 +134,12 @@ export class Tmux {
     return raw.split("\n")[0] || "";
   }
 
-  /** Batch-check which panes are running what command — single tmux call. */
+  /** Batch-check which panes are running what command. */
   async getPaneCommands(targets: string[]): Promise<Record<string, string>> {
     const result: Record<string, string> = {};
-    try {
-      // Single call: list ALL panes with session:window_index + command
-      const raw = await this.run("list-panes", "-a", "-F", "#{session_name}:#{window_index}|||#{pane_current_command}");
-      const targetSet = new Set(targets);
-      for (const line of raw.split("\n").filter(Boolean)) {
-        const [target, cmd] = line.split("|||");
-        if (targetSet.has(target)) result[target] = cmd || "";
-      }
-    } catch { /* expected: tmux may not be running */ }
+    await Promise.allSettled(targets.map(async (t) => {
+      try { result[t] = await this.getPaneCommand(t); } catch {}
+    }));
     return result;
   }
 
@@ -223,7 +154,7 @@ export class Tmux {
   async getPaneInfos(targets: string[]): Promise<Record<string, { command: string; cwd: string }>> {
     const result: Record<string, { command: string; cwd: string }> = {};
     await Promise.allSettled(targets.map(async (t) => {
-      try { result[t] = await this.getPaneInfo(t); } catch { /* expected: pane may have closed */ }
+      try { result[t] = await this.getPaneInfo(t); } catch {}
     }));
     return result;
   }
@@ -232,15 +163,14 @@ export class Tmux {
     if (lines > 50) {
       return this.run("capture-pane", "-t", target, "-e", "-p", "-S", -lines);
     }
-    // For shorter captures, pipe through tail (needs raw hostExec)
-    const socketFlag = this.socket ? `-S ${q(this.socket)} ` : "";
-    const cmd = `tmux ${socketFlag}capture-pane -t ${q(target)} -e -p 2>/dev/null | tail -${lines}`;
-    return hostExec(cmd, this.host);
+    // For shorter captures, pipe through tail (needs raw ssh)
+    const cmd = `tmux capture-pane -t ${q(target)} -e -p 2>/dev/null | tail -${lines}`;
+    return ssh(cmd, this.host);
   }
 
   async resizePane(target: string, cols: number, rows: number): Promise<void> {
-    const c = Math.max(1, Math.min(cfgLimit("ptyCols"), Math.floor(cols)));
-    const r = Math.max(1, Math.min(cfgLimit("ptyRows"), Math.floor(rows)));
+    const c = Math.max(1, Math.min(500, Math.floor(cols)));
+    const r = Math.max(1, Math.min(200, Math.floor(rows)));
     await this.tryRun("resize-pane", "-t", target, "-x", c, "-y", r);
   }
 
@@ -272,9 +202,8 @@ export class Tmux {
 
   async loadBuffer(text: string): Promise<void> {
     const escaped = text.replace(/'/g, "'\\''");
-    const socketFlag = this.socket ? `-S ${q(this.socket)} ` : "";
-    const cmd = `printf '%s' '${escaped}' | tmux ${socketFlag}load-buffer -`;
-    await hostExec(cmd, this.host);
+    const cmd = `printf '%s' '${escaped}' | tmux load-buffer -`;
+    await ssh(cmd, this.host);
   }
 
   async pasteBuffer(target: string): Promise<void> {
@@ -326,5 +255,5 @@ export class Tmux {
   }
 }
 
-/** Default tmux instance (uses default host from hostExec config). */
+/** Default tmux instance (uses default host from ssh config). */
 export const tmux = new Tmux();

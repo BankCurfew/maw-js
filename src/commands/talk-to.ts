@@ -1,6 +1,5 @@
 import { loadConfig } from "../config";
-import { listSessions, sendKeys, getPaneCommand } from "../ssh";
-import { findWindow } from "../find-window";
+import { listSessions, findWindow, sendKeys, getPaneCommand } from "../ssh";
 import { runHook } from "../hooks";
 import { appendFile, mkdir } from "fs/promises";
 import { homedir, hostname } from "os";
@@ -184,7 +183,7 @@ export async function cmdTalkTo(target: string, message: string, force = false) 
     sid,
     ch,
   }) + "\n";
-  try { await mkdir(logDir, { recursive: true }); await appendFile(logFile, line); } catch (e) { console.error(`\x1b[33m⚠\x1b[0m talk-to log write failed: ${e}`); }
+  try { await mkdir(logDir, { recursive: true }); await appendFile(logFile, line); } catch {}
 
   console.log(`\x1b[32m✓\x1b[0m thread #${threadResult?.thread_id ?? "?"} + sent → ${tmuxTarget}`);
 }

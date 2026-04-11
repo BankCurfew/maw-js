@@ -12,9 +12,6 @@ import type { AgentState, Session, AgentEvent } from "../lib/types";
 import { describeActivity, type FeedEvent } from "../lib/feed";
 import { OracleSheet } from "./OracleSheet";
 import { useDevice } from "../hooks/useDevice";
-import { useFederationData } from "../hooks/useFederationData";
-import NodeBadge from "./NodeBadge";
-import { nodeColor } from "../lib/federation";
 
 export type FeedLogEntry = { text: string; ts: number; project?: string; eventType?: string };
 
@@ -152,7 +149,6 @@ export const FleetGrid = memo(function FleetGrid({
   const { isNarrow } = useDevice();
   const observe = useVisibleTargets(send);
   const containerRef = useRef<HTMLDivElement>(null);
-  const federation = useFederationData();
 
   // --- Zustand store ---
   const { recentMap, markBusy, pruneRecent, sortMode, setSortMode, collapsed, toggleCollapsed, sleptTargets, stageMode, toggleStageMode } = useFleetStore();
@@ -408,53 +404,6 @@ export const FleetGrid = memo(function FleetGrid({
           );
         })}
       </div>
-
-      {/* Remote Nodes — federated agents from other nodes */}
-      {federation.available && (() => {
-        const localNames = new Set(agents.map(a => a.name));
-        const remoteAgents = federation.agents.filter(a => !a.isLocal && !localNames.has(a.name));
-        if (remoteAgents.length === 0) return null;
-        const byNode: Record<string, typeof remoteAgents> = {};
-        for (const a of remoteAgents) (byNode[a.node] ??= []).push(a);
-        return (
-          <div className="max-w-5xl mx-auto flex flex-col px-6 lg:px-8 pb-6 gap-4">
-            {Object.entries(byNode).sort(([a], [b]) => a.localeCompare(b)).map(([nodeName, nodeAgents]) => {
-              const { accent } = nodeColor(nodeName);
-              return (
-                <section key={`remote-${nodeName}`} className="rounded-2xl overflow-hidden"
-                  style={{ background: "#12121c", border: `1px solid ${accent}18`, boxShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
-                  <div className="flex items-center gap-3 px-6 py-4" style={{ background: `${accent}08` }}>
-                    <NodeBadge node={nodeName} />
-                    <span className="text-xs font-mono text-white/30">
-                      {nodeAgents.length} remote oracle{nodeAgents.length !== 1 ? "s" : ""}
-                    </span>
-                    {(() => {
-                      const peer = federation.peers.find(p => p.name === nodeName);
-                      if (!peer) return null;
-                      return (
-                        <span className="flex items-center gap-1 text-[10px] text-white/30 ml-auto">
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: peer.reachable ? "#22c55e" : "#ef4444" }} />
-                          {peer.reachable ? `${peer.latencyMs ?? "?"}ms` : "offline"}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <div className="h-[1px]" style={{ background: `${accent}15` }} />
-                  <div className="flex flex-col divide-y divide-white/[0.05]">
-                    {nodeAgents.sort((a, b) => a.name.localeCompare(b.name)).map(agent => (
-                      <div key={agent.name} className="px-6 py-3 flex items-center gap-3">
-                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accent }} />
-                        <span className="text-sm text-white/70 font-mono">{agent.name}</span>
-                        <span className="text-[10px] text-white/20 ml-auto">remote</span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-        );
-      })()}
 
       <BottomStats agents={agents} eventLog={eventLog} />
 

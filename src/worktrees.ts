@@ -1,9 +1,7 @@
-import { hostExec, listSessions } from "./ssh";
-import { tmux } from "./tmux";
+import { ssh, listSessions } from "./ssh";
 import { loadConfig } from "./config";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { FLEET_DIR } from "./paths";
 
 export interface WorktreeInfo {
   path: string;
@@ -26,12 +24,12 @@ export interface WorktreeInfo {
 export async function scanWorktrees(): Promise<WorktreeInfo[]> {
   const config = loadConfig();
   const ghqRoot = config.ghqRoot;
-  const fleetDir = FLEET_DIR;
+  const fleetDir = join(import.meta.dir, "../fleet");
 
   // 1. Find all .wt- directories
   let wtPaths: string[] = [];
   try {
-    const raw = await hostExec(`find ${ghqRoot} -maxdepth 4 -name '*.wt-*' -type d 2>/dev/null`);
+    const raw = await ssh(`find ${ghqRoot} -maxdepth 4 -name '*.wt-*' -type d 2>/dev/null`);
     wtPaths = raw.split("\n").filter(Boolean);
   } catch { /* no worktrees */ }
 
@@ -77,7 +75,7 @@ export async function scanWorktrees(): Promise<WorktreeInfo[]> {
     // Get branch
     let branch = "";
     try {
-      branch = (await hostExec(`git -C '${wtPath}' rev-parse --abbrev-ref HEAD 2>/dev/null`)).trim();
+      branch = (await ssh(`git -C '${wtPath}' rev-parse --abbrev-ref HEAD 2>/dev/null`)).trim();
     } catch { branch = "unknown"; }
 
     // Match to tmux window — check fleet config or name pattern
@@ -115,7 +113,7 @@ export async function scanWorktrees(): Promise<WorktreeInfo[]> {
   for (const mainRepo of mainRepos) {
     const mainPath = join(ghqRoot, mainRepo);
     try {
-      const prunable = await hostExec(`git -C '${mainPath}' worktree list --porcelain 2>/dev/null | grep -A1 'prunable' | grep 'worktree' | sed 's/worktree //'`);
+      const prunable = await ssh(`git -C '${mainPath}' worktree list --porcelain 2>/dev/null | grep -A1 'prunable' | grep 'worktree' | sed 's/worktree //'`);
       for (const orphanPath of prunable.split("\n").filter(Boolean)) {
         // Check if we already have this path
         const existing = results.find(r => r.path === orphanPath);
@@ -146,7 +144,7 @@ export async function scanWorktrees(): Promise<WorktreeInfo[]> {
 export async function cleanupWorktree(wtPath: string): Promise<string[]> {
   const config = loadConfig();
   const ghqRoot = config.ghqRoot;
-  const fleetDir = FLEET_DIR;
+  const fleetDir = join(import.meta.dir, "../fleet");
   const log: string[] = [];
 
   const dirName = wtPath.split("/").pop()!;
@@ -173,7 +171,7 @@ export async function cleanupWorktree(wtPath: string): Promise<string[]> {
     for (const w of s.windows) {
       if (w.name.endsWith(`-${taskPart}`) || w.name === taskPart) {
         try {
-          await tmux.killWindow(`${s.name}:${w.name}`);
+          await ssh(`tmux kill-window -t '${s.name}:${w.name}'`);
           log.push(`killed window ${s.name}:${w.name}`);
         } catch {
           log.push(`window already closed: ${w.name}`);
@@ -184,11 +182,11 @@ export async function cleanupWorktree(wtPath: string): Promise<string[]> {
 
   // 2. Get branch, remove worktree
   let branch = "";
-  try { branch = (await hostExec(`git -C '${wtPath}' rev-parse --abbrev-ref HEAD`)).trim(); } catch { /* expected: worktree may be corrupt */ }
+  try { branch = (await ssh(`git -C '${wtPath}' rev-parse --abbrev-ref HEAD`)).trim(); } catch {}
 
   try {
-    await hostExec(`git -C '${mainPath}' worktree remove '${wtPath}' --force`);
-    await hostExec(`git -C '${mainPath}' worktree prune`);
+    await ssh(`git -C '${mainPath}' worktree remove '${wtPath}' --force`);
+    await ssh(`git -C '${mainPath}' worktree prune`);
     log.push(`removed worktree ${dirName}`);
   } catch (e: any) {
     log.push(`worktree remove failed: ${e.message || e}`);
@@ -197,7 +195,7 @@ export async function cleanupWorktree(wtPath: string): Promise<string[]> {
   // 3. Delete branch
   if (branch && branch !== "main" && branch !== "HEAD" && branch !== "unknown") {
     try {
-      await hostExec(`git -C '${mainPath}' branch -d '${branch}'`);
+      await ssh(`git -C '${mainPath}' branch -d '${branch}'`);
       log.push(`deleted branch ${branch}`);
     } catch {
       log.push(`branch ${branch} not deleted (may have unmerged changes)`);
