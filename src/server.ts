@@ -759,7 +759,7 @@ app.get("/api/bob/state", (c) => {
   });
 });
 
-// --- BoB Chat (via tmux send-keys to BoB's Claude session) ---
+// --- BoB Chat (via maw hey bob) ---
 const BOB_PANE = process.env.BOB_PANE || "01-bob:0";
 app.post("/api/bob/chat", async (c) => {
   const body = await c.req.json<{ message: string }>();
@@ -772,26 +772,28 @@ app.post("/api/bob/chat", async (c) => {
     const before = await capture(BOB_PANE, 40);
     const beforeLines = before.split("\n").length;
 
-    // Send message to BoB's tmux pane (like maw hey bob)
-    await sendKeys(BOB_PANE, body.message + "\r");
+    // Send via maw hey bob (audit trail + proper oracle communication)
+    const proc = Bun.spawn(["bun", "src/cli.ts", "hey", "bob", body.message], {
+      cwd: import.meta.dir + "/..",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
 
-    // Poll for new output (BoB responds via Claude in tmux)
-    // Wait up to 30s, polling every 1s for new lines
+    // Poll for BoB's response in tmux (up to 30s)
     let response = "";
     const maxAttempts = 30;
-    let settled = 0; // consecutive polls with same content = response done
+    let settled = 0;
 
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       const after = await capture(BOB_PANE, 60);
       const afterLines = after.split("\n");
 
-      // New content = lines after baseline
       const newLines = afterLines.slice(beforeLines).join("\n").trim();
       if (newLines.length > 0) {
         if (newLines === response) {
           settled++;
-          // 3 consecutive same = response complete
           if (settled >= 3) break;
         } else {
           response = newLines;
@@ -800,12 +802,12 @@ app.post("/api/bob/chat", async (c) => {
       }
     }
 
-    // Clean ANSI escape codes from response
+    // Clean ANSI escape codes
     const clean = response.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").trim();
 
     return c.json({ response: clean || "(BoB didn't respond — he may be busy)" });
   } catch (err: any) {
-    return c.json({ error: `tmux error: ${err.message}` }, 500);
+    return c.json({ error: `maw hey error: ${err.message}` }, 500);
   }
 });
 
