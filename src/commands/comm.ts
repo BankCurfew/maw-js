@@ -67,6 +67,29 @@ export async function cmdPeek(query?: string) {
 }
 
 export async function cmdSend(query: string, message: string, force = false) {
+  // Cross-node: route via local HTTP API (which handles federation routing)
+  // 'curfew:echo-oracle' = cross-node, but '01-bob:0' = local tmux pane
+  if (query.includes(":") && !query.match(/^\d+-/)) {
+    const server = process.env.MAW_SERVER || "http://localhost:3456";
+    try {
+      const res = await fetch(`${server}/api/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: query, text: message }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error(`\x1b[31merror\x1b[0m: ${(body as any).error || `HTTP ${res.status}`}`);
+        process.exit(1);
+      }
+      console.log(`\x1b[32msent\x1b[0m → ${query}: ${message}`);
+      return;
+    } catch (e: any) {
+      console.error(`\x1b[31merror\x1b[0m: server unreachable: ${e.message}`);
+      process.exit(1);
+    }
+  }
+
   const sessions = await listSessions();
   const target = findWindow(sessions, query);
   if (!target) { console.error(`window not found: ${query}`); process.exit(1); }
