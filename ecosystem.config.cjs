@@ -23,6 +23,17 @@ module.exports = {
       restart_delay: 5000,
     },
     {
+      name: 'maw-bob',
+      script: 'src/serve-bob.ts',
+      interpreter: '/home/mbank/.local/bin/bun',
+      watch: ['src/serve-bob.ts', 'src/auth.ts'],
+      watch_delay: 500,
+      env: {
+        BOB_PORT: '3457',
+        MAW_PORT: '3456',
+      },
+    },
+    {
       name: 'maw-dev',
       script: 'node_modules/.bin/vite',
       args: '--host',
