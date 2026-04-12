@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
 import { listSessions, capture, sendKeys, selectWindow } from "./ssh";
+import { findWindow } from "./find-window";
 import { tmux } from "./tmux";
 import { processMirror } from "./commands/overview";
 import { FeedTailer } from "./feed-tail";
@@ -194,8 +195,11 @@ app.post("/api/send", async (c) => {
 app.post("/api/federation/send", requireHmac(), async (c) => {
   const { target, text } = await c.req.json();
   if (!target || !text) return c.json({ error: "target and text required" }, 400);
-  await sendKeys(target, text);
-  return c.json({ ok: true, target, text });
+  // Resolve oracle name (e.g. "echo-oracle") to tmux target (e.g. "echo:0")
+  const sessions = await listSessions();
+  const resolved = findWindow(sessions, target) || target;
+  await sendKeys(resolved, text);
+  return c.json({ ok: true, target: resolved, original: target !== resolved ? target : undefined, text });
 });
 
 app.post("/api/select", async (c) => {
