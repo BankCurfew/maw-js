@@ -1,7 +1,7 @@
 {
   "version": "1.1.0",
-  "updatedAt": "2026-03-19T12:54:08.015Z",
-  "updatedBy": "bank",
+  "updatedAt": "2026-04-12T03:00:00.000Z",
+  "updatedBy": "botdev-oracle",
   "rooms": [
     {
       "id": "command",
@@ -110,11 +110,26 @@
       "description": "Personal Assistant — Calendar, Finance, Email",
       "lead": "PA-Oracle",
       "members": [
-        "PA-Oracle"
+        "PA-Oracle",
+        "Cost-Oracle",
+        "FA-Oracle"
       ],
       "accent": "#8B5CF6",
       "floor": "#1a1428",
       "wall": "#120e1e"
+    },
+    {
+      "id": "federation",
+      "label": "Federation",
+      "emoji": "🌐",
+      "description": "Cross-Node Agents",
+      "lead": "Echo-Oracle",
+      "members": [
+        "Echo-Oracle"
+      ],
+      "accent": "#22D3EE",
+      "floor": "#1a2228",
+      "wall": "#0e1a20"
     }
   ]
 }
