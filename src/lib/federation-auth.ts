@@ -24,6 +24,19 @@ export function signRequest(
   return { timestamp, signature };
 }
 
+/** Produce auth headers for outgoing federation HTTP calls. */
+export function signHeaders(
+  token: string,
+  method: string,
+  path: string,
+): Record<string, string> {
+  const { timestamp, signature } = signRequest(method, path, token);
+  return {
+    "X-Maw-Timestamp": timestamp,
+    "X-Maw-Signature": signature,
+  };
+}
+
 /** Verify an inbound cross-node request. Returns true if valid. */
 export function verifyRequest(
   method: string,

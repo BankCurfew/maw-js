@@ -9,7 +9,8 @@ import { MawEngine } from "./engine";
 import { LoopEngine } from "./loops";
 import { isAuthenticated, handleLogin, handleLogout, getActiveSessions, LOGIN_PAGE, isAuthEnabled, generateQrToken, getQrTokenStatus, approveQrToken, QR_APPROVE_PAGE } from "./auth";
 import type { WSData } from "./types";
-import { requireHmac } from "./lib/federation-auth";
+import { randomBytes } from "crypto";
+import { requireHmac, signHeaders } from "./lib/federation-auth";
 import { checkPeerHealth, aggregateAgents, crossNodeSend, aggregateSessions } from "./lib/peers";
 
 const app = new Hono();
@@ -709,6 +710,92 @@ app.get("/api/feed", (c) => {
 app.get("/api/federation/status", async (c) => {
   const peers = await checkPeerHealth();
   return c.json({ peers });
+});
+
+// --- Peer Exec (federation read-only relay for Neo/maw-ui) ---
+
+const PE_SESSION_TOKEN = randomBytes(16).toString("hex");
+const PE_COOKIE_NAME = "pe_session";
+const PE_COOKIE_MAX_AGE = 60 * 60 * 24;
+
+const READONLY_CMDS = ["/dig", "/trace", "/recap", "/standup", "/who-are-you", "/philosophy", "/where-we-are"];
+
+function isReadOnlyCmd(cmd: string): boolean {
+  const trimmed = cmd.trim();
+  return READONLY_CMDS.some((prefix) => trimmed === prefix || trimmed.startsWith(prefix + " "));
+}
+
+function parseSignature(sig: string): { originHost: string; originAgent: string; isAnon: boolean } | null {
+  const m = sig.match(/^\[([^:\]]+):([^\]]+)\]$/);
+  if (!m) return null;
+  return { originHost: m[1], originAgent: m[2], isAnon: m[2].startsWith("anon-") };
+}
+
+function resolvePeerUrl(peer: string): string | null {
+  const config = loadConfig() as any;
+  const namedPeers: Array<{ name: string; url: string }> = config?.namedPeers ?? [];
+  const match = namedPeers.find((p) => p.name === peer);
+  if (match) return match.url;
+  if (/^[\w.-]+:\d+$/.test(peer)) return `http://${peer}`;
+  if (peer.startsWith("http://") || peer.startsWith("https://")) return peer;
+  return null;
+}
+
+app.get("/api/peer/session", (c) => {
+  c.header("Set-Cookie", `${PE_COOKIE_NAME}=${PE_SESSION_TOKEN}; HttpOnly; SameSite=Strict; Path=/api/peer; Max-Age=${PE_COOKIE_MAX_AGE}`);
+  return c.json({ ok: true, rotates: "on_server_restart" });
+});
+
+app.post("/api/peer/exec", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object") return c.json({ error: "invalid_body" }, 400);
+
+  const { peer, cmd, args = [], signature } = body as { peer?: string; cmd?: string; args?: string[]; signature?: string };
+  if (!peer || !cmd || !signature) return c.json({ error: "missing_fields", required: ["peer", "cmd", "signature"] }, 400);
+
+  const parsed = parseSignature(signature);
+  if (!parsed) return c.json({ error: "bad_signature", expected: "[host:agent]" }, 400);
+
+  // Trust boundary: readonly cmds always permitted, shell cmds require shellPeers whitelist
+  const readonly = isReadOnlyCmd(cmd);
+  if (!readonly) {
+    const config = loadConfig() as any;
+    const allowed: string[] = config?.wormhole?.shellPeers ?? [];
+    if (!allowed.includes(parsed.originHost)) {
+      return c.json({
+        error: "shell_peer_denied",
+        origin: parsed.originHost,
+        hint: parsed.isAnon
+          ? "anonymous browser visitors are read-only"
+          : "add this origin to config.wormhole.shellPeers to permit shell cmds",
+      }, 403);
+    }
+  }
+
+  const peerUrl = resolvePeerUrl(peer);
+  if (!peerUrl) return c.json({ error: "unknown_peer", peer }, 404);
+
+  // Relay to peer with HMAC
+  try {
+    const start = Date.now();
+    const path = "/api/peer/exec";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const config = loadConfig() as any;
+    if (config?.federationToken) Object.assign(headers, signHeaders(config.federationToken, "POST", path));
+
+    const response = await fetch(`${peerUrl}${path}`, { method: "POST", headers, body: JSON.stringify({ cmd, args, signature }) });
+    const text = await response.text();
+
+    return c.json({
+      output: text,
+      from: peerUrl,
+      elapsed_ms: Date.now() - start,
+      status: response.status,
+      trust_tier: readonly ? "readonly" : "shell_allowlisted",
+    });
+  } catch (err: any) {
+    return c.json({ error: "relay_failed", peer: peerUrl, reason: err?.message ?? String(err) }, 502);
+  }
 });
 
 // --- Aggregated Sessions (local + remote) ---
