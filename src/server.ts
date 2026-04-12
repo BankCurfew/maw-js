@@ -122,6 +122,36 @@ app.use("*", async (c, next) => {
   return next();
 });
 
+// --- Internal-only guard: block external (CF Tunnel) access to sensitive endpoints ---
+// CF Tunnel always adds CF-Connecting-IP header; local requests don't have it.
+const INTERNAL_ONLY_PATHS = new Set([
+  "/api/sessions/federated",
+  "/api/feed",
+  "/api/tokens",
+  "/api/tokens/rate",
+  "/api/maw-log",
+  "/api/progress",
+  "/api/oracle-health",
+]);
+
+function isInternalOnly(path: string): boolean {
+  if (INTERNAL_ONLY_PATHS.has(path)) return true;
+  // /api/progress/:oracle — match prefix
+  if (path.startsWith("/api/progress/")) return true;
+  return false;
+}
+
+app.use("/api/*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (isInternalOnly(path)) {
+    const cfIp = c.req.header("cf-connecting-ip");
+    if (cfIp) {
+      return c.json({ error: "internal_only", hint: "This endpoint is not available externally" }, 403);
+    }
+  }
+  return next();
+});
+
 // API routes (keep for CLI compatibility)
 app.get("/api/sessions", async (c) => c.json(await listSessions()));
 
