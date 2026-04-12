@@ -580,6 +580,7 @@ app.get("/api/config", async (c) => {
     node: config.node || "local",
     agents,
     namedPeers,
+    rooms: config.rooms || {},
     // Mask federation token
     federationToken: undefined,
   });

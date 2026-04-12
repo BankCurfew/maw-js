@@ -101,7 +101,13 @@ export async function aggregateAgents(
   const nodeName = config.node || "local";
   const agents: Record<string, string> = {};
 
-  // Local agents from tmux sessions
+  // Static agents from config (fallback for federated agents that aren't in local tmux)
+  const staticAgents = config.agents || {};
+  for (const [name, node] of Object.entries(staticAgents)) {
+    if (typeof node === "string" && node) agents[name] = node;
+  }
+
+  // Local agents from tmux sessions (overrides static for local agents)
   for (const s of localSessions) {
     // Session format: "01-bob", "02-dev", etc. — strip numeric prefix
     const name = s.replace(/^\d+-/, "");
