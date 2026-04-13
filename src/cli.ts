@@ -64,11 +64,12 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
   let after = "";
   try { after = execSync(`maw --version`, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim(); } catch {}
 
-  // Update plugins from pluginSources
+  // Update plugins from pluginSources (read config file directly — module path may be stale after reinstall)
   try {
-    const { loadConfig } = await import("./config");
-    const config = loadConfig();
-    const sources: string[] = config.pluginSources ?? [];
+    const configPath = join(homedir(), ".config", "maw", "maw.config.json");
+    const { readFileSync: readF } = require("fs");
+    const rawConfig = JSON.parse(readF(configPath, "utf-8"));
+    const sources: string[] = rawConfig.pluginSources ?? [];
     if (sources.length > 0) {
       console.log(`\n  🔌 updating ${sources.length} plugin source(s)...`);
       const pluginDir = join(homedir(), ".maw", "plugins");
