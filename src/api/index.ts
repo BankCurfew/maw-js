@@ -22,6 +22,7 @@ import { proxyApi } from "./proxy";
 import { pulseApi } from "./pulse";
 import { pluginsRouter } from "./plugins";
 import { uploadApi } from "./upload";
+import { discoverPackages, invokePlugin } from "../plugin/registry";
 import { federationAuth } from "../lib/elysia-auth";
 
 export const api = new Elysia({ prefix: "/api" })
@@ -58,3 +59,22 @@ export const api = new Elysia({ prefix: "/api" })
   .use(pulseApi)
   .use(pluginsRouter)
   .use(uploadApi);
+
+// Auto-mount plugin API surfaces from manifests
+const bundledPlugins = discoverPackages();
+for (const p of bundledPlugins) {
+  if (!p.manifest.api) continue;
+  const { path: apiPath, methods } = p.manifest.api;
+  if (methods.includes("GET")) {
+    api.get(apiPath, async ({ query }) => {
+      const result = await invokePlugin(p, { source: "api", args: query ?? {} });
+      return result;
+    });
+  }
+  if (methods.includes("POST")) {
+    api.post(apiPath, async ({ body }) => {
+      const result = await invokePlugin(p, { source: "api", args: body ?? {} });
+      return result;
+    });
+  }
+}

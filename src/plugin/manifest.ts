@@ -90,9 +90,27 @@ export function parseManifest(jsonText: string, dir: string): PluginManifest {
     if (typeof c.command !== "string" || !c.command) {
       throw new Error("plugin.json: cli.command must be a non-empty string");
     }
+    if (c.aliases !== undefined) {
+      if (!Array.isArray(c.aliases) || c.aliases.some((a: unknown) => typeof a !== "string")) {
+        throw new Error("plugin.json: cli.aliases must be an array of strings");
+      }
+    }
+    if (c.flags !== undefined) {
+      if (!c.flags || typeof c.flags !== "object" || Array.isArray(c.flags)) {
+        throw new Error("plugin.json: cli.flags must be an object");
+      }
+      const valid = new Set(["boolean", "string", "number"]);
+      for (const [k, v] of Object.entries(c.flags as Record<string, unknown>)) {
+        if (!valid.has(v as string)) {
+          throw new Error(`plugin.json: cli.flags["${k}"] must be "boolean", "string", or "number"`);
+        }
+      }
+    }
     cli = {
       command: c.command,
+      ...(Array.isArray(c.aliases) ? { aliases: c.aliases as string[] } : {}),
       ...(typeof c.help === "string" ? { help: c.help } : {}),
+      ...(c.flags ? { flags: c.flags as Record<string, string> } : {}),
     };
   }
 
@@ -115,6 +133,78 @@ export function parseManifest(jsonText: string, dir: string): PluginManifest {
     api = { path: a.path, methods: a.methods as ("GET" | "POST")[] };
   }
 
+  // --- Optional hooks ---
+  let hooks: PluginManifest["hooks"];
+  if (r.hooks !== undefined) {
+    if (!r.hooks || typeof r.hooks !== "object" || Array.isArray(r.hooks)) {
+      throw new Error("plugin.json: hooks must be an object");
+    }
+    const h = r.hooks as Record<string, unknown>;
+    for (const key of ["gate", "filter", "on", "late"] as const) {
+      if (h[key] !== undefined) {
+        if (!Array.isArray(h[key]) || (h[key] as unknown[]).some((e: unknown) => typeof e !== "string")) {
+          throw new Error(`plugin.json: hooks.${key} must be an array of strings`);
+        }
+      }
+    }
+    hooks = {
+      ...(Array.isArray(h.gate) ? { gate: h.gate as string[] } : {}),
+      ...(Array.isArray(h.filter) ? { filter: h.filter as string[] } : {}),
+      ...(Array.isArray(h.on) ? { on: h.on as string[] } : {}),
+      ...(Array.isArray(h.late) ? { late: h.late as string[] } : {}),
+    };
+  }
+
+  // --- Optional cron ---
+  let cron: PluginManifest["cron"];
+  if (r.cron !== undefined) {
+    if (!r.cron || typeof r.cron !== "object" || Array.isArray(r.cron)) {
+      throw new Error("plugin.json: cron must be an object");
+    }
+    const c = r.cron as Record<string, unknown>;
+    if (typeof c.schedule !== "string" || !c.schedule) {
+      throw new Error("plugin.json: cron.schedule must be a non-empty string");
+    }
+    if (c.handler !== undefined && typeof c.handler !== "string") {
+      throw new Error("plugin.json: cron.handler must be a string");
+    }
+    cron = {
+      schedule: c.schedule,
+      ...(typeof c.handler === "string" ? { handler: c.handler } : {}),
+    };
+  }
+
+  // --- Optional module ---
+  let module_: PluginManifest["module"];
+  if (r.module !== undefined) {
+    if (!r.module || typeof r.module !== "object" || Array.isArray(r.module)) {
+      throw new Error("plugin.json: module must be an object");
+    }
+    const m = r.module as Record<string, unknown>;
+    if (!Array.isArray(m.exports) || m.exports.length === 0 || m.exports.some((e: unknown) => typeof e !== "string")) {
+      throw new Error("plugin.json: module.exports must be a non-empty array of strings");
+    }
+    if (typeof m.path !== "string" || !m.path) {
+      throw new Error("plugin.json: module.path must be a non-empty string");
+    }
+    module_ = { exports: m.exports as string[], path: m.path };
+  }
+
+  // --- Optional transport ---
+  let transport: PluginManifest["transport"];
+  if (r.transport !== undefined) {
+    if (!r.transport || typeof r.transport !== "object" || Array.isArray(r.transport)) {
+      throw new Error("plugin.json: transport must be an object");
+    }
+    const t = r.transport as Record<string, unknown>;
+    if (t.peer !== undefined && typeof t.peer !== "boolean") {
+      throw new Error("plugin.json: transport.peer must be a boolean");
+    }
+    transport = {
+      ...(typeof t.peer === "boolean" ? { peer: t.peer } : {}),
+    };
+  }
+
   return {
     name: r.name,
     version: r.version,
@@ -125,6 +215,10 @@ export function parseManifest(jsonText: string, dir: string): PluginManifest {
     ...(api ? { api } : {}),
     ...(typeof r.description === "string" ? { description: r.description } : {}),
     ...(typeof r.author === "string" ? { author: r.author } : {}),
+    ...(hooks ? { hooks } : {}),
+    ...(cron ? { cron } : {}),
+    ...(module_ ? { module: module_ } : {}),
+    ...(transport ? { transport } : {}),
   };
 }
 

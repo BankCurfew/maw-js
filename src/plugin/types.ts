@@ -17,10 +17,32 @@ export interface PluginManifest {
   wasm?: string;          // relative path to .wasm (WASM plugin)
   entry?: string;         // relative path to .ts/.js (TS plugin)
   sdk: string;            // semver range e.g. "^1.0.0"
-  cli?: { command: string; help?: string; };
+  cli?: {
+    command: string;
+    aliases?: string[];                    // alternate command names
+    help?: string;
+    flags?: Record<string, string>;        // flag name → "boolean"|"string"|"number"
+  };
   api?: { path: string; methods: ("GET" | "POST")[]; };
   description?: string;
   author?: string;
+  hooks?: {
+    gate?: string[];    // event names to gate
+    filter?: string[];  // event names to filter
+    on?: string[];      // event names to handle
+    late?: string[];    // event names for cleanup
+  };
+  cron?: {
+    schedule: string;   // cron expression
+    handler?: string;   // export name (default: "onTick")
+  };
+  module?: {
+    exports: string[];  // named exports other plugins can import
+    path: string;       // relative path to module file
+  };
+  transport?: {
+    peer?: boolean;     // enable maw hey plugin:<name>
+  };
 }
 
 export interface LoadedPlugin {

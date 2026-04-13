@@ -4,13 +4,10 @@ import { cmdTab } from "../commands/tab";
 import { cmdRename } from "../commands/rename";
 import { cmdWorkon } from "../commands/workon";
 import { cmdPark, cmdParkLs, cmdResume } from "../commands/park";
-import { cmdContactsLs, cmdContactsAdd, cmdContactsRm } from "../commands/contacts";
 import { cmdInboxLs, cmdInboxRead, cmdInboxWrite } from "../commands/inbox";
 import { cmdAssign } from "../commands/assign";
 import { cmdPr } from "../commands/pr";
-import { cmdCosts } from "../commands/costs";
 import { cmdTriggers } from "../commands/triggers";
-import { cmdHealth } from "../commands/health";
 import { cmdUi } from "../commands/ui";
 
 export async function routeTools(cmd: string, args: string[]): Promise<boolean> {
@@ -53,13 +50,6 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     await cmdRename(args[1], args[2]);
     return true;
   }
-  if (cmd === "contacts" || cmd === "contact") {
-    const sub = args[1]?.toLowerCase();
-    if (sub === "add" && args[2]) await cmdContactsAdd(args[2], args.slice(3));
-    else if ((sub === "rm" || sub === "remove") && args[2]) await cmdContactsRm(args[2]);
-    else await cmdContactsLs();
-    return true;
-  }
   if (cmd === "workon" || cmd === "work") {
     if (!args[1]) { console.error("usage: maw workon <repo> [task]"); process.exit(1); }
     await cmdWorkon(args[1], args[2]);
@@ -72,10 +62,6 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     await cmdAssign(flags._[0], { oracle: flags["--oracle"] });
     return true;
   }
-  if (cmd === "costs" || cmd === "cost") {
-    await cmdCosts();
-    return true;
-  }
   if (cmd === "pr") {
     await cmdPr(args[1]);
     return true;
@@ -84,28 +70,8 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     await cmdTriggers();
     return true;
   }
-  if (cmd === "health" || cmd === "status") {
-    await cmdHealth();
-    return true;
-  }
   if (cmd === "completions") {
     await cmdCompletions(args[1]);
-    return true;
-  }
-  if (cmd === "ping") {
-    const { cmdPing } = await import("../commands/ping");
-    await cmdPing(args[1]);
-    return true;
-  }
-  if (cmd === "transport" || cmd === "tp") {
-    const sub = args[1]?.toLowerCase();
-    if (!sub || sub === "status") {
-      const { cmdTransportStatus } = await import("../commands/transport");
-      await cmdTransportStatus();
-    } else {
-      console.error("usage: maw transport status");
-      process.exit(1);
-    }
     return true;
   }
   if (cmd === "avengers" || cmd === "avg") {
