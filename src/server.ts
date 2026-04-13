@@ -14,6 +14,7 @@ import { createTransportRouter } from "./transports";
 import { listSessions } from "./ssh";
 import { Tmux } from "./tmux";
 import { handlePtyMessage, handlePtyClose } from "./pty";
+import { setBunServer } from "./lib/elysia-auth";
 
 // --- Version info (computed once at startup) ---
 
@@ -183,6 +184,7 @@ export async function startServer(port = +(process.env.MAW_PORT || loadConfig().
   }
 
   const server = Bun.serve({ port, hostname, fetch: fetchHandler, websocket: wsHandler });
+  setBunServer(server);
   console.log(`maw ${VERSION} serve → ${HTTP_URL} (${WS_URL}) [${hostname}]`);
 
   // HTTPS server (if TLS configured)

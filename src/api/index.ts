@@ -20,11 +20,11 @@ import { workspaceApi } from "./workspace";
 import { peerExecApi } from "./peer-exec";
 import { proxyApi } from "./proxy";
 import { pulseApi } from "./pulse";
-// TODO (#312): migrate federationAuth to Elysia guard()
-// import { federationAuth } from "../lib/federation-auth";
+import { federationAuth } from "../lib/elysia-auth";
 
 export const api = new Elysia({ prefix: "/api" })
   .use(cors())
+  .use(federationAuth)
   .onAfterHandle(({ set }) => {
     set.headers["Access-Control-Allow-Private-Network"] = "true";
   })
