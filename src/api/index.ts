@@ -25,6 +25,9 @@ import { pulseApi } from "./pulse";
 
 export const api = new Elysia({ prefix: "/api" })
   .use(cors())
+  .onAfterHandle(({ set }) => {
+    set.headers["Access-Control-Allow-Private-Network"] = "true";
+  })
   .use(swagger({
     path: "/docs",
     documentation: {
