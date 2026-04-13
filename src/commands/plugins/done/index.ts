@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdDone } from "../../done";
+import { cmdDone } from "./impl";
 
 export const command = {
   name: ["done", "finish"],

@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdInboxLs, cmdInboxRead, cmdInboxWrite } from "../../inbox";
+import { cmdInboxLs, cmdInboxRead, cmdInboxWrite } from "./impl";
 
 export const command = {
   name: "inbox",

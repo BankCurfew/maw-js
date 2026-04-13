@@ -10,7 +10,7 @@ let lastWakeAllCall: { opts: any } | null = null;
 // tests — so the mock key matches what bun uses for the dynamic imports in the handler.
 const src = join(import.meta.dir, "../../..");
 
-mock.module(join(src, "commands/wake"), () => ({
+mock.module(join(src, "commands/shared/wake"), () => ({
   cmdWake: async (oracle: string, opts: any) => {
     lastWakeCall = { oracle, opts };
     console.log(`woke ${oracle}`);
@@ -24,7 +24,7 @@ mock.module(join(src, "commands/wake"), () => ({
   resolveFleetSession: () => null,
 }));
 
-mock.module(join(src, "commands/fleet"), () => ({
+mock.module(join(src, "commands/shared/fleet"), () => ({
   cmdWakeAll: async (opts: any) => {
     lastWakeAllCall = { opts };
     console.log("wake all");
@@ -33,12 +33,12 @@ mock.module(join(src, "commands/fleet"), () => ({
   cmdWakeAll_: null,
 }));
 
-mock.module(join(src, "commands/wake-target"), () => ({
+mock.module(join(src, "commands/shared/wake-target"), () => ({
   parseWakeTarget: () => null,
   ensureCloned: async () => {},
 }));
 
-mock.module(join(src, "commands/wake-resolve"), () => ({
+mock.module(join(src, "commands/shared/wake-resolve"), () => ({
   fetchGitHubPrompt: async (type: string, num: number) => `${type} #${num} prompt`,
 }));
 

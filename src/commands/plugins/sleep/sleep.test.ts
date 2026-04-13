@@ -4,7 +4,7 @@ import type { InvokeContext } from "../../../plugin/types";
 
 const root = join(import.meta.dir, "../../..");
 
-mock.module(join(root, "commands/sleep"), () => ({
+mock.module(join(root, "commands/plugins/sleep/impl"), () => ({
   cmdSleepOne: async (oracle: string, window?: string) => {
     console.log(`sleep ${oracle}${window ? ` window=${window}` : ""}`);
   },

@@ -6,7 +6,7 @@ export const command = {
 };
 
 export default async function handler(ctx: InvokeContext): Promise<InvokeResult> {
-  const { cmdAvengers } = await import("../../avengers");
+  const { cmdAvengers } = await import("./impl");
 
   const logs: string[] = [];
   const origLog = console.log;

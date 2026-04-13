@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdRestart } from "../../restart";
+import { cmdRestart } from "./impl";
 
 export const command = {
   name: "restart",

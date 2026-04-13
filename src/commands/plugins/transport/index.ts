@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdTransportStatus } from "../../transport";
+import { cmdTransportStatus } from "../../shared/transport";
 
 export const command = {
   name: ["transport", "tp"],

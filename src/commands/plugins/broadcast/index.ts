@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdBroadcast } from "../../broadcast";
+import { cmdBroadcast } from "./impl";
 
 export const command = { name: "broadcast", description: "Broadcast a message to all agents." };
 

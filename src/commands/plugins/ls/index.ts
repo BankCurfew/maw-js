@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdList } from "../../comm";
+import { cmdList } from "../../shared/comm";
 
 export const command = { name: "ls", description: "List all agents and their status." };
 

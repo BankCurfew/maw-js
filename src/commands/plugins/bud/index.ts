@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdBud } from "../../bud";
+import { cmdBud } from "./impl";
 import { parseFlags } from "../../../cli/parse-args";
 
 export const command = {

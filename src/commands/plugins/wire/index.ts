@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdWire } from "../../comm";
+import { cmdWire } from "../../shared/comm";
 
 export const command = { name: "wire", description: "Send a raw wire message to an agent." };
 

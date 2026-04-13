@@ -18,35 +18,35 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
 
     if (sub === "init") {
       if (args.includes("--agents")) {
-        const { cmdFleetInitAgents } = await import("../../fleet-init");
+        const { cmdFleetInitAgents } = await import("./fleet-init");
         await cmdFleetInitAgents({ dryRun: args.includes("--dry-run") });
       } else {
-        const { cmdFleetInit } = await import("../../fleet-init");
+        const { cmdFleetInit } = await import("./fleet-init");
         await cmdFleetInit();
       }
     } else if (sub === "ls") {
-      const { cmdFleetLs } = await import("../../fleet");
+      const { cmdFleetLs } = await import("../../shared/fleet");
       await cmdFleetLs();
     } else if (sub === "renumber") {
-      const { cmdFleetRenumber } = await import("../../fleet");
+      const { cmdFleetRenumber } = await import("../../shared/fleet");
       await cmdFleetRenumber();
     } else if (sub === "validate") {
-      const { cmdFleetValidate } = await import("../../fleet");
+      const { cmdFleetValidate } = await import("../../shared/fleet");
       await cmdFleetValidate();
     } else if (sub === "health") {
-      const { cmdFleetHealth } = await import("../../fleet-health");
+      const { cmdFleetHealth } = await import("./fleet-health");
       await cmdFleetHealth();
     } else if (sub === "doctor" || sub === "dr") {
-      const { cmdFleetDoctor } = await import("../../fleet-doctor");
+      const { cmdFleetDoctor } = await import("../../shared/fleet-doctor");
       await cmdFleetDoctor({ fix: args.includes("--fix"), json: args.includes("--json") });
     } else if (sub === "consolidate") {
-      const { cmdFleetConsolidate } = await import("../../fleet-consolidate");
+      const { cmdFleetConsolidate } = await import("./fleet-consolidate");
       await cmdFleetConsolidate({ dryRun: args.includes("--dry-run"), remove: args.includes("--remove") });
     } else if (sub === "sync") {
-      const { cmdFleetSyncConfigs } = await import("../../fleet");
+      const { cmdFleetSyncConfigs } = await import("../../shared/fleet");
       await cmdFleetSyncConfigs();
     } else if (sub === "sync-windows" || sub === "syncwin") {
-      const { cmdFleetSync } = await import("../../fleet");
+      const { cmdFleetSync } = await import("../../shared/fleet");
       await cmdFleetSync();
     } else if (sub === "snapshots" || sub === "snapshot-ls") {
       const { listSnapshots } = await import("../../../snapshot");
@@ -81,7 +81,7 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       const path = await takeSnapshot("manual");
       console.log(`\x1b[32m📸\x1b[0m snapshot saved: ${path}`);
     } else if (!sub) {
-      const { cmdFleetLs } = await import("../../fleet");
+      const { cmdFleetLs } = await import("../../shared/fleet");
       await cmdFleetLs();
     } else {
       return {

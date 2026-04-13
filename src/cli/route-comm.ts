@@ -1,4 +1,4 @@
-import { cmdSend } from "../commands/comm";
+import { cmdSend } from "../commands/shared/comm";
 
 export async function routeComm(cmd: string, args: string[]): Promise<boolean> {
   // hey stays core — it's the transport layer

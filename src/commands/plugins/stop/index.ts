@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdSleep } from "../../fleet";
+import { cmdSleep } from "../../shared/fleet";
 
 export const command = {
   name: ["stop", "rest"],

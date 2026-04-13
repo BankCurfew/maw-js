@@ -6,7 +6,7 @@ export const command = {
 };
 
 export default async function handler(ctx: InvokeContext): Promise<InvokeResult> {
-  const { cmdTab } = await import("../../tab");
+  const { cmdTab } = await import("./impl");
 
   const logs: string[] = [];
   const origLog = console.log;

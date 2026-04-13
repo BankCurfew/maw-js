@@ -1,6 +1,6 @@
 export async function routeTools(cmd: string, args: string[]): Promise<boolean> {
   if (cmd === "plugins") {
-    const { cmdPlugins } = await import("../commands/plugins");
+    const { cmdPlugins } = await import("../commands/shared/plugins");
     const { parseFlags } = await import("./parse-args");
     const sub = args[1] ?? "ls";
     const flags = parseFlags(args, { "--json": Boolean, "--force": Boolean }, 2);
@@ -11,14 +11,14 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     const sub = args[1]?.toLowerCase();
     // "maw plugin ls/info/install/remove" → forward to plugins (plural) handler
     if (sub && ["ls", "list", "info", "install", "remove", "uninstall", "rm", "lean", "nuke"].includes(sub)) {
-      const { cmdPlugins } = await import("../commands/plugins");
+      const { cmdPlugins } = await import("../commands/shared/plugins");
       const { parseFlags } = await import("./parse-args");
       const flags = parseFlags(args, { "--json": Boolean, "--force": Boolean }, 2);
       await cmdPlugins(sub, args.slice(2), flags);
       return true;
     }
     if (sub === "create") {
-      const { cmdPluginCreate } = await import("../commands/plugin-create");
+      const { cmdPluginCreate } = await import("../commands/shared/plugin-create");
       const { parseFlags } = await import("./parse-args");
       const flags = parseFlags(args, {
         "--rust": Boolean,
@@ -34,7 +34,7 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     return true;
   }
   if (cmd === "artifacts" || cmd === "artifact") {
-    const { cmdArtifacts } = await import("../commands/artifacts");
+    const { cmdArtifacts } = await import("../commands/shared/artifacts");
     const { parseFlags } = await import("./parse-args");
     const sub = args[1] ?? "ls";
     const flags = parseFlags(args, { "--json": Boolean }, 2);
@@ -42,7 +42,7 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     return true;
   }
   if (cmd === "agents" || cmd === "agent") {
-    const { cmdAgents } = await import("../commands/agents");
+    const { cmdAgents } = await import("../commands/shared/agents");
     const { parseFlags } = await import("./parse-args");
     const flags = parseFlags(args, { "--json": Boolean, "--all": Boolean, "--node": String }, 1);
     await cmdAgents({ json: flags["--json"], all: flags["--all"], node: flags["--node"] });

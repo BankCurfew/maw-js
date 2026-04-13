@@ -31,11 +31,11 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
           error: 'usage: maw pulse add "task title" --oracle <name> [--wt <repo>]',
         };
       }
-      const { cmdPulseAdd } = await import("../../pulse");
+      const { cmdPulseAdd } = await import("../../shared/pulse");
       await cmdPulseAdd(title, pulseOpts);
     } else if (subcmd === "ls" || subcmd === "list") {
       const sync = args.includes("--sync");
-      const { cmdPulseLs } = await import("../../pulse");
+      const { cmdPulseLs } = await import("../../shared/pulse");
       await cmdPulseLs({ sync });
     } else if (subcmd === "cleanup" || subcmd === "clean") {
       const { scanWorktrees, cleanupWorktree } = await import("../../../worktrees");

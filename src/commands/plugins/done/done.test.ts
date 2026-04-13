@@ -4,7 +4,7 @@ import type { InvokeContext } from "../../../plugin/types";
 
 const root = join(import.meta.dir, "../../..");
 
-mock.module(join(root, "commands/done"), () => ({
+mock.module(join(root, "commands/plugins/done/impl"), () => ({
   cmdDone: async (name: string, opts: { force?: boolean; dryRun?: boolean }) => {
     console.log(`done ${name} force=${!!opts.force} dryRun=${!!opts.dryRun}`);
   },

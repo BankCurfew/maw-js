@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdPr } from "../../pr";
+import { cmdPr } from "./impl";
 
 export const command = {
   name: "pr",

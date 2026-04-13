@@ -16,10 +16,10 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
     const args = ctx.source === "cli" ? (ctx.args as string[]) : [];
 
     if (args.includes("--project")) {
-      const { cmdSoulSyncProject } = await import("../../soul-sync");
+      const { cmdSoulSyncProject } = await import("../../shared/soul-sync");
       await cmdSoulSyncProject();
     } else {
-      const { cmdSoulSync } = await import("../../soul-sync");
+      const { cmdSoulSync } = await import("../../shared/soul-sync");
       const fromIdx = args.indexOf("--from");
       if (fromIdx !== -1) {
         await cmdSoulSync(args[fromIdx + 1], { from: true });

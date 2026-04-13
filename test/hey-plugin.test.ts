@@ -54,9 +54,9 @@ mock.module("../src/core/peers", () => ({ findPeerForTarget: async () => undefin
 mock.module("../src/core/worktrees", () => ({ scanWorktrees: async () => [] }));
 mock.module("../src/core/find-window", () => ({ findWindow: () => undefined }));
 mock.module("../src/core/curl-fetch", () => ({ curlFetch: async () => ({ ok: false, data: {} }) }));
-mock.module("../src/commands/wake", () => ({ resolveFleetSession: () => undefined }));
+mock.module("../src/commands/shared/wake", () => ({ resolveFleetSession: () => undefined }));
 
-import { cmdSend } from "../src/commands/comm";
+import { cmdSend } from "../src/commands/shared/comm";
 
 describe("maw hey plugin:<name> routing", () => {
   let exitCode: number | undefined;

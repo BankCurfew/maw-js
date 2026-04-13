@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdCleanupZombies } from "../../team";
+import { cmdCleanupZombies } from "../../shared/team";
 
 export const command = {
   name: "cleanup",

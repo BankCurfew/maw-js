@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdTalkTo } from "../../talk-to";
+import { cmdTalkTo } from "./impl";
 
 export const command = { name: "talk-to", description: "Talk to a remote agent on another node." };
 

@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdOracleAbout } from "../../oracle";
+import { cmdOracleAbout } from "../../shared/oracle";
 
 export const command = {
   name: ["about", "info"],

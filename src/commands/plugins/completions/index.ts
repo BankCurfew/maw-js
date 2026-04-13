@@ -6,7 +6,7 @@ export const command = {
 };
 
 export default async function handler(ctx: InvokeContext): Promise<InvokeResult> {
-  const { cmdCompletions } = await import("../../completions");
+  const { cmdCompletions } = await import("./impl");
 
   const logs: string[] = [];
   const origLog = console.log;

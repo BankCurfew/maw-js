@@ -17,10 +17,10 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
     const sub = args[0]?.toLowerCase();
 
     if (!sub || sub === "status" || sub === "ls") {
-      const { cmdFederationStatus } = await import("../../federation");
+      const { cmdFederationStatus } = await import("../../shared/federation");
       await cmdFederationStatus();
     } else if (sub === "sync") {
-      const { cmdFederationSync } = await import("../../federation-sync");
+      const { cmdFederationSync } = await import("../../shared/federation-sync");
       await cmdFederationSync({
         dryRun: args.includes("--dry-run"),
         check: args.includes("--check"),

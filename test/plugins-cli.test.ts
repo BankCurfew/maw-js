@@ -9,7 +9,7 @@ import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { cmdPlugins } from "../src/commands/plugins";
+import { cmdPlugins } from "../src/commands/shared/plugins";
 import type { LoadedPlugin } from "../src/plugin/types";
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────

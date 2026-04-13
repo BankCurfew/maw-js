@@ -12,7 +12,7 @@
 
 import { findWindow, type Session } from "./find-window";
 import type { MawConfig } from "../config";
-import { resolveFleetSession } from "../commands/wake";
+import { resolveFleetSession } from "../commands/shared/wake";
 
 export type ResolveResult =
   | { type: "local"; target: string }

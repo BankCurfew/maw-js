@@ -6,7 +6,7 @@ export const command = {
 };
 
 export default async function handler(ctx: InvokeContext): Promise<InvokeResult> {
-  const { cmdPark, cmdParkLs } = await import("../../park");
+  const { cmdPark, cmdParkLs } = await import("./impl");
 
   const logs: string[] = [];
   const origLog = console.log;

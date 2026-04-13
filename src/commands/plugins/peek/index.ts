@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdPeek } from "../../comm";
+import { cmdPeek } from "../../shared/comm";
 
 export const command = { name: "peek", description: "Peek at an agent's latest output." };
 

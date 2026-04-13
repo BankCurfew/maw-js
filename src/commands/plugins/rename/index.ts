@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdRename } from "../../rename";
+import { cmdRename } from "./impl";
 
 export const command = {
   name: "rename",

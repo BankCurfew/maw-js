@@ -1,7 +1,7 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { InvokeContext } from "../../../plugin/types";
 
-mock.module("../../bud", () => ({
+mock.module("./impl", () => ({
   cmdBud: async (name: string, _opts: any) => {
     console.log(`budding ${name}`);
   },

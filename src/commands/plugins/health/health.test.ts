@@ -9,7 +9,7 @@ mock.module(join(root, "config"), () => ({
   cfgTimeout: () => 2000,
 }));
 
-mock.module(join(root, "tmux"), () => ({
+mock.module(join(root, "core/tmux"), () => ({
   tmux: {
     listSessions: async () => [{ name: "neo" }, { name: "white" }],
   },

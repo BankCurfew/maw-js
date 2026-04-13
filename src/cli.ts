@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 process.env.MAW_CLI = "1";
 
-import { cmdPeek, cmdSend } from "./commands/comm";
+import { cmdPeek, cmdSend } from "./commands/shared/comm";
 import { logAudit } from "./core/audit";
 import { usage } from "./cli/usage";
 import { routeComm } from "./cli/route-comm";

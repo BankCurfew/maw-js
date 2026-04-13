@@ -8,10 +8,10 @@ export const command = {
 
 export default async function handler(ctx: InvokeContext): Promise<InvokeResult> {
   // Dynamic imports — clean, one await, mockable
-  const { cmdWake } = await import("../../wake");
-  const { cmdWakeAll } = await import("../../fleet");
-  const { parseWakeTarget, ensureCloned } = await import("../../wake-target");
-  const { fetchGitHubPrompt } = await import("../../wake-resolve");
+  const { cmdWake } = await import("../../shared/wake");
+  const { cmdWakeAll } = await import("../../shared/fleet");
+  const { parseWakeTarget, ensureCloned } = await import("../../shared/wake-target");
+  const { fetchGitHubPrompt } = await import("../../shared/wake-resolve");
 
   const logs: string[] = [];
   const origLog = console.log;

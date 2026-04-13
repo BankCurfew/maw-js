@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdMegaStatus, cmdMegaStop } from "../../mega";
+import { cmdMegaStatus, cmdMegaStop } from "./impl";
 
 export const command = {
   name: "mega",

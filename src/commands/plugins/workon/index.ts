@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdWorkon } from "../../workon";
+import { cmdWorkon } from "./impl";
 
 export const command = {
   name: "workon",

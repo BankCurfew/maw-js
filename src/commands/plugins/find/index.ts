@@ -1,5 +1,5 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdFind } from "../../find";
+import { cmdFind } from "./impl";
 
 export const command = {
   name: "find",

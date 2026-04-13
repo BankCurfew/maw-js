@@ -4,7 +4,7 @@ import type { InvokeContext } from "../../../plugin/types";
 
 const root = join(import.meta.dir, "../../..");
 
-mock.module(join(root, "commands/fleet"), () => ({
+mock.module(join(root, "commands/shared/fleet"), () => ({
   cmdSleep: async () => {
     console.log("fleet stopped");
   },

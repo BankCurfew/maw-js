@@ -4,7 +4,7 @@ import type { InvokeContext } from "../../../plugin/types";
 
 const root = join(import.meta.dir, "../../..");
 
-mock.module(join(root, "commands/take"), () => ({
+mock.module(join(root, "commands/plugins/take/impl"), () => ({
   cmdTake: async (source: string, target?: string) => {
     console.log(`take ${source}${target ? ` → ${target}` : " (new session)"}`);
   },
