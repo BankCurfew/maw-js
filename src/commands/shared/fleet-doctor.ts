@@ -30,7 +30,7 @@ import { loadFleetEntries } from "./fleet-load";
  * subset of the config API.
  */
 function defaultSave(update: Partial<MawConfig>): void {
-  const mod = require("../config") as typeof import("../config");
+  const mod = require("../../config") as typeof import("../../config");
   mod.saveConfig(update);
 }
 
