@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { MawEngine } from "./engine";
 import type { WSData } from "./types";
 import { loadConfig } from "./config";
@@ -35,19 +34,12 @@ function getVersionString(): string {
 
 export const VERSION = getVersionString();
 
-// --- Hono app ---
+// --- Views + static (Hono keeps these) ---
 
-const app = new Hono();
-app.use("/api/*", async (c, next) => {
-  await next();
-  c.header("Access-Control-Allow-Private-Network", "true");
-});
-app.use("/api/*", cors());
-
-app.route("/api", api);
+const views = new Hono();
 
 // Fleet topology visualization
-app.get("/topology", async (c) => {
+views.get("/topology", async (c) => {
   const path = require("path").resolve(process.cwd(), "ψ/outbox/fleet-topology.html");
   try {
     const html = require("fs").readFileSync(path, "utf-8");
@@ -55,22 +47,22 @@ app.get("/topology", async (c) => {
   } catch { return c.text("fleet-topology.html not found", 404); }
 });
 
-mountViews(app);
+mountViews(views);
 
 // Serve packed maw-ui dist (Shape A — single port, single process)
 const MAW_UI_DIR = process.env.MAW_UI_DIR || join(homedir(), ".maw", "ui", "dist");
 if (existsSync(MAW_UI_DIR)) {
-  app.use("/*", serveStatic({ root: MAW_UI_DIR }));
+  views.use("/*", serveStatic({ root: MAW_UI_DIR }));
 } else {
   // The Door — minimal landing page when no packed maw-ui is installed.
   // Lets users connect to any federation by pasting an address.
   const doorHtml = readFileSync(join(import.meta.dir, "static", "door.html"), "utf-8");
-  app.get("/", (c) => c.html(doorHtml));
+  views.get("/", (c) => c.html(doorHtml));
 }
 
-app.onError((err, c) => c.json({ error: err.message }, 500));
+views.onError((err, c) => c.json({ error: err.message }, 500));
 
-export { app };
+export { views };
 
 // --- Server ---
 
@@ -133,14 +125,14 @@ export async function startServer(port = +(process.env.MAW_PORT || loadConfig().
     // Single feedListener wires everything through the plugin pipeline
     feedListeners.add((event) => plugins.emit(event));
 
-    // Plugin debug API + page
-    app.get("/api/plugins", (c) => c.json(plugins.stats()));
-    app.post("/api/plugins/reload", async (c) => {
+    // Plugin debug API + page (still on Hono views — will move to Elysia in #312)
+    views.get("/api/plugins", (c) => c.json(plugins.stats()));
+    views.post("/api/plugins/reload", async (c) => {
       await reloadUserPlugins(plugins, userPluginsDir);
       return c.json({ ok: true, ...plugins.stats() });
     });
     const { pluginsView } = require("./views/plugins");
-    app.route("/plugins", pluginsView(plugins));
+    views.route("/plugins", pluginsView(plugins));
   } catch (err) {
     console.error("[plugins] failed to init:", err);
   }
@@ -170,7 +162,12 @@ export async function startServer(port = +(process.env.MAW_PORT || loadConfig().
       if (server.upgrade(req, { data: { target: null, previewTargets: new Set() } as WSData })) return;
       return new Response("WebSocket upgrade failed", { status: 400 });
     }
-    return app.fetch(req, { server });
+    // Elysia handles all /api/* routes
+    if (url.pathname.startsWith("/api")) {
+      return api.handle(req);
+    }
+    // Hono handles views + static
+    return views.fetch(req, { server });
   };
 
   // HTTP server (always)

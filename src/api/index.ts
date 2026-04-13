@@ -1,4 +1,6 @@
-import { Hono } from "hono";
+import { Elysia } from "elysia";
+import { cors } from "@elysiajs/cors";
+import { swagger } from "@elysiajs/swagger";
 import { sessionsApi } from "./sessions";
 import { feedApi } from "./feed";
 import { teamsApi } from "./teams";
@@ -18,33 +20,34 @@ import { workspaceApi } from "./workspace";
 import { peerExecApi } from "./peer-exec";
 import { proxyApi } from "./proxy";
 import { pulseApi } from "./pulse";
-import { federationAuth } from "../lib/federation-auth";
-import { withContext } from "../lib/context";
+// TODO (#312): migrate federationAuth to Elysia guard()
+// import { federationAuth } from "../lib/federation-auth";
 
-export const api = new Hono();
-
-// DI context — inject config (and later engine/transport) into all handlers
-api.use("*", withContext());
-
-// Federation auth — enforces HMAC on protected endpoints from remote peers
-api.use("*", federationAuth());
-
-api.route("/", sessionsApi);
-api.route("/", feedApi);
-api.route("/", teamsApi);
-api.route("/", configApi);
-api.route("/", fleetApi);
-api.route("/", asksApi);
-api.route("/", oracleApi);
-api.route("/", federationApi);
-api.route("/", worktreesApi);
-api.route("/", uiStateApi);
-api.route("/", deprecatedApi);
-api.route("/", costsApi);
-api.route("/", triggersApi);
-api.route("/", avengersApi);
-api.route("/", transportApi);
-api.route("/", workspaceApi);
-api.route("/", peerExecApi);
-api.route("/", proxyApi);
-api.route("/", pulseApi);
+export const api = new Elysia({ prefix: "/api" })
+  .use(cors())
+  .use(swagger({
+    path: "/docs",
+    documentation: {
+      info: { title: "maw-js API", version: "2.0.0-alpha.1" },
+      description: "Multi-Agent Workflow API — federation, sessions, plugins, workspace",
+    },
+  }))
+  .use(sessionsApi)
+  .use(feedApi)
+  .use(teamsApi)
+  .use(configApi)
+  .use(fleetApi)
+  .use(asksApi)
+  .use(oracleApi)
+  .use(federationApi)
+  .use(worktreesApi)
+  .use(uiStateApi)
+  .use(deprecatedApi)
+  .use(costsApi)
+  .use(triggersApi)
+  .use(avengersApi)
+  .use(transportApi)
+  .use(workspaceApi)
+  .use(peerExecApi)
+  .use(proxyApi)
+  .use(pulseApi);
