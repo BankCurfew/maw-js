@@ -75,6 +75,24 @@ export async function invokePlugin(
   plugin: LoadedPlugin,
   ctx: InvokeContext,
 ): Promise<InvokeResult> {
+  // Universal -v / --version flag — shows plugin name, version, source, surfaces
+  if (ctx.source === "cli") {
+    const args = ctx.args as string[];
+    if (args[0] === "-v" || args[0] === "--version") {
+      const m = plugin.manifest;
+      const surfaces = [
+        m.cli ? `cli:${m.cli.command}` : null,
+        m.api ? `api:${m.api.path}` : null,
+        m.hooks ? "hooks" : null,
+        m.transport?.peer ? "peer" : null,
+      ].filter(Boolean).join(", ");
+      return {
+        ok: true,
+        output: `${m.name} v${m.version} (${plugin.kind}, weight:${m.weight ?? 50})\n  ${m.description || ""}\n  surfaces: ${surfaces}\n  dir: ${plugin.dir}`,
+      };
+    }
+  }
+
   // TS plugins — import and call handler directly (full access)
   if (plugin.kind === "ts" && plugin.entryPath) {
     // Guard process.exit — cmd* functions call it on error. Convert to throw

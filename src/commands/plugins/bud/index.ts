@@ -31,7 +31,7 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       if (!name || name === "--help" || name === "-h") {
         return { ok: false, error: "usage: maw bud <name> [--from <oracle>] [--root] [--org <org>] [--repo org/repo] [--issue N] [--note <text>] [--fast] [--dry-run]" };
       }
-      if (name.startsWith("--")) {
+      if (name.startsWith("-")) {
         return { ok: false, error: `"${name}" looks like a flag, not an oracle name.\n  usage: maw bud <name> ${args.join(" ")}` };
       }
 
