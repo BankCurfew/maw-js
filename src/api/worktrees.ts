@@ -1,23 +1,25 @@
-import { Hono } from "hono";
+import { Elysia, t } from "elysia";
 import { scanWorktrees, cleanupWorktree } from "../worktrees";
 
-export const worktreesApi = new Hono();
+export const worktreesApi = new Elysia();
 
-worktreesApi.get("/worktrees", async (c) => {
+worktreesApi.get("/worktrees", async ({ error }) => {
   try {
-    return c.json(await scanWorktrees());
+    return await scanWorktrees();
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return error(500, { error: e.message });
   }
 });
 
-worktreesApi.post("/worktrees/cleanup", async (c) => {
-  const { path } = await c.req.json();
-  if (!path) return c.json({ error: "path required" }, 400);
+worktreesApi.post("/worktrees/cleanup", async ({ body, error }) => {
+  const { path } = body;
+  if (!path) return error(400, { error: "path required" });
   try {
     const log = await cleanupWorktree(path);
-    return c.json({ ok: true, log });
+    return { ok: true, log };
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return error(500, { error: e.message });
   }
+}, {
+  body: t.Object({ path: t.String() }),
 });

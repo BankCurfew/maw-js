@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Elysia, t } from "elysia";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
@@ -17,18 +17,19 @@ export function writeUiState(data: object, filePath = DEFAULT_PATH): void {
   writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
 }
 
-export const uiStateApi = new Hono();
+export const uiStateApi = new Elysia();
 
-uiStateApi.get("/ui-state", (c) => {
-  return c.json(readUiState());
+uiStateApi.get("/ui-state", () => {
+  return readUiState();
 });
 
-uiStateApi.post("/ui-state", async (c) => {
+uiStateApi.post("/ui-state", async ({ body, error }) => {
   try {
-    const body = await c.req.json();
-    writeUiState(body);
-    return c.json({ ok: true });
+    writeUiState(body as object);
+    return { ok: true };
   } catch (e: any) {
-    return c.json({ error: e.message }, 400);
+    return error(400, { error: e.message });
   }
+}, {
+  body: t.Unknown(),
 });

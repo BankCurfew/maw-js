@@ -2,59 +2,59 @@
  * Avengers API proxy — bridges maw-js to ARRA-01/avengers rate limit monitor.
  *
  * Routes:
- *   GET /api/avengers/status    → all accounts with rate limit info
- *   GET /api/avengers/best      → account with most capacity
- *   GET /api/avengers/traffic   → traffic stats across accounts
+ *   GET /api/avengers/status    -> all accounts with rate limit info
+ *   GET /api/avengers/best      -> account with most capacity
+ *   GET /api/avengers/traffic   -> traffic stats across accounts
  */
 
-import { Hono } from "hono";
-import type { MawConfig } from "../config";
+import { Elysia } from "elysia";
+import { loadConfig, type MawConfig } from "../config";
 
-export const avengersApi = new Hono();
+export const avengersApi = new Elysia();
 
-/** Extract avengers base URL from injected config */
-function getAvengersUrl(c: { get: (key: never) => unknown }): string | null {
-  const config = c.get("config" as never) as MawConfig & { avengers?: string };
+/** Extract avengers base URL from config */
+function getAvengersUrl(): string | null {
+  const config = loadConfig() as MawConfig & { avengers?: string };
   return config.avengers || null;
 }
 
-// GET /api/avengers/status — all accounts with rate limit windows
-avengersApi.get("/avengers/status", async (c) => {
-  const base = getAvengersUrl(c);
-  if (!base) return c.json({ error: "avengers not configured" }, 503);
+// GET /api/avengers/status -- all accounts with rate limit windows
+avengersApi.get("/avengers/status", async ({ error }) => {
+  const base = getAvengersUrl();
+  if (!base) return error(503, { error: "avengers not configured" });
 
   try {
     const res = await fetch(`${base}/all`, { signal: AbortSignal.timeout(5000) });
     const accounts = await res.json();
-    return c.json({
+    return {
       accounts,
       total: Array.isArray(accounts) ? accounts.length : 0,
       source: base,
       timestamp: new Date().toISOString(),
-    });
+    };
   } catch (err: any) {
-    return c.json({ error: `avengers unreachable: ${err.message}` }, 502);
+    return error(502, { error: `avengers unreachable: ${err.message}` });
   }
 });
 
-// GET /api/avengers/best — account with most remaining capacity
-avengersApi.get("/avengers/best", async (c) => {
-  const base = getAvengersUrl(c);
-  if (!base) return c.json({ error: "avengers not configured" }, 503);
+// GET /api/avengers/best -- account with most remaining capacity
+avengersApi.get("/avengers/best", async ({ error }) => {
+  const base = getAvengersUrl();
+  if (!base) return error(503, { error: "avengers not configured" });
 
   try {
     const res = await fetch(`${base}/best`, { signal: AbortSignal.timeout(5000) });
     const best = await res.json();
-    return c.json(best);
+    return best;
   } catch (err: any) {
-    return c.json({ error: `avengers unreachable: ${err.message}` }, 502);
+    return error(502, { error: `avengers unreachable: ${err.message}` });
   }
 });
 
-// GET /api/avengers/traffic — traffic stats per account
-avengersApi.get("/avengers/traffic", async (c) => {
-  const base = getAvengersUrl(c);
-  if (!base) return c.json({ error: "avengers not configured" }, 503);
+// GET /api/avengers/traffic -- traffic stats per account
+avengersApi.get("/avengers/traffic", async ({ error }) => {
+  const base = getAvengersUrl();
+  if (!base) return error(503, { error: "avengers not configured" });
 
   try {
     const [trafficRes, speedRes] = await Promise.all([
@@ -65,20 +65,20 @@ avengersApi.get("/avengers/traffic", async (c) => {
     const traffic = await trafficRes.json();
     const speed = speedRes ? await speedRes.json().catch(() => null) : null;
 
-    return c.json({
+    return {
       traffic,
       speed,
       timestamp: new Date().toISOString(),
-    });
+    };
   } catch (err: any) {
-    return c.json({ error: `avengers unreachable: ${err.message}` }, 502);
+    return error(502, { error: `avengers unreachable: ${err.message}` });
   }
 });
 
-// GET /api/avengers/health — quick health check
-avengersApi.get("/avengers/health", async (c) => {
-  const base = getAvengersUrl(c);
-  if (!base) return c.json({ configured: false, reachable: false });
+// GET /api/avengers/health -- quick health check
+avengersApi.get("/avengers/health", async () => {
+  const base = getAvengersUrl();
+  if (!base) return { configured: false, reachable: false };
 
   try {
     const start = Date.now();
@@ -86,14 +86,14 @@ avengersApi.get("/avengers/health", async (c) => {
     const latency = Date.now() - start;
     const accounts = await res.json();
 
-    return c.json({
+    return {
       configured: true,
       reachable: res.ok,
       latency,
       accounts: Array.isArray(accounts) ? accounts.length : 0,
       url: base,
-    });
+    };
   } catch {
-    return c.json({ configured: true, reachable: false, url: base });
+    return { configured: true, reachable: false, url: base };
   }
 });

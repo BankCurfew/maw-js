@@ -10,7 +10,7 @@
  * Storage: JSON files in ~/.config/maw/workspaces/
  */
 
-import { Hono } from "hono";
+import { Elysia, t } from "elysia";
 import { randomBytes, randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
@@ -103,7 +103,7 @@ function generateJoinCode(): string {
 
 // --- HMAC Auth (workspace-scoped) ---
 
-const WINDOW_SEC = 300; // ±5 min
+const WINDOW_SEC = 300; // +/-5 min
 
 function wsSign(token: string, method: string, path: string, timestamp: number): string {
   return createHmac("sha256", token).update(`${method}:${path}:${timestamp}`).digest("hex");
@@ -150,23 +150,18 @@ function pushFeed(ws: Workspace, event: Omit<WorkspaceFeedEvent, "id">) {
 
 // --- Router ---
 
-export const workspaceApi = new Hono();
-
-// Ensure workspaces are loaded on first request
-workspaceApi.use("*", async (_c, next) => {
-  loadAll();
-  return next();
-});
+export const workspaceApi = new Elysia()
+  // Ensure workspaces are loaded on first request
+  .onBeforeHandle(() => { loadAll(); });
 
 /**
  * POST /workspace/create
  * Body: { name, nodeId }
  * Returns: { id, token, joinCode, joinCodeExpiresAt }
  */
-workspaceApi.post("/workspace/create", async (c) => {
-  const body = await c.req.json<{ name?: string; nodeId?: string }>();
+workspaceApi.post("/workspace/create", async ({ body, error }) => {
   if (!body.name || !body.nodeId) {
-    return c.json({ error: "name and nodeId are required" }, 400);
+    return error(400, { error: "name and nodeId are required" });
   }
 
   const id = generateWorkspaceId();
@@ -194,7 +189,9 @@ workspaceApi.post("/workspace/create", async (c) => {
   pushFeed(ws, { nodeId: body.nodeId, type: "workspace.created", message: `Workspace "${body.name}" created`, ts: Date.now() });
   persist(ws);
 
-  return c.json({ id, token, joinCode, joinCodeExpiresAt });
+  return { id, token, joinCode, joinCodeExpiresAt };
+}, {
+  body: t.Object({ name: t.Optional(t.String()), nodeId: t.Optional(t.String()) }),
 });
 
 /**
@@ -202,15 +199,14 @@ workspaceApi.post("/workspace/create", async (c) => {
  * Body: { code, nodeId }
  * Returns: { workspaceId, token, name }
  */
-workspaceApi.post("/workspace/join", async (c) => {
-  const body = await c.req.json<{ code?: string; nodeId?: string }>();
+workspaceApi.post("/workspace/join", async ({ body, error }) => {
   if (!body.code || !body.nodeId) {
-    return c.json({ error: "code and nodeId are required" }, 400);
+    return error(400, { error: "code and nodeId are required" });
   }
 
   const ws = findByJoinCode(body.code.toUpperCase());
   if (!ws) {
-    return c.json({ error: "invalid or expired join code" }, 404);
+    return error(404, { error: "invalid or expired join code" });
   }
 
   // Check if node already joined
@@ -222,41 +218,39 @@ workspaceApi.post("/workspace/join", async (c) => {
 
   persist(ws);
 
-  return c.json({ workspaceId: ws.id, token: ws.token, name: ws.name });
+  return { workspaceId: ws.id, token: ws.token, name: ws.name };
+}, {
+  body: t.Object({ code: t.Optional(t.String()), nodeId: t.Optional(t.String()) }),
 });
 
 // --- Authenticated /:id routes (HMAC required) ---
 
-/** Middleware: verify workspace HMAC for all /:id routes */
-workspaceApi.use("/workspace/:id/*", async (c, next) => {
-  const workspaceId = c.req.param("id");
-  const url = new URL(c.req.url);
+/** Helper: authenticate workspace from request context */
+function authWorkspace(params: { id: string }, request: Request, headers: Record<string, string | undefined>): { ws: Workspace } | { error: string } {
+  const workspaceId = params.id;
+  const url = new URL(request.url);
 
-  const ws = authenticateWorkspace(workspaceId, c.req.method, url.pathname, {
-    sig: c.req.header("x-maw-signature"),
-    ts: c.req.header("x-maw-timestamp"),
+  const ws = authenticateWorkspace(workspaceId, request.method, url.pathname, {
+    sig: headers["x-maw-signature"],
+    ts: headers["x-maw-timestamp"],
   });
 
-  if (!ws) {
-    return c.json({ error: "workspace auth failed" }, 401);
-  }
-
-  // Stash workspace on context for downstream handlers
-  c.set("workspace" as never, ws as never);
-  return next();
-});
+  if (!ws) return { error: "workspace auth failed" };
+  return { ws };
+}
 
 /**
  * POST /workspace/:id/agents
  * Body: { name, nodeId, status?, capabilities? }
  * Registers or updates an agent in the workspace.
  */
-workspaceApi.post("/workspace/:id/agents", async (c) => {
-  const ws = c.get("workspace" as never) as unknown as Workspace;
-  const body = await c.req.json<{ name?: string; nodeId?: string; status?: string; capabilities?: string[] }>();
+workspaceApi.post("/workspace/:id/agents", async ({ params, body, headers, request, error }) => {
+  const auth = authWorkspace(params, request, headers);
+  if ("error" in auth) return error(401, { error: auth.error });
+  const ws = auth.ws;
 
   if (!body.name || !body.nodeId) {
-    return c.json({ error: "name and nodeId are required" }, 400);
+    return error(400, { error: "name and nodeId are required" });
   }
 
   const now = new Date().toISOString();
@@ -280,29 +274,43 @@ workspaceApi.post("/workspace/:id/agents", async (c) => {
   touchNode(ws, body.nodeId);
   persist(ws);
 
-  return c.json({ ok: true, agents: ws.agents.length });
+  return { ok: true, agents: ws.agents.length };
+}, {
+  params: t.Object({ id: t.String() }),
+  body: t.Object({
+    name: t.Optional(t.String()),
+    nodeId: t.Optional(t.String()),
+    status: t.Optional(t.String()),
+    capabilities: t.Optional(t.Array(t.String())),
+  }),
 });
 
 /**
  * GET /workspace/:id/agents
  * Returns all agents in the workspace.
  */
-workspaceApi.get("/workspace/:id/agents", (c) => {
-  const ws = c.get("workspace" as never) as unknown as Workspace;
-  return c.json({ agents: ws.agents, total: ws.agents.length });
+workspaceApi.get("/workspace/:id/agents", ({ params, headers, request, error }) => {
+  const auth = authWorkspace(params, request, headers);
+  if ("error" in auth) return error(401, { error: auth.error });
+  const ws = auth.ws;
+  return { agents: ws.agents, total: ws.agents.length };
+}, {
+  params: t.Object({ id: t.String() }),
 });
 
 /**
  * GET /workspace/:id/status
  * Returns workspace status: nodes, agent count, health.
  */
-workspaceApi.get("/workspace/:id/status", (c) => {
-  const ws = c.get("workspace" as never) as unknown as Workspace;
+workspaceApi.get("/workspace/:id/status", ({ params, headers, request, error }) => {
+  const auth = authWorkspace(params, request, headers);
+  if ("error" in auth) return error(401, { error: auth.error });
+  const ws = auth.ws;
 
   const fiveMinAgo = Date.now() - 5 * 60_000;
   const healthyNodes = ws.nodes.filter(n => new Date(n.lastSeen).getTime() > fiveMinAgo);
 
-  return c.json({
+  return {
     id: ws.id,
     name: ws.name,
     createdAt: ws.createdAt,
@@ -311,18 +319,25 @@ workspaceApi.get("/workspace/:id/status", (c) => {
     healthyNodeCount: healthyNodes.length,
     agentCount: ws.agents.length,
     feedCount: ws.feed.length,
-  });
+  };
+}, {
+  params: t.Object({ id: t.String() }),
 });
 
 /**
  * GET /workspace/:id/feed
  * Returns recent feed events. Query: ?limit=50
  */
-workspaceApi.get("/workspace/:id/feed", (c) => {
-  const ws = c.get("workspace" as never) as unknown as Workspace;
-  const limit = Math.min(200, +(c.req.query("limit") || "50"));
+workspaceApi.get("/workspace/:id/feed", ({ params, query, headers, request, error }) => {
+  const auth = authWorkspace(params, request, headers);
+  if ("error" in auth) return error(401, { error: auth.error });
+  const ws = auth.ws;
+  const limit = Math.min(200, +(query.limit || "50"));
   const events = ws.feed.slice(-limit).reverse();
-  return c.json({ events, total: events.length });
+  return { events, total: events.length };
+}, {
+  params: t.Object({ id: t.String() }),
+  query: t.Object({ limit: t.Optional(t.String()) }),
 });
 
 /**
@@ -330,15 +345,16 @@ workspaceApi.get("/workspace/:id/feed", (c) => {
  * Body: { from, to?, text }
  * REST fallback for messaging. Appended to feed as message event.
  */
-workspaceApi.post("/workspace/:id/message", async (c) => {
-  const ws = c.get("workspace" as never) as unknown as Workspace;
-  const body = await c.req.json<{ from?: string; to?: string; text?: string }>();
+workspaceApi.post("/workspace/:id/message", async ({ params, body, headers, request, error }) => {
+  const auth = authWorkspace(params, request, headers);
+  if ("error" in auth) return error(401, { error: auth.error });
+  const ws = auth.ws;
 
   if (!body.from || !body.text) {
-    return c.json({ error: "from and text are required" }, 400);
+    return error(400, { error: "from and text are required" });
   }
 
-  const target = body.to ? ` → ${body.to}` : "";
+  const target = body.to ? ` -> ${body.to}` : "";
   pushFeed(ws, {
     nodeId: body.from,
     type: "message",
@@ -348,5 +364,12 @@ workspaceApi.post("/workspace/:id/message", async (c) => {
 
   persist(ws);
 
-  return c.json({ ok: true });
+  return { ok: true };
+}, {
+  params: t.Object({ id: t.String() }),
+  body: t.Object({
+    from: t.Optional(t.String()),
+    to: t.Optional(t.String()),
+    text: t.Optional(t.String()),
+  }),
 });
