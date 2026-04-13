@@ -60,6 +60,9 @@ export function discoverPackages(): LoadedPlugin[] {
     }
   }
 
+  // Sort by weight (lower = first, default 50) — like Drupal module weight
+  plugins.sort((a, b) => (a.manifest.weight ?? 50) - (b.manifest.weight ?? 50));
+
   return plugins;
 }
 

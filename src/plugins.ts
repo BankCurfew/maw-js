@@ -392,6 +392,82 @@ export async function loadPlugins(
 }
 
 /**
+ * Auto-register hooks from plugin manifests (plugin.json → PluginSystem).
+ *
+ * Reads `manifest.hooks` and registers each declared event handler via
+ * the TS plugin's exported hook functions. For each phase (gate/filter/on/late),
+ * imports the plugin entry and looks for named exports: onGate, onFilter, onEvent, onLate.
+ *
+ * Weight-sorted: plugins with lower weight fire first (Drupal convention).
+ * Call this after discoverPackages() to wire manifest-declared hooks.
+ */
+export async function registerManifestHooks(system: PluginSystem): Promise<number> {
+  const { discoverPackages } = await import("./plugin/registry");
+  const plugins = discoverPackages(); // already sorted by weight
+
+  let registered = 0;
+  for (const plugin of plugins) {
+    if (!plugin.manifest.hooks || plugin.kind !== "ts" || !plugin.entryPath) continue;
+
+    let mod: any;
+    try { mod = await import(plugin.entryPath); } catch { continue; }
+
+    const hooks = plugin.manifest.hooks;
+    const name = plugin.manifest.name;
+
+    // Register gate hooks
+    if (hooks.gate) {
+      const fn = mod.onGate ?? mod.gate;
+      if (typeof fn === "function") {
+        for (const event of hooks.gate) {
+          system.hooks.gate(event as any, fn);
+          registered++;
+        }
+      }
+    }
+
+    // Register filter hooks
+    if (hooks.filter) {
+      const fn = mod.onFilter ?? mod.filter;
+      if (typeof fn === "function") {
+        for (const event of hooks.filter) {
+          system.hooks.filter(event as any, fn);
+          registered++;
+        }
+      }
+    }
+
+    // Register on/handle hooks
+    if (hooks.on) {
+      const fn = mod.onEvent ?? mod.on ?? mod.handle;
+      if (typeof fn === "function") {
+        for (const event of hooks.on) {
+          system.hooks.on(event as any, fn);
+          registered++;
+        }
+      }
+    }
+
+    // Register late/cleanup hooks
+    if (hooks.late) {
+      const fn = mod.onLate ?? mod.late ?? mod.cleanup;
+      if (typeof fn === "function") {
+        for (const event of hooks.late) {
+          system.hooks.late(event as any, fn);
+          registered++;
+        }
+      }
+    }
+
+    if (registered > 0) {
+      system.register(name, "ts", "user");
+    }
+  }
+
+  return registered;
+}
+
+/**
  * Reload every user plugin in `dir`: run user teardowns, drop user hook
  * registrations, then re-import every file with cache-busting so edits on
  * disk are picked up. Builtin plugins are left untouched.

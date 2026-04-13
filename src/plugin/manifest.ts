@@ -60,6 +60,11 @@ export function parseManifest(jsonText: string, dir: string): PluginManifest {
     throw new Error("plugin.json: must have either 'wasm' (WASM plugin) or 'entry' (TS plugin)");
   }
 
+  // Optional weight (execution order: 0=first, 50=default, 99=last)
+  if (r.weight !== undefined && (typeof r.weight !== "number" || r.weight < 0 || r.weight > 99)) {
+    throw new Error("plugin.json: weight must be a number 0-99 (lower = runs first, default 50)");
+  }
+
   if (typeof r.sdk !== "string" || !SEMVER_RANGE_RE.test(r.sdk)) {
     throw new Error(
       `plugin.json: sdk must be a semver range (got ${JSON.stringify(r.sdk)})`,
@@ -208,6 +213,7 @@ export function parseManifest(jsonText: string, dir: string): PluginManifest {
   return {
     name: r.name,
     version: r.version,
+    ...(typeof r.weight === "number" ? { weight: r.weight } : {}),
     ...(hasWasm ? { wasm: r.wasm as string } : {}),
     ...(hasEntry ? { entry: r.entry as string } : {}),
     sdk: r.sdk,
