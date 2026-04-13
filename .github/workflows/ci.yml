@@ -22,5 +22,32 @@ jobs:
       - name: Run tests
         run: bun test test/ src/commands/plugins/
 
+      - name: Validate plugin manifests
+        run: |
+          echo "Checking all plugin.json files..."
+          fail=0
+          for f in src/commands/plugins/*/plugin.json; do
+            name=$(basename $(dirname "$f"))
+            if ! bun -e "JSON.parse(require('fs').readFileSync('$f','utf-8'))" 2>/dev/null; then
+              echo "  ✗ $name — invalid JSON"
+              fail=1
+            else
+              echo "  ✓ $name"
+            fi
+          done
+          [ $fail -eq 0 ] && echo "All $(ls src/commands/plugins/*/plugin.json | wc -l) manifests valid"
+          exit $fail
+
       - name: Build CLI
         run: bun build --target=bun src/cli.ts
+
+      - name: Verify structure
+        run: |
+          echo "Checking src/ organization..."
+          root_files=$(ls src/*.ts 2>/dev/null | wc -l)
+          cmd_root=$(ls src/commands/*.ts 2>/dev/null | wc -l)
+          plugins=$(ls -d src/commands/plugins/*/ 2>/dev/null | wc -l)
+          echo "  src/ root: $root_files files (expect 2)"
+          echo "  commands/ root: $cmd_root files (expect 0)"
+          echo "  plugins: $plugins bundles"
+          [ "$root_files" -le 2 ] && [ "$cmd_root" -eq 0 ] && echo "✓ structure clean" || { echo "✗ structure drift"; exit 1; }
