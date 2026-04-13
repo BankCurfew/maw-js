@@ -92,13 +92,13 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
       // Fallback: check plugin registry for bundled commands
       const { discoverPackages, invokePlugin } = await import("./plugin/registry");
       const plugins = discoverPackages();
-      const cmdName = args.slice(1).join(" ").toLowerCase();
+      const cmdName = args.join(" ").toLowerCase();
       for (const p of plugins) {
         if (!p.manifest.cli) continue;
         const names = [p.manifest.cli.command, ...(p.manifest.cli.aliases || [])];
         if (names.some(n => cmdName.startsWith(n.toLowerCase()))) {
           const remaining = cmdName.slice(p.manifest.cli.command.length).trim().split(/\s+/).filter(Boolean);
-          const result = await invokePlugin(p, { source: "cli", args: remaining.length ? remaining : args.slice(2) });
+          const result = await invokePlugin(p, { source: "cli", args: remaining.length ? remaining : args.slice(1) });
           if (result.ok && result.output) console.log(result.output);
           else if (!result.ok) { console.error(result.error); process.exit(1); }
           process.exit(0);

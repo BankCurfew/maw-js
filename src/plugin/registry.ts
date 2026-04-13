@@ -82,17 +82,11 @@ export async function invokePlugin(
       const handler = mod.default || mod.handler;
       if (!handler) return { ok: false, error: "TS plugin has no default export or handler" };
 
-      // Capture stdout to return as output
-      const logs: string[] = [];
-      const origLog = console.log;
-      console.log = (...args: any[]) => logs.push(args.map(String).join(" "));
-      try {
-        const args = ctx.source === "cli" ? (ctx.args as string[]) : [JSON.stringify(ctx.args)];
-        await handler(args, {});
-        return { ok: true, output: logs.join("\n") || undefined };
-      } finally {
-        console.log = origLog;
-      }
+      // Call handler with InvokeContext — the unified pattern.
+      // Handler does its own stdout capture internally.
+      const result = await handler(ctx);
+      if (result && typeof result === "object" && "ok" in result) return result;
+      return { ok: true };
     } catch (err: any) {
       return { ok: false, error: `TS plugin error: ${err.message}` };
     }
