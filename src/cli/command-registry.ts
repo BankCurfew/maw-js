@@ -150,8 +150,8 @@ export async function executeCommand(desc: CommandDescriptor, remaining: string[
     const wasm = wasmInstances.get(desc.path!);
     if (!wasm) { console.error(`[commands] WASM instance not found: ${desc.path}`); return; }
 
-    const t0 = performance.now();
-    try {
+    // Wrap WASM execution in a 5-second hard timeout via Promise.race
+    const wasmExec = (async () => {
       // Pre-cache identity + federation so sync host functions return real data
       await preCacheBridge(wasm.bridge);
 
@@ -188,9 +188,23 @@ export async function executeCommand(desc: CommandDescriptor, remaining: string[
           if (result) console.log(result);
         }
       }
+    })();
+
+    // 5-second hard deadline — rejects if preCacheBridge or handle() stalls
+    const timeoutGuard = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`[wasm-safety] timed out after ${WASM_COMMAND_TIMEOUT_MS / 1000}s`)),
+        WASM_COMMAND_TIMEOUT_MS,
+      ),
+    );
+
+    try {
+      await Promise.race([wasmExec, timeoutGuard]);
     } catch (err: any) {
       const msg = err.message || String(err);
-      if (msg.includes("unreachable") || msg.includes("RuntimeError")) {
+      if (msg.includes("wasm-safety") && msg.includes("timed out")) {
+        console.error(`[commands] WASM timeout in "${desc.name}": command exceeded ${WASM_COMMAND_TIMEOUT_MS / 1000}s limit`);
+      } else if (msg.includes("unreachable") || msg.includes("RuntimeError")) {
         console.error(`[commands] WASM trap in "${desc.name}": ${msg}`);
       } else if (msg.includes("out of bounds") || msg.includes("memory")) {
         console.error(`[commands] WASM memory error in "${desc.name}": ${msg}`);
@@ -199,15 +213,8 @@ export async function executeCommand(desc: CommandDescriptor, remaining: string[
       } else {
         console.error(`[commands] WASM error in "${desc.name}": ${msg}`);
       }
-      // Invalidate instance — state may be corrupted after a trap
+      // Invalidate instance — state may be corrupted after a trap or timeout
       wasmInstances.delete(desc.path!);
-    } finally {
-      const elapsed = performance.now() - t0;
-      if (elapsed > WASM_COMMAND_TIMEOUT_MS) {
-        console.warn(
-          `[commands] WASM "${desc.name}" took ${(elapsed / 1000).toFixed(1)}s (limit: ${WASM_COMMAND_TIMEOUT_MS / 1000}s)`,
-        );
-      }
     }
     return;
   }
