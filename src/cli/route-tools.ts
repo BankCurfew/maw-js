@@ -142,6 +142,24 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     console.log(`\x1b[32m✓\x1b[0m trigger added: on ${oracle} ${event}${badge} → ${action}`);
     return true;
   }
+  if (cmd === "plugin") {
+    const sub = args[1]?.toLowerCase();
+    if (sub === "create") {
+      const { cmdPluginCreate } = await import("../commands/plugin-create");
+      const { parseFlags } = await import("./parse-args");
+      const flags = parseFlags(args, {
+        "--rust": Boolean,
+        "--as": Boolean,
+        "--here": Boolean,
+        "--dest": String,
+      }, 2);
+      await cmdPluginCreate(flags._[0], flags);
+    } else {
+      console.error("usage: maw plugin create [--rust | --as] <name> [--here]");
+      process.exit(1);
+    }
+    return true;
+  }
   if (cmd === "serve") {
     const portArg = args.find(a => a !== "serve" && /^\d+$/.test(a));
     const { startServer } = await import("../server");

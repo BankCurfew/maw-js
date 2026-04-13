@@ -1,0 +1,12 @@
+{
+  "name": "maw-plugin-sdk",
+  "version": "0.1.0",
+  "description": "AssemblyScript SDK for maw WASM command plugins",
+  "license": "MIT",
+  "scripts": {
+    "asc": "asc assembly/index.ts --target release --outFile build/release.wasm"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.27"
+  }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "hello-rust-full"
+version = "0.1.0"
+edition = "2021"
+description = "Full Rust WASM reference — TS hello plugin ported to Rust"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+maw-plugin-sdk = { path = "../../maw-plugin-sdk" }
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
