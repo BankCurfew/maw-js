@@ -26,7 +26,7 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       if (!args[0]) {
         return {
           ok: false,
-          error: "usage: maw wake <oracle|org/repo|URL> [task] [--task \"<prompt>\"] [--new <name>] [--fresh] [--no-attach] [--issue N] [--pr N] [--repo org/name] [--list]\n       maw wake all [--kill]",
+          error: "usage: maw wake <oracle|org/repo|URL> [task] [--task \"<prompt>\"] [--new <name>] [--fresh] [--attach] [--issue N] [--pr N] [--repo org/name] [--list]\n       maw wake all [--kill]",
         };
       }
 
@@ -39,12 +39,12 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       const flags = parseFlags(args, {
         "--new": String, "--incubate": String, "--issue": Number,
         "--pr": Number, "--repo": String, "--task": String,
-        "--fresh": Boolean, "--no-attach": Boolean, "--list": Boolean, "--ls": "--list",
+        "--fresh": Boolean, "--attach": Boolean, "-a": "--attach", "--list": Boolean, "--ls": "--list",
       }, 1);
 
       const wakeOpts: {
         task?: string; newWt?: string; prompt?: string;
-        incubate?: string; fresh?: boolean; noAttach?: boolean; listWt?: boolean;
+        incubate?: string; fresh?: boolean; attach?: boolean; listWt?: boolean;
       } = {};
       let issueNum: number | null = flags["--issue"] ?? null;
       let repo: string | undefined = flags["--repo"];
@@ -59,9 +59,8 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       if (flags["--new"]) wakeOpts.newWt = flags["--new"];
       if (flags["--incubate"]) wakeOpts.incubate = flags["--incubate"];
       if (flags["--fresh"]) wakeOpts.fresh = true;
-      if (flags["--no-attach"]) wakeOpts.noAttach = true;
+      if (flags["--attach"]) wakeOpts.attach = true;
       if (flags["--list"]) wakeOpts.listWt = true;
-      if (flags["--task"]) wakeOpts.noAttach = true;
 
       const positionals = flags._;
       if (positionals.length > 0) wakeOpts.task = positionals[0];
@@ -90,7 +89,7 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
     const oracle = body.oracle as string | undefined;
     if (!oracle) return { ok: false, error: "missing oracle name" };
 
-    const wakeOpts: { task?: string; prompt?: string; fresh?: boolean; noAttach?: boolean } = {};
+    const wakeOpts: { task?: string; prompt?: string; fresh?: boolean; attach?: boolean } = {};
     if (body.task) wakeOpts.task = body.task as string;
     if (body.issue) {
       const issueNum = body.issue as number;
@@ -98,7 +97,7 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       if (!wakeOpts.task) wakeOpts.task = `issue-${issueNum}`;
     }
     if (body.fresh) wakeOpts.fresh = true;
-    if (body.noAttach) wakeOpts.noAttach = true;
+    if (body.attach) wakeOpts.attach = true;
 
     await cmdWake(oracle, wakeOpts);
     return { ok: true, output: logs.join("\n") || undefined };

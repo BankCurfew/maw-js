@@ -70,10 +70,10 @@ describe("wake plugin", () => {
     expect(result.output).toContain("woke neo");
   });
 
-  it("CLI with --task: sets noAttach=true and prompt from flag", async () => {
+  it("CLI with --task: does not auto-attach, sets prompt from flag", async () => {
     const result = await handler({ source: "cli", args: ["neo", "--task", "review PR"] });
     expect(result.ok).toBe(true);
-    expect(lastWakeCall?.opts.noAttach).toBe(true);
+    expect(lastWakeCall?.opts.attach).toBeUndefined();
     expect(lastWakeCall?.opts.prompt).toBe("review PR");
   });
 
