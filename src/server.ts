@@ -13,6 +13,8 @@ import type { WSData } from "./types";
 // crypto.randomUUID() used below (global, no import needed)
 import { requireHmac, signHeaders } from "./lib/federation-auth";
 import { checkPeerHealth, aggregateAgents, crossNodeSend, aggregateSessions, getNamedPeers } from "./lib/peers";
+import { Database } from "bun:sqlite";
+import { homedir } from "os";
 
 const app = new Hono();
 
@@ -181,6 +183,16 @@ app.post("/api/send", async (c) => {
   // Cross-node routing: "curfew:01-bob" → forward to peer
   if (target.includes(":")) {
     const result = await crossNodeSend(target, text, senderFrom);
+    if (!result.ok) return c.json({ error: result.error }, 502);
+    return c.json({ ok: true, target, text, forwarded: true });
+  }
+
+  // Agent→node fallback: bare name (e.g. "bob") not local → check agents config
+  const config = loadConfig() as any;
+  const agentNode = config.agents?.[target] || config.agents?.[target.replace(/-oracle$/, "")];
+  const localNode = config.node || "local";
+  if (agentNode && agentNode !== localNode) {
+    const result = await crossNodeSend(`${agentNode}:${target}`, text, senderFrom);
     if (!result.ok) return c.json({ error: result.error }, 502);
     return c.json({ ok: true, target, text, forwarded: true });
   }
@@ -643,6 +655,7 @@ app.get("/api/config", async (c) => {
   return c.json({
     ...display,
     node: config.node || "local",
+    officeTitle: config.officeTitle || undefined,
     agents: localAgents,
     namedPeers,
     rooms: config.rooms || {},
@@ -774,6 +787,113 @@ app.get("/api/feed", (c) => {
 app.get("/api/federation/status", async (c) => {
   const peers = await checkPeerHealth();
   return c.json({ peers });
+});
+
+// --- Federation Thread Endpoints (HMAC-protected) ---
+
+const FED_ORACLE_DIR = process.env.ORACLE_DATA_DIR || join(homedir(), ".oracle");
+const FED_ALLOW_LIST = join(FED_ORACLE_DIR, "federation-threads.json");
+
+function fedLoadAllowed(): number[] {
+  try {
+    const data = JSON.parse(readFileSync(FED_ALLOW_LIST, "utf-8"));
+    return Array.isArray(data.allowed) ? data.allowed : [];
+  } catch { return []; }
+}
+
+function fedGetDb(write = false): Database {
+  const dbPath = join(FED_ORACLE_DIR, "oracle.db");
+  const db = write
+    ? new Database(dbPath)
+    : new Database(dbPath, { readonly: true });
+  if (write) db.exec("PRAGMA busy_timeout = 5000");
+  return db;
+}
+
+/** List federation-visible threads */
+app.get("/api/federation/threads", requireHmac(), (c) => {
+  const allowed = fedLoadAllowed();
+  if (allowed.length === 0) return c.json({ threads: [] });
+
+  const db = fedGetDb();
+  try {
+    const placeholders = allowed.map(() => "?").join(",");
+    const threads = db.query(
+      `SELECT id, title, created_by, status, project, created_at, updated_at
+       FROM forum_threads WHERE id IN (${placeholders})
+       ORDER BY updated_at DESC`
+    ).all(...allowed);
+    return c.json({ threads });
+  } finally {
+    db.close();
+  }
+});
+
+/** Read a single federation thread + messages */
+app.get("/api/federation/thread/:id", requireHmac(), (c) => {
+  const threadId = parseInt(c.req.param("id"), 10);
+  if (isNaN(threadId)) return c.json({ error: "invalid thread id" }, 400);
+  if (!fedLoadAllowed().includes(threadId)) return c.json({ error: "thread not in federation allow-list" }, 403);
+
+  const db = fedGetDb();
+  try {
+    const thread = db.query(
+      `SELECT id, title, created_by, status, project, created_at, updated_at
+       FROM forum_threads WHERE id = ?`
+    ).get(threadId);
+    if (!thread) return c.json({ error: "thread not found" }, 404);
+
+    const messages = db.query(
+      `SELECT id, thread_id, role, content, author, created_at
+       FROM forum_messages WHERE thread_id = ? ORDER BY created_at ASC`
+    ).all(threadId);
+
+    return c.json({ thread, messages });
+  } finally {
+    db.close();
+  }
+});
+
+/** Post a message to a federation thread */
+app.post("/api/federation/thread/:id", requireHmac(), async (c) => {
+  const threadId = parseInt(c.req.param("id"), 10);
+  if (isNaN(threadId)) return c.json({ error: "invalid thread id" }, 400);
+  if (!fedLoadAllowed().includes(threadId)) return c.json({ error: "thread not in federation allow-list" }, 403);
+
+  const body = await c.req.json();
+  const content = body.content;
+  const author = body.author || c.req.header("x-maw-author") || "federation";
+  if (!content || typeof content !== "string") {
+    return c.json({ error: "content is required" }, 400);
+  }
+
+  const db = fedGetDb(true);
+  try {
+    const thread = db.query("SELECT id FROM forum_threads WHERE id = ?").get(threadId);
+    if (!thread) return c.json({ error: "thread not found" }, 404);
+
+    const now = Date.now();
+    const result = db.query(
+      `INSERT INTO forum_messages (thread_id, role, content, author, created_at)
+       VALUES (?, 'claude', ?, ?, ?)`
+    ).run(threadId, content, author, now);
+
+    db.query("UPDATE forum_threads SET updated_at = ? WHERE id = ?").run(now, threadId);
+
+    return c.json({
+      ok: true,
+      message: {
+        id: result.lastInsertRowid,
+        thread_id: threadId,
+        role: "claude",
+        content,
+        author,
+        created_at: now,
+      },
+    }, 201);
+  } finally {
+    db.close();
+  }
 });
 
 // --- Peer Exec (federation read-only relay for Neo/maw-ui) ---

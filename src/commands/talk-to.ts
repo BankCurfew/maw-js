@@ -4,6 +4,7 @@ import { runHook } from "../hooks";
 import { appendFile, mkdir } from "fs/promises";
 import { homedir, hostname } from "os";
 import { join } from "path";
+import { execSync } from "child_process";
 
 const ORACLE_URL = () => process.env.ORACLE_URL || loadConfig().oracleUrl;
 
@@ -113,7 +114,11 @@ export async function cmdTalkTo(target: string, message: string, force = false) 
   }
 
   // Step 2: Build notification with context
-  const from = process.env.CLAUDE_AGENT_NAME || "cli";
+  let from = process.env.CLAUDE_AGENT_NAME || "";
+  if (!from) {
+    try { from = execSync("tmux display-message -p '#W'", { encoding: "utf-8" }).trim().replace(/^\d+-/, ""); } catch {}
+  }
+  if (!from) from = "cli";
   const preview = message.length > 80 ? message.slice(0, 77) + "..." : message;
 
   let notification: string;

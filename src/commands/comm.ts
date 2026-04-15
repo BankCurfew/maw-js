@@ -5,6 +5,17 @@ import { homedir } from "os";
 import { join } from "path";
 import { resolveTarget } from "../routing";
 import { loadConfig } from "../config";
+import { execSync } from "child_process";
+
+/** Infer caller name: env var → tmux window name → "cli" */
+function inferCaller(): string {
+  if (process.env.CLAUDE_AGENT_NAME) return process.env.CLAUDE_AGENT_NAME;
+  try {
+    const win = execSync("tmux display-message -p '#W'", { encoding: "utf-8" }).trim();
+    if (win) return win.replace(/^\\d+-/, "");
+  } catch {}
+  return "cli";
+}
 
 export async function cmdList() {
   const sessions = await listSessions();
@@ -82,7 +93,7 @@ export async function cmdSend(query: string, message: string, force = false) {
       const res = await fetch(`${server}/api/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: crossTarget, text: message, from: process.env.CLAUDE_AGENT_NAME || "cli" }),
+        body: JSON.stringify({ target: crossTarget, text: message, from: inferCaller() }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -126,7 +137,7 @@ export async function cmdSend(query: string, message: string, force = false) {
   const logDir = join(homedir(), ".oracle");
   const logFile = join(logDir, "maw-log.jsonl");
   const host = (await import("os")).hostname();
-  const from = process.env.CLAUDE_AGENT_NAME || "cli";
+  const from = inferCaller();
   const sid = process.env.CLAUDE_SESSION_ID || null;
   const line = JSON.stringify({ ts: new Date().toISOString(), from, to: query, target, msg: message, host, sid }) + "\n";
   try { await mkdir(logDir, { recursive: true }); await appendFile(logFile, line); } catch {}

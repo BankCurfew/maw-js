@@ -45,12 +45,15 @@ const send: Handler = async (ws, data, engine) => {
   // Check for active Claude session before sending (#17)
   if (!data.force) {
     try {
-      const cmd = await getPaneCommand(data.target);
+      const cmd = await Promise.race([
+        getPaneCommand(data.target),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
+      ]);
       if (!/claude|codex|node/i.test(cmd)) {
         ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${data.target} (running: ${cmd})` }));
         return;
       }
-    } catch { /* pane check failed, proceed anyway */ }
+    } catch { /* pane check failed or timed out, proceed anyway */ }
   }
   sendKeys(data.target, data.text)
     .then(() => {
