@@ -12,7 +12,7 @@ export default defineConfig({
     __MAW_BUILD__: JSON.stringify(new Date().toLocaleString("sv-SE", { timeZone: "Asia/Bangkok", dateStyle: "short", timeStyle: "short" })),
   },
   root: ".",
-  base: "/office/",
+  base: "/",
   build: {
     outDir: "../dist-office",
     emptyOutDir: true,
