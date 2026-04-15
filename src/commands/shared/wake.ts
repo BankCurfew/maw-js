@@ -64,7 +64,7 @@ export async function ensureSessionRunning(session: string, excludeNames?: Set<s
   return retried;
 }
 
-export async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; prompt?: string; incubate?: string; fresh?: boolean; attach?: boolean; listWt?: boolean }): Promise<string> {
+export async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; prompt?: string; incubate?: string; fresh?: boolean; attach?: boolean; listWt?: boolean; split?: boolean }): Promise<string> {
   let resolved: { repoPath: string; repoName: string; parentDir: string };
 
   if (opts.incubate) {
@@ -226,6 +226,20 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
 
   console.log(`\x1b[32m✅\x1b[0m woke '${windowName}' in ${session} → ${targetPath}`);
   if (opts.attach) await attachToSession(session);
+
+  // Optional --split: show the new window in a pane beside the caller.
+  // Delegates to cmdSplit — same canonical impl /bud --split uses.
+  if (opts.split && process.env.TMUX) {
+    try {
+      const { cmdSplit } = await import("../plugins/split/impl");
+      await cmdSplit(`${session}:${windowName}`);
+    } catch (e: any) {
+      console.log(`  \x1b[33m⚠\x1b[0m split failed: ${e.message || e}`);
+    }
+  } else if (opts.split && !process.env.TMUX) {
+    console.log(`  \x1b[33m⚠\x1b[0m --split requires tmux session (TMUX env var not set)`);
+  }
+
   takeSnapshot("wake").catch(() => {});
   return `${session}:${windowName}`;
 }

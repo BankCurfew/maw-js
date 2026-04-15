@@ -40,11 +40,13 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
         "--new": String, "--incubate": String, "--issue": Number,
         "--pr": Number, "--repo": String, "--task": String,
         "--fresh": Boolean, "--attach": Boolean, "-a": "--attach", "--list": Boolean, "--ls": "--list",
+        "--split": Boolean,
       }, 1);
 
       const wakeOpts: {
         task?: string; newWt?: string; prompt?: string;
         incubate?: string; fresh?: boolean; attach?: boolean; listWt?: boolean;
+        split?: boolean;
       } = {};
       let issueNum: number | null = flags["--issue"] ?? null;
       let repo: string | undefined = flags["--repo"];
@@ -61,6 +63,7 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       if (flags["--fresh"]) wakeOpts.fresh = true;
       if (flags["--attach"]) wakeOpts.attach = true;
       if (flags["--list"]) wakeOpts.listWt = true;
+      if (flags["--split"]) wakeOpts.split = true;
 
       const positionals = flags._;
       if (positionals.length > 0) wakeOpts.task = positionals[0];
