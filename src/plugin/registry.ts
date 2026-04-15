@@ -257,8 +257,10 @@ export function discoverPackages(): LoadedPlugin[] {
           );
           continue;
         }
-      } else if (!m.artifact) {
+      } else if (!m.artifact && !devMode) {
         // Legacy plugin (no artifact field). Allow — but count for the one-shot warning.
+        // Dev-mode symlinks are reloaded from source each CLI invocation, so hash
+        // verification would be a no-op; excluding them keeps `maw ls` quiet locally.
         legacyCount++;
       }
 
