@@ -1,4 +1,4 @@
-import { listSessions, hostExec } from "../../../sdk";
+import { listSessions, hostExec, withPaneLock } from "../../../sdk";
 import { resolveSessionTarget } from "../../../core/matcher/resolve-target";
 
 export interface SplitOpts {
@@ -8,6 +8,11 @@ export interface SplitOpts {
   vertical?: boolean;
   /** Split without attaching — leaves a plain shell in the new pane. */
   noAttach?: boolean;
+  /** Serialize via the pane-creation lock + settle. Opt-in — only matters
+   *  when another in-process caller may be spawning concurrently. */
+  lock?: boolean;
+  /** Settle delay after split when lock=true. Default: 200ms. */
+  settleMs?: number;
 }
 
 /**
@@ -87,7 +92,17 @@ export async function cmdSplit(target: string, opts: SplitOpts = {}) {
   const cmd = `tmux split-window ${direction} -l ${pct}% "${innerCmd}"`;
 
   try {
-    await hostExec(cmd);
+    if (opts.lock) {
+      // Serialize against other in-process pane spawns; settle before release
+      // so tmux has a tick to register the new pane index.
+      const settleMs = opts.settleMs ?? 200;
+      await withPaneLock(async () => {
+        await hostExec(cmd);
+        if (settleMs > 0) await new Promise((r) => setTimeout(r, settleMs));
+      });
+    } else {
+      await hostExec(cmd);
+    }
     const side = opts.vertical ? "below" : "beside";
     const action = opts.noAttach ? "empty pane" : resolved;
     console.log(`  \x1b[32m✓\x1b[0m split ${side} — ${action} (${pct}%)`);

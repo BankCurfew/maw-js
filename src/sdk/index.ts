@@ -28,8 +28,14 @@ export type { MawConfig } from "../config";
 
 // ─── Transport ───────────────────────────────────────────────────────────────
 
-export { tmux, Tmux, tmuxCmd, resolveSocket } from "../core/transport/tmux";
-export type { TmuxPane, TmuxWindow, TmuxSession } from "../core/transport/tmux";
+export {
+  tmux, Tmux, tmuxCmd, resolveSocket,
+  withPaneLock, splitWindowLocked, tagPane, readPaneTags,
+} from "../core/transport/tmux";
+export type {
+  TmuxPane, TmuxWindow, TmuxSession,
+  SplitWindowLockedOpts, TagPaneOpts, PaneTags,
+} from "../core/transport/tmux";
 export {
   hostExec, listSessions, capture, sendKeys,
   getPaneCommand, getPaneCommands, getPaneInfos,
