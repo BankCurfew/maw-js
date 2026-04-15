@@ -9,12 +9,13 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
   const sessions = await listSessions();
   const allWindows = sessions.flatMap(s => s.windows.map(w => ({ session: s.name, ...w })));
 
-  // #358 — the `-view` suffix is now rejected at creation (see
-  // src/core/fleet/validate.ts), so view-of-view sessions can no longer be
-  // produced by a naming mistake. The former defensive filter
-  // (`sessions.filter(s => !/-view-view$/.test(s.name))`) is unreachable by
-  // contract and has been removed.
-  const candidateSessions = sessions;
+  // Historic cruft filter for *-view-view sessions created pre-#358.
+  // #358 (src/core/fleet/validate.ts) rejects the `-view` suffix at every
+  // user-input creation boundary, so new ones can't be made — but *-view-view
+  // sessions from earlier alphas still exist on some nodes. Dropping this
+  // filter before a fleet-wide sweep re-introduces the alpha.30 ambiguity
+  // (confirmed by team-lead on 2026-04-15). Safe to remove after sweep.
+  const candidateSessions = sessions.filter(s => !/-view-view$/.test(s.name));
 
   // Resolve agent → session via canonical matcher (exact > fuzzy > ambiguous > none).
   // Fallback: if no name match, check whether a window name contains the agent
