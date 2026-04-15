@@ -2,6 +2,7 @@ import { hostExec, tmux, restoreTabOrder, takeSnapshot } from "../../sdk";
 import { buildCommand, buildCommandInDir, cfgTimeout, loadConfig, saveConfig } from "../../config";
 import { resolveWorktreeTarget } from "../../core/matcher/resolve-target";
 import { normalizeTarget } from "../../core/matcher/normalize-target";
+import { assertValidOracleName } from "../../core/fleet/validate";
 import { execSync } from "child_process";
 
 /** Attach to tmux session — switch-client if inside tmux, attach if fresh shell */
@@ -70,6 +71,11 @@ export async function cmdWake(oracle: string, opts: { task?: string; newWt?: str
   // Canonicalize the bare name before any lookup — strips trailing `/`, `/.git`, `/.git/`
   // so `maw wake token-oracle/` (tab-completion artifact) resolves the same as `token-oracle`.
   oracle = normalizeTarget(oracle);
+  // #358 — reject -view suffix at the user-input boundary (before any session work).
+  // cmdWake is the funnel for wake, assign, bud's final step, and the /wake API — one
+  // check here covers every non-bud creation path. The low-level Tmux.newSession() is
+  // intentionally NOT validated: view/impl.ts legitimately creates `*-view` sessions.
+  assertValidOracleName(oracle);
   let resolved: { repoPath: string; repoName: string; parentDir: string };
 
   if (opts.incubate) {

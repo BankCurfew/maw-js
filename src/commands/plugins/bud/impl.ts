@@ -5,6 +5,7 @@ import { cmdSoulSync } from "../soul-sync/impl";
 import { cmdWake } from "../../shared/wake";
 import { parseWakeTarget, ensureCloned } from "../../shared/wake-target";
 import { normalizeTarget } from "../../../core/matcher/normalize-target";
+import { assertValidOracleName } from "../../../core/fleet/validate";
 import { FLEET_DIR } from "../../../sdk";
 import { join } from "path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
@@ -70,6 +71,13 @@ export async function cmdBud(name: string, opts: BudOpts = {}) {
   if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) {
     console.error(`  \x1b[31m✗\x1b[0m invalid oracle name: "${name}"`);
     console.error(`  \x1b[90m  names must start with a letter and contain only letters, numbers, hyphens\x1b[0m`);
+    process.exit(1);
+  }
+  // #358 — reject -view suffix (reserved for ephemeral grouped sessions).
+  try {
+    assertValidOracleName(name);
+  } catch (e: any) {
+    console.error(`  \x1b[31m✗\x1b[0m ${e.message}`);
     process.exit(1);
   }
 
@@ -391,6 +399,13 @@ export async function cmdBudTiny(name: string, opts: TinyBudOpts): Promise<void>
   if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) {
     console.error(`  \x1b[31m✗\x1b[0m invalid oracle name: "${name}"`);
     console.error(`  \x1b[90m  names must start with a letter and contain only letters, numbers, hyphens\x1b[0m`);
+    process.exit(1);
+  }
+  // #358 — reject -view suffix (reserved for ephemeral grouped sessions).
+  try {
+    assertValidOracleName(name);
+  } catch (e: any) {
+    console.error(`  \x1b[31m✗\x1b[0m ${e.message}`);
     process.exit(1);
   }
   if (!opts.parent) {

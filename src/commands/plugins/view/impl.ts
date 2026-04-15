@@ -9,9 +9,12 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
   const sessions = await listSessions();
   const allWindows = sessions.flatMap(s => s.windows.map(w => ({ session: s.name, ...w })));
 
-  // Filter out accidental view-of-view sessions before matching — they are
-  // never legitimate targets (created by prior `maw a X-view` mistakes).
-  const candidateSessions = sessions.filter(s => !/-view-view$/.test(s.name));
+  // #358 — the `-view` suffix is now rejected at creation (see
+  // src/core/fleet/validate.ts), so view-of-view sessions can no longer be
+  // produced by a naming mistake. The former defensive filter
+  // (`sessions.filter(s => !/-view-view$/.test(s.name))`) is unreachable by
+  // contract and has been removed.
+  const candidateSessions = sessions;
 
   // Resolve agent → session via canonical matcher (exact > fuzzy > ambiguous > none).
   // Fallback: if no name match, check whether a window name contains the agent
