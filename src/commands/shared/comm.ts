@@ -67,7 +67,14 @@ export async function cmdList() {
   const infos = await getPaneInfos(targets);
 
   for (const s of sessions) {
-    console.log(`\x1b[36m${s.name}\x1b[0m`);
+    // #359 — visually distinguish view sessions from source sessions.
+    // Match `*-view` suffix or the `maw-view` meta-session (see team/impl.ts:264).
+    const isView = /-view$/.test(s.name) || s.name === "maw-view";
+    if (isView) {
+      console.log(`\x1b[90m${s.name}\x1b[0m \x1b[90m[view]\x1b[0m`);
+    } else {
+      console.log(`\x1b[36m${s.name}\x1b[0m`);
+    }
     for (const w of s.windows) {
       const target = `${s.name}:${w.index}`;
       const info = infos[target] || { command: "", cwd: "" };
