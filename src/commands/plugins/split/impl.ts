@@ -91,9 +91,20 @@ export async function cmdSplit(target: string, opts: SplitOpts = {}) {
   // Critical: unset $TMUX in the spawned shell so the inner attach-session
   // can nest into the target. Without `TMUX=`, tmux refuses nested attach
   // and the new pane dies immediately (this is the #bud --split silent-fail bug).
+  //
+  // Target the caller's pane (#365 cascade fix): without -t, tmux splits
+  // the currently-active pane — which shifts after the first split, causing
+  // the second `maw bud <name> --split` from the same parent to silently
+  // split the wrong pane (or noop visually). Explicit -t $TMUX_PANE anchors
+  // every split to the caller's origin pane, so buds cascade instead of drifting.
+  // Fallback: if TMUX_PANE isn't set (shouldn't happen — we checked $TMUX above,
+  // and any pane inside tmux has TMUX_PANE set — but defend anyway), omit -t
+  // and accept the pre-fix behavior.
   const direction = opts.vertical ? "-v" : "-h";
   const innerCmd = opts.noAttach ? "bash" : `TMUX= tmux attach-session -t ${resolved}`;
-  const cmd = `tmux split-window ${direction} -l ${pct}% "${innerCmd}"`;
+  const callerPane = process.env.TMUX_PANE;
+  const targetFlag = callerPane ? `-t ${callerPane} ` : "";
+  const cmd = `tmux split-window ${targetFlag}${direction} -l ${pct}% "${innerCmd}"`;
 
   try {
     if (opts.lock) {
