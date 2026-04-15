@@ -6,10 +6,12 @@ import type { AgentState } from "../lib/types";
 interface AgentCardProps {
   agent: AgentState;
   accent: string;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
+  onMouseEnter?: (e: React.MouseEvent) => void;
+  onMouseLeave?: (e: React.MouseEvent) => void;
 }
 
-export const AgentCard = memo(function AgentCard({ agent, accent, onClick }: AgentCardProps) {
+export const AgentCard = memo(function AgentCard({ agent, accent, onClick, onMouseEnter: onMouseEnterProp, onMouseLeave: onMouseLeaveProp }: AgentCardProps) {
   const { isNarrow } = useDevice();
   const [hovered, setHovered] = useState(false);
   const displayName = agent.name.replace(/-oracle$/, "").replace(/-/g, " ");
@@ -17,8 +19,8 @@ export const AgentCard = memo(function AgentCard({ agent, accent, onClick }: Age
     <div
       className="relative flex flex-col items-center gap-1 cursor-pointer"
       onClick={onClick}
-      onMouseEnter={() => !isNarrow && setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={(e) => { !isNarrow && setHovered(true); onMouseEnterProp?.(e); }}
+      onMouseLeave={(e) => { setHovered(false); onMouseLeaveProp?.(e); }}
     >
       <svg width={100} height={85} viewBox="-55 -55 110 88" style={{ overflow: "visible" }}>
         <AgentAvatar

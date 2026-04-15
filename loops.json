@@ -247,6 +247,16 @@
       "requireIdle": true,
       "enabled": true,
       "description": "Monitor teaching org Discussions/Issues/PRs and respond to community"
+    },
+    {
+      "id": "creator-github-triage",
+      "oracle": "creator",
+      "tmux": "12-creator:0",
+      "schedule": "0 */4 * * *",
+      "prompt": "GitHub issues triage — check BankCurfew org for new/stale issues. Process 10-15 issues: triage, respond, close stale. NO sensitive data in public comments. cc bob with summary when done.",
+      "requireIdle": true,
+      "enabled": true,
+      "description": "Creator: GitHub issues triage every 4 hours"
     }
   ]
 }

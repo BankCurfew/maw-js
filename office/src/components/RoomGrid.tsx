@@ -1,6 +1,12 @@
-import { memo, useMemo, useEffect, useState } from "react";
+import { memo, useMemo, useEffect, useState, useCallback, useRef } from "react";
 import { AgentCard } from "./AgentCard";
+import { HoverPreviewCard } from "./HoverPreviewCard";
+import { MiniPreview } from "./MiniPreview";
+import { OracleSheet } from "./OracleSheet";
+import { useDevice } from "../hooks/useDevice";
 import type { AgentState, Session } from "../lib/types";
+
+const PREVIEW_CARD = { width: 480, maxHeight: 520 };
 
 interface RoomConfig {
   id: string;
@@ -25,6 +31,7 @@ interface RoomGridProps {
   sessions: Session[];
   agents: AgentState[];
   onSelectAgent: (agent: AgentState) => void;
+  send: (msg: object) => void;
 }
 
 function matchAgent(agent: AgentState, memberName: string): boolean {
@@ -33,8 +40,10 @@ function matchAgent(agent: AgentState, memberName: string): boolean {
   return a === m || a === m.replace(/-oracle$/, "") || `${a}-oracle` === m;
 }
 
-export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent }: RoomGridProps) {
+export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent, send }: RoomGridProps) {
   const [roomsData, setRoomsData] = useState<RoomsData | null>(null);
+  const [configData, setConfigData] = useState<{ node?: string; agents?: Record<string, string>; namedPeers?: Record<string, string> } | null>(null);
+  const { isNarrow } = useDevice();
 
   useEffect(() => {
     fetch("/api/rooms")
@@ -43,16 +52,95 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
         if (data.rooms && data.rooms.length > 0) setRoomsData(data);
       })
       .catch(() => {});
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((data) => setConfigData(data))
+      .catch(() => {});
   }, []);
 
-  const busyCount = agents.filter((a) => a.status === "busy").length;
+  // Merge federated agents (no local tmux session) as synthetic entries
+  const allAgents = useMemo(() => {
+    if (!configData?.agents || !configData?.node) return agents;
+    const localNames = new Set(agents.map((a) => a.name.toLowerCase()));
+    const synthetic: AgentState[] = [];
+    for (const [name, node] of Object.entries(configData.agents)) {
+      if (node !== configData.node && !localNames.has(name.toLowerCase())) {
+        const peerUrl = configData.namedPeers?.[node] || node;
+        synthetic.push({
+          name,
+          target: `${node}:${name}`,
+          session: node,
+          window: name,
+          status: "idle" as const,
+          lastActivity: "",
+          context: "",
+          node,
+          peerUrl,
+        } as AgentState);
+      }
+    }
+    return [...agents, ...synthetic];
+  }, [agents, configData]);
+
+  const busyCount = allAgents.filter((a) => a.status === "busy").length;
+
+  // --- Preview state (same pattern as FleetGrid) ---
+  type PreviewInfo = { agent: AgentState; accent: string; label: string; pos: { x: number; y: number } };
+  const [hoverPreview, setHoverPreview] = useState<PreviewInfo | null>(null);
+  const hoverTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const [pinnedPreview, setPinnedPreview] = useState<PreviewInfo | null>(null);
+  const [pinnedAnimPos, setPinnedAnimPos] = useState<{ left: number; top: number } | null>(null);
+  const pinnedRef = useRef<HTMLDivElement>(null);
+  const [inputBufs, setInputBufs] = useState<Record<string, string>>({});
+  const getInputBuf = useCallback((target: string) => inputBufs[target] || "", [inputBufs]);
+  const setInputBuf = useCallback((target: string, val: string) => {
+    setInputBufs(prev => ({ ...prev, [target]: val }));
+  }, []);
+
+  const showPreview = useCallback((agent: AgentState, accent: string, label: string, e: React.MouseEvent) => {
+    if (pinnedPreview) return;
+    clearTimeout(hoverTimeout.current);
+    const cardW = PREVIEW_CARD.width;
+    let x = e.clientX + 8;
+    if (x + cardW > window.innerWidth - 8) x = e.clientX - cardW - 8;
+    if (x < 8) x = 8;
+    setHoverPreview({ agent, accent, label, pos: { x, y: e.clientY - 120 } });
+  }, [pinnedPreview]);
+
+  const hidePreview = useCallback(() => {
+    hoverTimeout.current = setTimeout(() => setHoverPreview(null), 300);
+  }, []);
+
+  const keepPreview = useCallback(() => { clearTimeout(hoverTimeout.current); }, []);
+
+  const onAgentClick = useCallback((agent: AgentState, accent: string, label: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pinnedPreview && pinnedPreview.agent.target === agent.target) { setPinnedPreview(null); return; }
+    setPinnedPreview({ agent, accent, label, pos: { x: e.clientX, y: e.clientY } });
+    setHoverPreview(null);
+    send({ type: "subscribe", target: agent.target });
+  }, [pinnedPreview, send]);
+
+  useEffect(() => {
+    if (pinnedPreview) {
+      setPinnedAnimPos({
+        left: (window.innerWidth - PREVIEW_CARD.width) / 2,
+        top: Math.max(40, (window.innerHeight - PREVIEW_CARD.maxHeight) / 2),
+      });
+    } else { setPinnedAnimPos(null); }
+  }, [pinnedPreview]);
+
+  const onPinnedFullscreen = useCallback(() => {
+    if (pinnedPreview) { const a = pinnedPreview.agent; setPinnedPreview(null); setTimeout(() => onSelectAgent(a), 150); }
+  }, [pinnedPreview, onSelectAgent]);
+  const onPinnedClose = useCallback(() => setPinnedPreview(null), []);
 
   // Group agents by room config
   const rooms = useMemo(() => {
     if (!roomsData || roomsData.rooms.length === 0) {
       // Fallback: group by tmux session (original behavior)
       const map = new Map<string, AgentState[]>();
-      for (const a of agents) {
+      for (const a of allAgents) {
         const arr = map.get(a.session) || [];
         arr.push(a);
         map.set(a.session, arr);
@@ -74,7 +162,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     const result = roomsData.rooms.map((room) => {
       const roomAgents: AgentState[] = [];
       for (const memberName of room.members) {
-        const agent = agents.find((a) => matchAgent(a, memberName));
+        const agent = allAgents.find((a) => matchAgent(a, memberName));
         if (agent) {
           roomAgents.push(agent);
           assigned.add(agent.target);
@@ -93,7 +181,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     });
 
     // Any unassigned agents go to an "Unassigned" room
-    const unassigned = agents.filter((a) => !assigned.has(a.target));
+    const unassigned = allAgents.filter((a) => !assigned.has(a.target));
     if (unassigned.length > 0) {
       result.push({
         id: "unassigned",
@@ -108,7 +196,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     }
 
     return result;
-  }, [roomsData, sessions, agents]);
+  }, [roomsData, sessions, allAgents]);
 
   return (
     <div className="max-w-[1200px] mx-auto px-3 sm:px-4 md:px-6 pt-4 sm:pt-6 md:pt-8 pb-8 sm:pb-12">
@@ -119,13 +207,13 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{
-              width: `${Math.min(100, (busyCount / Math.max(1, agents.length)) * 100)}%`,
+              width: `${Math.min(100, (busyCount / Math.max(1, allAgents.length)) * 100)}%`,
               background: busyCount > 5 ? "#ef5350" : busyCount > 2 ? "#ffa726" : "#4caf50",
             }}
           />
         </div>
         <span className="text-[10px] text-white/50 tabular-nums">
-          {busyCount}/{agents.length}
+          {busyCount}/{allAgents.length}
         </span>
       </div>
 
@@ -186,7 +274,11 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
               {/* Agent grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 p-3 sm:p-4 md:p-5 min-h-[100px] sm:min-h-[140px]">
                 {room.agents.map((agent) => (
-                  <AgentCard key={agent.target} agent={agent} accent={room.accent} onClick={() => onSelectAgent(agent)} />
+                  <AgentCard key={agent.target} agent={agent} accent={room.accent}
+                    onClick={(e: React.MouseEvent) => onAgentClick(agent, room.accent, room.label, e)}
+                    onMouseEnter={(e: React.MouseEvent) => showPreview(agent, room.accent, room.label, e)}
+                    onMouseLeave={hidePreview}
+                  />
                 ))}
                 {room.agents.length === 0 && (
                   <div className="col-span-full text-center text-[10px] text-white/30 py-4">Empty room</div>
@@ -196,6 +288,43 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
           );
         })}
       </div>
+
+      {/* Hover Preview — compact mini card */}
+      {hoverPreview && !pinnedPreview && (
+        <div className="fixed pointer-events-auto" style={{ zIndex: 30, left: hoverPreview.pos.x, top: hoverPreview.pos.y, animation: "fadeSlideIn 0.15s ease-out" }}
+          onMouseEnter={keepPreview} onMouseLeave={hidePreview}
+          onClick={(e) => onAgentClick(hoverPreview.agent, hoverPreview.accent, hoverPreview.label, e)}>
+          <MiniPreview agent={hoverPreview.agent} accent={hoverPreview.accent} roomLabel={hoverPreview.label} />
+        </div>
+      )}
+
+      {/* Mobile: OracleSheet bottom sheet */}
+      {pinnedPreview && isNarrow && (
+        <OracleSheet
+          agent={pinnedPreview.agent}
+          send={send}
+          onClose={onPinnedClose}
+          onFullscreen={onPinnedFullscreen}
+          siblings={allAgents.filter(a => a.session === pinnedPreview.agent.session)}
+          onSelectSibling={(a) => {
+            const room = rooms.find(r => r.agents.some(ra => ra.target === a.target));
+            setPinnedPreview({ agent: a, accent: room?.accent || "#26c6da", label: room?.label || "", pos: { x: 0, y: 0 } });
+            send({ type: "subscribe", target: a.target });
+          }}
+        />
+      )}
+
+      {/* Desktop: Backdrop + Pinned Preview Card (centered in viewport) */}
+      {pinnedPreview && !isNarrow && (
+        <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 35, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }} onClick={onPinnedClose}>
+          <div ref={pinnedRef} className="pointer-events-auto" style={{ maxWidth: PREVIEW_CARD.width, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+            <HoverPreviewCard key={pinnedPreview.agent.target} agent={pinnedPreview.agent} roomLabel={pinnedPreview.label} accent={pinnedPreview.accent}
+              pinned send={send} onFullscreen={onPinnedFullscreen} onClose={onPinnedClose}
+              externalInputBuf={getInputBuf(pinnedPreview.agent.target)}
+              onInputBufChange={(val) => setInputBuf(pinnedPreview.agent.target, val)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 });

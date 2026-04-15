@@ -1,1388 +1,6 @@
 [
   {
     "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T20:40:13.163Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T20:45:13.210Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T20:50:13.100Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T20:55:13.096Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:00:13.104Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:05:13.248Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-10T21:07:13.194Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:10:13.166Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:15:13.217Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:20:13.285Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:25:13.217Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:30:13.265Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:35:13.305Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:40:13.312Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:45:13.277Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:50:13.318Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T21:55:13.224Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:00:13.384Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:05:13.366Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-10T22:07:13.415Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:10:13.357Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:15:13.398Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:20:13.433Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:25:13.385Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:30:13.425Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:35:13.492Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:40:13.437Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:45:13.458Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:50:13.531Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T22:55:13.499Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:00:13.485Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:05:13.538Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-10T23:07:13.500Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:10:13.569Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:15:13.487Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:20:13.542Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:25:13.610Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:30:13.539Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:35:13.571Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:40:13.650Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:45:13.607Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:50:13.608Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-10T23:55:13.665Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:00:13.669Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "pa-morning-briefing",
-    "ts": "2026-04-11T00:00:13.670Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:05:13.629Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T00:07:13.669Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:10:13.686Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:15:13.759Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:20:13.669Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:25:13.721Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:30:13.793Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:35:13.745Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:40:13.759Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:45:13.831Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:50:13.825Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T00:55:13.796Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:00:13.855Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "pa-calendar-check",
-    "ts": "2026-04-11T01:00:13.856Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "pa-email-check",
-    "ts": "2026-04-11T01:00:13.856Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:05:13.889Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T01:07:13.873Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:10:13.827Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:15:13.854Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:20:13.942Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:25:13.876Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:30:13.894Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:35:13.951Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:40:13.920Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:45:13.913Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:50:13.978Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T01:55:13.996Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:00:13.941Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "think-cycle",
-    "ts": "2026-04-11T02:00:13.942Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:01:58.606Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:02:04.999Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "daily-security-scan",
-    "ts": "2026-04-11T02:00:13.944Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "admin-bot-health",
-    "ts": "2026-04-11T02:00:13.942Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "data-pipeline-status",
-    "ts": "2026-04-11T02:00:13.943Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:01:27.091Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:01:30.397Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:01:46.460Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:01:49.330Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:05:13.982Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T02:07:13.955Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:10:14.045Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:15:13.973Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:20:13.984Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:25:14.065Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:30:14.036Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:35:14.036Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:40:14.108Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:45:14.128Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:50:14.060Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T02:55:14.123Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:00:14.203Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "aia-epos-email",
-    "ts": "2026-04-11T03:00:14.204Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:05:14.105Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T03:07:14.205Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:10:14.134Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:15:14.222Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:20:14.159Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:25:14.153Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:30:14.218Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:35:14.216Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:40:14.184Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:45:14.266Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:50:14.341Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T03:55:14.256Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:00:14.297Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "hr-workload-monitor",
-    "ts": "2026-04-11T04:00:14.297Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:05:14.363Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T04:07:14.307Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:10:14.287Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:15:14.303Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:20:14.354Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:25:14.344Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:30:14.330Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:35:14.396Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:40:14.435Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:45:14.351Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:50:14.394Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T04:55:11.853Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "aia-epos-email",
-    "ts": "2026-04-11T05:00:17.765Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "pa-email-check",
-    "ts": "2026-04-11T05:00:17.765Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:00:17.763Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:05:17.803Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T05:07:17.778Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:09:19.626Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:10:17.883Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:13:09.964Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:15:17.842Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:19:53.177Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:20:17.869Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:25:17.939Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:30:17.917Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:30:23.447Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:30:29.348Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:35:17.919Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:40:17.981Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:45:17.977Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:50:18.027Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T05:55:17.951Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:00:17.973Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "pa-calendar-check",
-    "ts": "2026-04-11T06:00:17.977Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "admin-bot-health",
-    "ts": "2026-04-11T06:00:17.975Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:05:18.040Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T06:07:17.988Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:10:18.028Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:15:17.999Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:20:18.061Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:25:18.109Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:30:18.029Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:35:18.075Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:40:18.153Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:45:18.065Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:50:18.110Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T06:55:18.175Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:00:18.129Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "aia-epos-email",
-    "ts": "2026-04-11T07:00:18.129Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:05:18.122Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T07:07:18.154Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:10:18.202Z",
-    "status": "skipped",
-    "reason": "no active oracles"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:15:18.227Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:20:18.169Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:21:08.409Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:25:18.217Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:27:28.176Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:30:18.297Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:35:18.202Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:40:18.213Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:45:11.294Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:50:06.322Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:55:06.316Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:57:38.261Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:57:42.297Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:57:57.706Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:57:59.003Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:06.279Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:06.607Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:10.718Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:13.256Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:16.712Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:17.854Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:18.450Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:20.405Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:26.093Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:58:37.755Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:59:00.347Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:59:08.211Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:59:21.745Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:57:27.444Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:57:28.250Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:57:34.301Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T07:59:38.840Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "data-pipeline-status",
-    "ts": "2026-04-11T08:00:06.291Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:00:10.480Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:00:10.795Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "data-pipeline-status",
-    "ts": "2026-04-11T08:00:36.296Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:00:36.295Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:02:27.158Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:00:31.415Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:03:52.442Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:06:41.311Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:05:01.457Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:06:09.209Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "discussion-monitor",
-    "ts": "2026-04-11T08:07:01.440Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:09:55.550Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:10:01.514Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:13:17.227Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:13:17.942Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:12:16.018Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:13:55.202Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:16:06.725Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:16:22.088Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:14:38.397Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:14:43.342Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:16:45.739Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:15:01.476Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:20:19.857Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:20:25.974Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:20:38.248Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:19:35.398Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:20:01.519Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:22:03.555Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:22:03.748Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:22:05.923Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:20:06.363Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:22:30.584Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:22:30.918Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:20:42.957Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:22:41.365Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:25:01.590Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:27:38.351Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:27:42.910Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:27:44.346Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:28:25.190Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:28:37.624Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:27:05.201Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:30:01.584Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:35:01.541Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:38:07.813Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:39:35.906Z",
-    "status": "skipped",
-    "reason": "oracle busy after retry"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
-    "ts": "2026-04-11T08:40:01.590Z",
-    "status": "ok"
-  },
-  {
-    "loopId": "bob-oracle-monitor",
     "ts": "2026-04-11T08:42:08.350Z",
     "status": "ok"
   },
@@ -2774,6 +1392,1418 @@
   {
     "loopId": "bob-oracle-monitor",
     "ts": "2026-04-11T18:30:57.872Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:20:22.374Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:25:17.397Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:30:17.749Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:35:17.445Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:40:17.743Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:45:17.452Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:50:17.779Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:50:35.975Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T04:55:01.224Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "aia-epos-email",
+    "ts": "2026-04-13T05:00:00.896Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "pa-email-check",
+    "ts": "2026-04-13T05:00:00.896Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-github-triage",
+    "ts": "2026-04-13T05:00:00.897Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T05:00:00.897Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:00:00.895Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:05:01.225Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T05:07:01.084Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:10:00.851Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:15:01.220Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:20:00.807Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:25:01.213Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:30:00.896Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:35:27.003Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:40:26.689Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:45:20.691Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:50:21.028Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T05:55:20.638Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:05:23.334Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:10:28.369Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:15:23.593Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:20:23.941Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:25:23.587Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:30:23.937Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:35:23.612Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:40:20.793Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:40:55.952Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:45:17.333Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:50:17.651Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T06:55:17.338Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:00:14.700Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "aia-epos-email",
+    "ts": "2026-04-13T07:00:14.701Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T07:00:14.702Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:05:14.376Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T07:07:14.913Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:10:14.724Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:15:21.907Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:20:20.235Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:25:20.226Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:30:19.833Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:35:19.911Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:40:20.205Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:45:19.901Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:50:20.222Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T07:55:19.903Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:00:20.215Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "data-pipeline-status",
+    "ts": "2026-04-13T08:00:20.216Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T08:00:20.216Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:05:19.857Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T08:07:20.394Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:10:20.195Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:15:19.863Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:25:21.945Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:30:22.267Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:35:22.475Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:40:22.193Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:45:22.541Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:50:22.216Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T08:55:22.542Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:00:22.161Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "hr-daily-recognition",
+    "ts": "2026-04-13T09:00:22.163Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "hr-workload-monitor",
+    "ts": "2026-04-13T09:00:22.162Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T09:00:22.164Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-github-triage",
+    "ts": "2026-04-13T09:00:22.164Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:05:22.534Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T09:07:22.431Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:10:22.213Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:15:22.548Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:25:10.477Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:30:10.782Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:32:48.994Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:36:02.189Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:35:10.344Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:40:10.801Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:45:10.470Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:50:10.820Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T09:55:10.486Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:00:10.811Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "admin-bot-health",
+    "ts": "2026-04-13T10:00:10.812Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:01:25.163Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "aia-epos-email",
+    "ts": "2026-04-13T10:00:10.811Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T10:00:10.813Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "pa-email-check",
+    "ts": "2026-04-13T10:00:10.812Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:05:10.493Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T10:07:10.337Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:10:10.838Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:15:10.493Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:20:10.835Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:22:13.472Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:25:10.521Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:28:28.456Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:30:10.873Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:35:10.536Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:40:10.907Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:45:10.545Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:50:10.913Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T10:55:10.581Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:00:10.936Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T11:00:10.937Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:05:10.577Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T11:07:10.465Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:10:10.260Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:15:10.596Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:20:10.985Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:25:10.455Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:30:10.944Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:35:10.624Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:40:10.971Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:45:10.548Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:50:10.278Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T11:55:10.641Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:00:10.318Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T12:00:10.319Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:05:10.692Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T12:07:10.548Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:10:10.354Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:15:10.708Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:20:10.365Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:25:10.714Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:30:10.369Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:35:10.749Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:40:10.406Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:45:10.770Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:50:10.423Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T12:55:10.733Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:00:10.436Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "creator-github-triage",
+    "ts": "2026-04-13T13:00:10.441Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "pa-evening-summary",
+    "ts": "2026-04-13T13:00:10.438Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T13:00:10.440Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:03:07.261Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:05:10.805Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T13:07:10.668Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:10:10.413Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:15:10.837Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:20:10.491Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:25:10.868Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:30:10.499Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:35:10.850Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:40:10.480Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:45:10.871Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:50:10.542Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T13:55:10.872Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:00:10.541Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T14:00:10.543Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:05:10.882Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T14:07:10.448Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:10:10.928Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:15:10.595Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:20:10.927Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:25:10.604Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:30:10.947Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:35:10.581Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:40:10.981Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:45:11.015Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:50:10.576Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T14:55:10.817Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:00:10.500Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T15:00:10.501Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:05:10.768Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T15:07:10.590Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:10:10.441Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:15:10.767Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:20:11.118Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:25:10.824Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:30:11.120Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:35:10.817Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:40:11.167Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:45:10.686Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:50:11.171Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T15:55:10.809Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-13T16:00:11.154Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T16:00:11.153Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T16:05:10.836Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-13T16:07:10.603Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T16:10:11.190Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T16:15:10.800Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T16:20:11.240Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T16:25:10.920Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-13T16:30:10.575Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T14:40:36.236Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T14:45:01.231Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T14:50:01.218Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T14:55:01.236Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:00:01.216Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-15T15:00:01.217Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:05:01.243Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-15T15:07:01.255Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:10:01.262Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:15:01.283Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:20:01.293Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:25:01.261Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:30:01.320Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:35:01.254Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:40:01.320Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:45:01.314Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:50:01.343Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T15:55:01.352Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:00:01.362Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-15T16:00:01.364Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:05:01.386Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-15T16:07:01.371Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:10:01.380Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:15:01.407Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:20:01.377Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:25:01.340Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:30:01.407Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:35:01.443Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:40:01.426Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:45:01.465Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:50:01.472Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T16:55:04.553Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "creator-github-triage",
+    "ts": "2026-04-15T17:00:04.579Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:00:04.576Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-15T17:00:04.578Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:05:04.615Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-15T17:07:04.590Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:10:04.606Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:15:04.597Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:20:04.627Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:25:04.600Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:30:04.838Z",
+    "status": "skipped",
+    "reason": "no active oracles"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:35:04.826Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:40:04.858Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:45:04.879Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:50:04.854Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T17:55:04.907Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T18:00:04.888Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "creator-community-monitor",
+    "ts": "2026-04-15T18:00:04.888Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T18:05:04.921Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "discussion-monitor",
+    "ts": "2026-04-15T18:07:04.894Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T18:10:04.967Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T18:15:04.889Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T18:20:25.013Z",
+    "status": "skipped",
+    "reason": "oracle busy after retry"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T18:25:25.030Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T18:35:21.851Z",
+    "status": "ok"
+  },
+  {
+    "loopId": "bob-oracle-monitor",
+    "ts": "2026-04-15T18:40:21.824Z",
     "status": "ok"
   }
 ]

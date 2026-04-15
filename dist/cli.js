@@ -1,7 +1,29 @@
 #!/usr/bin/env bun
 // @bun
-import { createRequire } from "node:module";
 var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+function __accessProp(key) {
+  return this[key];
+}
+var __toCommonJS = (from) => {
+  var entry = (__moduleCache ??= new WeakMap).get(from), desc;
+  if (entry)
+    return entry;
+  entry = __defProp({}, "__esModule", { value: true });
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (var key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(entry, key))
+        __defProp(entry, key, {
+          get: __accessProp.bind(from, key),
+          enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+        });
+  }
+  __moduleCache.set(from, entry);
+  return entry;
+};
+var __moduleCache;
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 var __returnValue = (v) => v;
 function __exportSetter(name, newValue) {
@@ -17,11 +39,12 @@ var __export = (target, all) => {
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
-var __require = /* @__PURE__ */ createRequire(import.meta.url);
+var __require = import.meta.require;
 
 // src/config.ts
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 function loadConfig() {
   if (cached)
     return cached;
@@ -51,9 +74,9 @@ function configForDisplay() {
   const envMasked = {};
   for (const [k, v] of Object.entries(config.env)) {
     if (v.length <= 4) {
-      envMasked[k] = "•".repeat(v.length);
+      envMasked[k] = "\u2022".repeat(v.length);
     } else {
-      envMasked[k] = v.slice(0, 3) + "•".repeat(Math.min(v.length - 3, 20));
+      envMasked[k] = v.slice(0, 3) + "\u2022".repeat(Math.min(v.length - 3, 20));
     }
   }
   return { ...config, env: {}, envMasked };
@@ -93,7 +116,7 @@ var init_config = __esm(() => {
   DEFAULTS = {
     host: "local",
     port: 3456,
-    ghqRoot: "/home/nat/Code/github.com",
+    ghqRoot: join(homedir(), "repos/github.com"),
     oracleUrl: "http://localhost:47779",
     env: {},
     commands: { default: "claude" },
@@ -387,7 +410,6 @@ async function sendKeys(target, text, host) {
     "\x1B[B": "Down",
     "\x1B[C": "Right",
     "\x1B[D": "Left",
-    "\x1B[Z": "BTab",
     "\r": "Enter",
     "\n": "Enter",
     "\b": "BSpace",
@@ -421,10 +443,212 @@ var init_ssh = __esm(() => {
   IS_WINDOWS_BUN = process.platform === "win32";
 });
 
+// src/find-window.ts
+function matchSession(sessions, part, strict = false) {
+  const p = part.toLowerCase();
+  if (!p)
+    return null;
+  for (const s of sessions)
+    if (s.name.toLowerCase() === p)
+      return s;
+  for (const s of sessions)
+    if (s.name.toLowerCase().replace(/^\d+-/, "") === p)
+      return s;
+  if (!strict) {
+    for (const s of sessions)
+      if (s.name.toLowerCase().includes(p))
+        return s;
+  }
+  return null;
+}
+function findWindow2(sessions, query) {
+  const q2 = query.toLowerCase();
+  if (query.includes(":")) {
+    const [sessPart, winPart] = q2.split(":", 2);
+    const sess = matchSession(sessions, sessPart, true);
+    if (sess) {
+      if (!winPart) {
+        if (sess.windows.length > 0)
+          return `${sess.name}:${sess.windows[0].index}`;
+      } else {
+        for (const w of sess.windows) {
+          if (w.name.toLowerCase().includes(winPart))
+            return `${sess.name}:${w.index}`;
+        }
+      }
+    }
+  }
+  for (const s of sessions) {
+    for (const w of s.windows) {
+      if (w.name.toLowerCase().includes(q2))
+        return `${s.name}:${w.index}`;
+    }
+  }
+  for (const s of sessions) {
+    if (s.name.toLowerCase().includes(q2) && s.windows.length > 0) {
+      return `${s.name}:${s.windows[0].index}`;
+    }
+  }
+  if (query.includes(":")) {
+    const [sessPart] = query.toLowerCase().split(":", 2);
+    const sessExists = matchSession(sessions, sessPart, true);
+    return sessExists ? query : null;
+  }
+  return null;
+}
+
+// src/commands/overview.ts
+function buildTargets(sessions, filters) {
+  let targets = sessions.filter((s) => /^\d+-/.test(s.name) && s.name !== "0-overview").map((s) => {
+    const active = s.windows.find((w) => w.active) || s.windows[0];
+    const oracleName = s.name.replace(/^\d+-/, "");
+    return { session: s.name, window: active?.index ?? 1, windowName: active?.name ?? oracleName, oracle: oracleName };
+  });
+  if (filters.length) {
+    targets = targets.filter((t) => filters.some((f) => t.oracle.includes(f) || t.session.includes(f)));
+  }
+  return targets;
+}
+function paneColor(index) {
+  return PANE_COLORS[index % PANE_COLORS.length];
+}
+function paneTitle(t) {
+  return `${t.oracle} (${t.session}:${t.window})`;
+}
+function processMirror(raw, lines) {
+  const sep = "\u2500".repeat(60);
+  const filtered = raw.replace(/[\u2500\u2501]{6,}/g, sep).split(`
+`).filter((l) => l.trim() !== "");
+  const visible = filtered.slice(-lines);
+  const pad = Math.max(0, lines - visible.length);
+  return `
+`.repeat(pad) + visible.join(`
+`);
+}
+function mirrorCmd(t) {
+  const target = encodeURIComponent(`${t.session}:${t.window}`);
+  const port = process.env.MAW_PORT || "3456";
+  return `watch --color -t -n0.5 'curl -s "http://localhost:${port}/api/mirror?target=${target}&lines=\\$(tput lines)"'`;
+}
+function pickLayout(count) {
+  if (count <= 2)
+    return "even-horizontal";
+  return "tiled";
+}
+function chunkTargets(targets) {
+  const pages = [];
+  for (let i = 0;i < targets.length; i += PANES_PER_PAGE) {
+    pages.push(targets.slice(i, i + PANES_PER_PAGE));
+  }
+  return pages;
+}
+async function cmdOverview(filterArgs) {
+  const kill = filterArgs.includes("--kill") || filterArgs.includes("-k");
+  const filters = filterArgs.filter((a) => !a.startsWith("-"));
+  try {
+    await ssh("tmux kill-session -t 0-overview 2>/dev/null");
+  } catch {}
+  if (kill) {
+    console.log("overview killed");
+    return;
+  }
+  const sessions = await listSessions();
+  const targets = buildTargets(sessions, filters);
+  if (!targets.length) {
+    console.error("no oracle sessions found");
+    return;
+  }
+  const pages = chunkTargets(targets);
+  await ssh("tmux new-session -d -s 0-overview -n page-1");
+  await ssh("tmux set -t 0-overview pane-border-status top");
+  await ssh('tmux set -t 0-overview pane-border-format " #{pane_title} "');
+  await ssh("tmux set -t 0-overview pane-border-style fg=colour238");
+  await ssh("tmux set -t 0-overview pane-active-border-style fg=colour45");
+  await ssh("tmux set -t 0-overview status-style bg=colour235,fg=colour248");
+  await ssh("tmux set -t 0-overview status-left-length 40");
+  await ssh("tmux set -t 0-overview status-right-length 60");
+  await ssh(`tmux set -t 0-overview status-left '#[fg=colour16,bg=colour204,bold] \u2588 MAW #[fg=colour204,bg=colour238] #[fg=colour255,bg=colour238] ${targets.length} oracles #[fg=colour238,bg=colour235] '`);
+  await ssh(`tmux set -t 0-overview status-right '#[fg=colour238,bg=colour235]#[fg=colour114,bg=colour238] \u25CF live #[fg=colour81,bg=colour238] %H:%M #[fg=colour16,bg=colour81,bold] %d-%b '`);
+  await ssh("tmux set -t 0-overview status-justify centre");
+  await ssh("tmux set -t 0-overview window-status-format '#[fg=colour248,bg=colour235] #I:#W '");
+  await ssh("tmux set -t 0-overview window-status-current-format '#[fg=colour16,bg=colour45,bold] #I:#W '");
+  for (let p = 0;p < pages.length; p++) {
+    const page = pages[p];
+    const winName = `page-${p + 1}`;
+    if (p > 0) {
+      await ssh(`tmux new-window -t 0-overview -n ${winName}`);
+    }
+    const baseIdx = p * PANES_PER_PAGE;
+    const pane0 = `0-overview:${winName}.0`;
+    const color0 = paneColor(baseIdx);
+    await ssh(`tmux select-pane -t ${pane0} -T '#[fg=${color0},bold]${paneTitle(page[0])}#[default]'`);
+    await ssh(`tmux send-keys -t ${pane0} "${mirrorCmd(page[0]).replace(/"/g, "\\\"")}" Enter`);
+    for (let i = 1;i < page.length; i++) {
+      await ssh(`tmux split-window -t 0-overview:${winName}`);
+      const paneId = `0-overview:${winName}.${i}`;
+      const color = paneColor(baseIdx + i);
+      await ssh(`tmux select-pane -t ${paneId} -T '#[fg=${color},bold]${paneTitle(page[i])}#[default]'`);
+      await ssh(`tmux send-keys -t ${paneId} "${mirrorCmd(page[i]).replace(/"/g, "\\\"")}" Enter`);
+      await ssh(`tmux select-layout -t 0-overview:${winName} tiled`);
+    }
+    const layout = pickLayout(page.length);
+    await ssh(`tmux select-layout -t 0-overview:${winName} ${layout}`);
+  }
+  await ssh("tmux select-window -t 0-overview:page-1");
+  console.log(`\x1B[32m\u2705\x1B[0m overview: ${targets.length} oracles across ${pages.length} page${pages.length > 1 ? "s" : ""}`);
+  for (let p = 0;p < pages.length; p++) {
+    console.log(`  page-${p + 1}: ${pages[p].map((t) => t.oracle).join(", ")}`);
+  }
+  console.log(`
+  attach: tmux attach -t 0-overview`);
+  if (pages.length > 1)
+    console.log(`  navigate: Ctrl-b n/p (next/prev page)`);
+}
+var PANES_PER_PAGE = 9, PANE_COLORS;
+var init_overview = __esm(() => {
+  init_ssh();
+  PANE_COLORS = [
+    "colour204",
+    "colour114",
+    "colour81",
+    "colour220",
+    "colour177",
+    "colour208",
+    "colour44",
+    "colour196",
+    "colour83",
+    "colour141"
+  ];
+});
+
 // src/commands/wake.ts
-import { readdirSync as readdirSync3, readFileSync as readFileSync4 } from "fs";
-import { join as join6 } from "path";
-async function resolveOracle2(oracle) {
+import { readdirSync as readdirSync2, readFileSync as readFileSync3 } from "fs";
+import { join as join5 } from "path";
+async function fetchIssuePrompt(issueNum, repo) {
+  let repoSlug = repo;
+  if (!repoSlug) {
+    try {
+      const remote = await ssh("git remote get-url origin 2>/dev/null");
+      const m = remote.match(/github\.com[:/](.+?)(?:\.git)?$/);
+      if (m)
+        repoSlug = m[1];
+    } catch {}
+  }
+  if (!repoSlug)
+    throw new Error("Could not detect repo \u2014 pass --repo org/name");
+  const json = await ssh(`gh issue view ${issueNum} --repo '${repoSlug}' --json title,body,labels`);
+  const issue = JSON.parse(json);
+  const labels = (issue.labels || []).map((l) => l.name).join(", ");
+  const parts = [
+    `Work on issue #${issueNum}: ${issue.title}`,
+    labels ? `Labels: ${labels}` : "",
+    "",
+    issue.body || "(no description)"
+  ];
+  return parts.filter(Boolean).join(`
+`);
+}
+async function resolveOracle(oracle) {
   let ghqOut = "";
   try {
     ghqOut = await ssh(`ghq list --full-path 2>/dev/null | grep -i '/${oracle}[^/]*-oracle$' | head -1`);
@@ -440,10 +664,10 @@ async function resolveOracle2(oracle) {
     const parentDir = repoPath.replace(/\/[^/]+$/, "");
     return { repoPath, repoName, parentDir };
   }
-  const fleetDir = join6(import.meta.dir, "../../fleet");
+  const fleetDir = join5(import.meta.dir, "../../fleet");
   try {
-    for (const file of readdirSync3(fleetDir).filter((f) => f.endsWith(".json"))) {
-      const config = JSON.parse(readFileSync4(join6(fleetDir, file), "utf-8"));
+    for (const file of readdirSync2(fleetDir).filter((f) => f.endsWith(".json"))) {
+      const config = JSON.parse(readFileSync3(join5(fleetDir, file), "utf-8"));
       const oracleLower = oracle.toLowerCase();
       const win = (config.windows || []).find((w) => {
         const wl = w.name.toLowerCase();
@@ -484,7 +708,7 @@ async function resolveOracle2(oracle) {
   console.error(`oracle repo not found: ${oracle} (tried ${oracle}-oracle pattern and fleet configs)`);
   process.exit(1);
 }
-async function findWorktrees2(parentDir, repoName) {
+async function findWorktrees(parentDir, repoName) {
   const lsOut = await ssh(`ls -d ${parentDir}/${repoName}.wt-* 2>/dev/null || true`);
   return lsOut.split(`
 `).filter(Boolean).map((p) => {
@@ -493,14 +717,14 @@ async function findWorktrees2(parentDir, repoName) {
     return { path: p, name: suffix };
   });
 }
-function getSessionMap2() {
+function getSessionMap() {
   return loadConfig().sessions;
 }
-function resolveFleetSession2(oracle) {
-  const fleetDir = join6(import.meta.dir, "../../fleet");
+function resolveFleetSession(oracle) {
+  const fleetDir = join5(import.meta.dir, "../../fleet");
   try {
-    for (const file of readdirSync3(fleetDir).filter((f) => f.endsWith(".json") && !f.endsWith(".disabled"))) {
-      const config = JSON.parse(readFileSync4(join6(fleetDir, file), "utf-8"));
+    for (const file of readdirSync2(fleetDir).filter((f) => f.endsWith(".json") && !f.endsWith(".disabled"))) {
+      const config = JSON.parse(readFileSync3(join5(fleetDir, file), "utf-8"));
       const hasOracleWindow = (config.windows || []).some((w) => w.name === `${oracle}-oracle` || w.name === oracle);
       if (hasOracleWindow)
         return config.name;
@@ -508,9 +732,9 @@ function resolveFleetSession2(oracle) {
   } catch {}
   return null;
 }
-async function detectSession2(oracle) {
+async function detectSession(oracle) {
   const sessions = await tmux.listSessions();
-  const mapped = getSessionMap2()[oracle];
+  const mapped = getSessionMap()[oracle];
   if (mapped) {
     const exists = sessions.find((s) => s.name === mapped);
     if (exists)
@@ -519,7 +743,7 @@ async function detectSession2(oracle) {
   const patternMatch = sessions.find((s) => /^\d+-/.test(s.name) && s.name.endsWith(`-${oracle}`))?.name || sessions.find((s) => s.name === oracle)?.name;
   if (patternMatch)
     return patternMatch;
-  const fleetSession = resolveFleetSession2(oracle);
+  const fleetSession = resolveFleetSession(oracle);
   if (fleetSession) {
     const exists = sessions.find((s) => s.name === fleetSession);
     if (exists)
@@ -527,23 +751,23 @@ async function detectSession2(oracle) {
   }
   return null;
 }
-async function setSessionEnv2(session) {
+async function setSessionEnv(session) {
   for (const [key, val] of Object.entries(getEnvVars())) {
     await tmux.setEnvironment(session, key, val);
   }
 }
-async function cmdWake2(oracle, opts) {
-  const { repoPath, repoName, parentDir } = await resolveOracle2(oracle);
-  let session = await detectSession2(oracle);
+async function cmdWake(oracle, opts) {
+  const { repoPath, repoName, parentDir } = await resolveOracle(oracle);
+  let session = await detectSession(oracle);
   if (!session) {
-    session = getSessionMap2()[oracle] || resolveFleetSession2(oracle) || oracle;
+    session = getSessionMap()[oracle] || resolveFleetSession(oracle) || oracle;
     const mainWindowName = `${oracle}-oracle`;
     await tmux.newSession(session, { window: mainWindowName, cwd: repoPath });
-    await setSessionEnv2(session);
+    await setSessionEnv(session);
     await new Promise((r) => setTimeout(r, 300));
     await tmux.sendText(`${session}:${mainWindowName}`, buildCommand(mainWindowName));
     console.log(`\x1B[32m+\x1B[0m created session '${session}' (main: ${mainWindowName})`);
-    const allWt = await findWorktrees2(parentDir, repoName);
+    const allWt = await findWorktrees(parentDir, repoName);
     for (const wt of allWt) {
       const wtWindowName = `${oracle}-${wt.name}`;
       await tmux.newWindow(session, wtWindowName, { cwd: wt.path });
@@ -552,16 +776,16 @@ async function cmdWake2(oracle, opts) {
       console.log(`\x1B[32m+\x1B[0m window: ${wtWindowName}`);
     }
   } else {
-    await setSessionEnv2(session);
+    await setSessionEnv(session);
   }
   let targetPath = repoPath;
   let windowName = `${oracle}-oracle`;
   if (opts.newWt || opts.task) {
     const name = opts.newWt || opts.task;
-    const worktrees = await findWorktrees2(parentDir, repoName);
+    const worktrees = await findWorktrees(parentDir, repoName);
     const match = worktrees.find((w) => w.name.endsWith(`-${name}`) || w.name === name);
     if (match) {
-      console.log(`\x1B[33m⚡\x1B[0m reusing worktree: ${match.path}`);
+      console.log(`\x1B[33m\u26A1\x1B[0m reusing worktree: ${match.path}`);
       targetPath = match.path;
       windowName = `${oracle}-${name}`;
     } else {
@@ -595,13 +819,13 @@ async function cmdWake2(oracle, opts) {
           isClaudeRunning = /claude|node/i.test(paneCmd);
         } catch {}
         if (isClaudeRunning) {
-          console.log(`\x1B[33m⚡\x1B[0m '${existingWindow}' has active Claude — sending message`);
+          console.log(`\x1B[33m\u26A1\x1B[0m '${existingWindow}' has active Claude \u2014 sending message`);
           await tmux.selectWindow(target);
           const { sendKeys: sk } = await Promise.resolve().then(() => (init_ssh(), exports_ssh));
           await sk(target, opts.prompt);
           return target;
         } else {
-          console.log(`\x1B[33m⚡\x1B[0m '${existingWindow}' exists, starting claude with prompt`);
+          console.log(`\x1B[33m\u26A1\x1B[0m '${existingWindow}' exists, starting claude with prompt`);
           await tmux.selectWindow(target);
           const cmd2 = buildCommand(existingWindow);
           const escaped = opts.prompt.replace(/'/g, "'\\''");
@@ -609,7 +833,7 @@ async function cmdWake2(oracle, opts) {
           return target;
         }
       }
-      console.log(`\x1B[33m⚡\x1B[0m '${existingWindow}' already running in ${session}`);
+      console.log(`\x1B[33m\u26A1\x1B[0m '${existingWindow}' already running in ${session}`);
       await tmux.selectWindow(target);
       return target;
     }
@@ -623,7 +847,7 @@ async function cmdWake2(oracle, opts) {
   } else {
     await tmux.sendText(`${session}:${windowName}`, cmd);
   }
-  console.log(`\x1B[32m✅\x1B[0m woke '${windowName}' in ${session} → ${targetPath}`);
+  console.log(`\x1B[32m\u2705\x1B[0m woke '${windowName}' in ${session} \u2192 ${targetPath}`);
   return `${session}:${windowName}`;
 }
 var init_wake = __esm(() => {
@@ -632,14 +856,61 @@ var init_wake = __esm(() => {
   init_config();
 });
 
+// src/oracle-health.ts
+function oracleToSession(oracle) {
+  return ORACLE_SESSIONS[oracle] || oracle;
+}
+function alertId(type, oracle, from) {
+  return `${type}:${oracle}:${from || ""}`;
+}
+function getTier(waitingMin) {
+  if (waitingMin >= TIER_THRESHOLDS[3])
+    return 3;
+  if (waitingMin >= TIER_THRESHOLDS[2])
+    return 2;
+  if (waitingMin >= TIER_THRESHOLDS[1])
+    return 1;
+  return 0;
+}
+function isTrackableSender(from) {
+  if (IGNORE_SENDERS.has(from))
+    return false;
+  return EXPECTED_ORACLES.has(from) || from.endsWith("-oracle") || from === "nat";
+}
+var ORACLE_SESSIONS, EXPECTED_ORACLES, IGNORE_SENDERS, TIER_THRESHOLDS, RESTART_COOLDOWN_MS = 300000;
+var init_oracle_health = __esm(() => {
+  ORACLE_SESSIONS = {
+    bob: "01-bob",
+    dev: "02-dev",
+    qa: "03-qa",
+    researcher: "04-researcher",
+    writer: "05-writer",
+    designer: "06-designer",
+    hr: "07-hr",
+    aia: "08-aia",
+    data: "09-data",
+    admin: "10-admin",
+    botdev: "11-botdev",
+    creator: "12-creator",
+    doc: "13-doc",
+    editor: "14-editor",
+    security: "15-security",
+    fe: "16-fe",
+    pa: "17-pa"
+  };
+  EXPECTED_ORACLES = new Set(Object.keys(ORACLE_SESSIONS));
+  IGNORE_SENDERS = new Set(["cli", "nat", "human", ""]);
+  TIER_THRESHOLDS = { 1: 15, 2: 30, 3: 120 };
+});
+
 // src/maw-log.ts
-import { readFileSync as readFileSync7, existsSync as existsSync3 } from "fs";
-import { join as join12 } from "path";
-import { homedir as homedir5 } from "os";
+import { readFileSync as readFileSync4, existsSync } from "fs";
+import { join as join6 } from "path";
+import { homedir as homedir4 } from "os";
 function parseLog() {
-  if (!existsSync3(MAW_LOG_PATH))
+  if (!existsSync(MAW_LOG_PATH))
     return [];
-  const raw = readFileSync7(MAW_LOG_PATH, "utf-8");
+  const raw = readFileSync4(MAW_LOG_PATH, "utf-8");
   const entries = [];
   const chunks = [];
   for (const line of raw.split(`
@@ -688,7 +959,7 @@ function resolveUnknown(entries) {
   return entries.map((e) => {
     if (e.from !== "unknown" || !e.msg)
       return e;
-    const m = e.msg.match(/—\s+(\w+)\s*(?:\(Oracle|🖋)/) || e.msg.match(/—\s+(\w+)\s*$/);
+    const m = e.msg.match(/\u2014\s+(\w+)\s*(?:\(Oracle|\uD83D\uDD8B)/) || e.msg.match(/\u2014\s+(\w+)\s*$/);
     if (m) {
       const name = m[1].toLowerCase();
       if (KNOWN_NAMES[name])
@@ -700,7 +971,7 @@ function resolveUnknown(entries) {
 function resolveCliSender(msg) {
   if (!msg)
     return "nat";
-  const sigMatch = msg.match(/—\s+(\w+)\s*(?:\(Oracle|🖋)/);
+  const sigMatch = msg.match(/\u2014\s+(\w+)\s*(?:\(Oracle|\uD83D\uDD8B)/);
   if (sigMatch) {
     const name = sigMatch[1].toLowerCase();
     if (KNOWN_NAMES[name])
@@ -721,7 +992,7 @@ function readLog() {
 }
 var MAW_LOG_PATH, KNOWN_NAMES;
 var init_maw_log = __esm(() => {
-  MAW_LOG_PATH = join12(homedir5(), ".oracle", "maw-log.jsonl");
+  MAW_LOG_PATH = join6(homedir4(), ".oracle", "maw-log.jsonl");
   KNOWN_NAMES = {
     neo: "neo-oracle",
     pulse: "pulse-oracle",
@@ -732,11 +1003,438 @@ var init_maw_log = __esm(() => {
   };
 });
 
-// src/token-index.ts
-import { readdirSync as readdirSync7, readFileSync as readFileSync8, writeFileSync as writeFileSync3, existsSync as existsSync4, statSync } from "fs";
-import { join as join13, basename } from "path";
-import { homedir as homedir6 } from "os";
+// src/lib/feed.ts
+function parseLine(line) {
+  if (!line || !line.includes(" | "))
+    return null;
+  const parts = line.split(" | ").map((s) => s.trim());
+  if (parts.length < 5)
+    return null;
+  const timestamp = parts[0];
+  const oracle = parts[1];
+  const host = parts[2];
+  const event = parts[3];
+  const project = parts[4];
+  const rest = parts.slice(5).join(" | ");
+  let sessionId = "";
+  let message = "";
+  const guiIdx = rest.indexOf(" \xBB ");
+  if (guiIdx !== -1) {
+    sessionId = rest.slice(0, guiIdx).trim();
+    message = rest.slice(guiIdx + 3).trim();
+  } else {
+    sessionId = rest.trim();
+  }
+  const ts = new Date(timestamp.replace(" ", "T") + "+07:00").getTime();
+  if (isNaN(ts))
+    return null;
+  return { timestamp, oracle, host, event, project, sessionId, message, ts };
+}
+function activeOracles(events, windowMs = 5 * 60000) {
+  const cutoff = Date.now() - windowMs;
+  const map = new Map;
+  for (const e of events) {
+    if (e.ts < cutoff)
+      continue;
+    const prev = map.get(e.oracle);
+    if (!prev || e.ts > prev.ts)
+      map.set(e.oracle, e);
+  }
+  return map;
+}
+function describeActivity(event) {
+  switch (event.event) {
+    case "PreToolUse": {
+      const colonIdx = event.message.indexOf(":");
+      const tool = colonIdx > 0 ? event.message.slice(0, colonIdx).trim() : event.message.split(" ")[0];
+      const icon = TOOL_ICONS[tool] || "\uD83D\uDD27";
+      const detail = colonIdx > 0 ? event.message.slice(colonIdx + 1).trim() : "";
+      const short = detail.length > 60 ? detail.slice(0, 57) + "..." : detail;
+      return short ? `${icon} ${tool}: ${short}` : `${icon} ${tool}`;
+    }
+    case "PostToolUse":
+    case "PostToolUseFailure": {
+      const ok = event.event === "PostToolUse";
+      const tool = event.message.replace(/ [\u2713\u2717].*$/, "").trim() || "Tool";
+      return ok ? `\u2713 ${tool} done` : `\u2717 ${tool} failed`;
+    }
+    case "UserPromptSubmit": {
+      const short = event.message.length > 60 ? event.message.slice(0, 57) + "..." : event.message;
+      return `\uD83D\uDCAC ${short || "New prompt"}`;
+    }
+    case "SubagentStart":
+      return `\uD83E\uDD16 Subagent started`;
+    case "SubagentStop":
+      return `\uD83E\uDD16 Subagent done`;
+    case "SessionStart":
+      return `\uD83D\uDFE2 Session started`;
+    case "SessionEnd":
+      return `\u23F9 Session ended`;
+    case "Stop": {
+      const short = event.message.length > 60 ? event.message.slice(0, 57) + "..." : event.message;
+      return `\u23F9 ${short || "Stopped"}`;
+    }
+    case "Notification":
+      return `\uD83D\uDD14 ${event.message || "Notification"}`;
+    default:
+      return event.message || event.event;
+  }
+}
+var TOOL_ICONS;
+var init_feed = __esm(() => {
+  TOOL_ICONS = {
+    Bash: "\u26A1",
+    Read: "\uD83D\uDCD6",
+    Edit: "\u270F\uFE0F",
+    Write: "\uD83D\uDCDD",
+    Grep: "\uD83D\uDD0D",
+    Glob: "\uD83D\uDCC2",
+    Agent: "\uD83E\uDD16",
+    WebFetch: "\uD83C\uDF10",
+    WebSearch: "\uD83D\uDD0E"
+  };
+});
+
+// src/anti-patterns.ts
+var exports_anti_patterns = {};
+__export(exports_anti_patterns, {
+  runAntiPatternScan: () => runAntiPatternScan,
+  formatScanResult: () => formatScanResult,
+  detectZombies: () => detectZombies,
+  detectIslands: () => detectIslands,
+  cmdPulseScan: () => cmdPulseScan
+});
+import { readFileSync as readFileSync5, existsSync as existsSync2 } from "fs";
+import { join as join7 } from "path";
+import { homedir as homedir5 } from "os";
 import { execSync } from "child_process";
+function hoursAgo(ms) {
+  return (Date.now() - ms) / (1000 * 60 * 60);
+}
+function daysAgo(ms) {
+  return hoursAgo(ms) / 24;
+}
+function getLiveSessions() {
+  try {
+    const out = execSync("tmux list-sessions -F '#{session_name}'", { encoding: "utf-8", timeout: 5000 });
+    return new Set(out.trim().split(`
+`).filter(Boolean));
+  } catch {
+    return new Set;
+  }
+}
+function getEnabledLoops() {
+  const map = new Map;
+  try {
+    if (!existsSync2(LOOPS_PATH))
+      return map;
+    const data = JSON.parse(readFileSync5(LOOPS_PATH, "utf-8"));
+    const loops = Array.isArray(data) ? data : data.loops || [];
+    for (const loop of loops) {
+      if (loop.enabled) {
+        map.set(loop.oracle, (map.get(loop.oracle) || 0) + 1);
+      }
+    }
+  } catch {}
+  return map;
+}
+function getLastFeedEvents() {
+  const map = new Map;
+  try {
+    if (!existsSync2(FEED_PATH))
+      return map;
+    const stat = __require("fs").statSync(FEED_PATH);
+    const size = stat.size;
+    const chunkSize = Math.min(size, 500000);
+    const fd = __require("fs").openSync(FEED_PATH, "r");
+    const buf = Buffer.alloc(chunkSize);
+    __require("fs").readSync(fd, buf, 0, chunkSize, size - chunkSize);
+    __require("fs").closeSync(fd);
+    const lines = buf.toString("utf-8").split(`
+`).filter(Boolean);
+    for (const line of lines) {
+      const event = parseLine(line);
+      if (event) {
+        map.set(event.oracle, event.ts);
+      }
+    }
+  } catch {}
+  return map;
+}
+function getRecentLogEntries(days) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const entries = parseLog();
+  return entries.filter((e) => {
+    const ts = new Date(e.ts).getTime();
+    return ts > cutoff;
+  });
+}
+function getRecentCommits(oracle, days) {
+  try {
+    const sessionName = ORACLE_SESSIONS[oracle];
+    if (!sessionName)
+      return 0;
+    const ghqRoot = join7(homedir5(), "repos/github.com/BankCurfew");
+    const oracleName = oracle.charAt(0).toUpperCase() + oracle.slice(1);
+    const repoPaths = [
+      join7(ghqRoot, `${oracleName}-Oracle`),
+      join7(ghqRoot, `${oracle}-oracle`)
+    ];
+    let total = 0;
+    for (const repoPath of repoPaths) {
+      try {
+        if (!existsSync2(repoPath))
+          continue;
+        const out = execSync(`git -C "${repoPath}" log --since="${days} days ago" --oneline 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 5000 });
+        total += parseInt(out.trim()) || 0;
+      } catch {}
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+function detectZombies() {
+  const flags = [];
+  const liveSessions = getLiveSessions();
+  const enabledLoops = getEnabledLoops();
+  const lastFeedEvents = getLastFeedEvents();
+  const feedByKey = new Map;
+  for (const [name, ts] of lastFeedEvents) {
+    let key = name.replace("-Oracle", "").toLowerCase();
+    key = FEED_NAME_ALIASES[key] || key;
+    const existing = feedByKey.get(key) || 0;
+    if (ts > existing)
+      feedByKey.set(key, ts);
+  }
+  for (const oracle of EXPECTED_ORACLES) {
+    const sessionName = ORACLE_SESSIONS[oracle];
+    const hasSession = liveSessions.has(sessionName);
+    const hasLoops = (enabledLoops.get(oracle) || 0) > 0;
+    const lastActivity = feedByKey.get(oracle);
+    if (!hasSession && !hasLoops)
+      continue;
+    if (!lastActivity) {
+      if (hasLoops) {
+        flags.push({
+          type: "zombie",
+          oracle,
+          severity: "critical",
+          reasons: [`No feed activity recorded`, `${enabledLoops.get(oracle)} loops still enabled`],
+          action: "Review and disable loops if oracle is not operational"
+        });
+      }
+      continue;
+    }
+    const hours = hoursAgo(lastActivity);
+    if (hours >= ZOMBIE_SEVERE_H && (hasSession || hasLoops)) {
+      flags.push({
+        type: "zombie",
+        oracle,
+        severity: "critical",
+        reasons: [
+          `No activity for ${Math.round(hours / 24)}d`,
+          hasSession ? "tmux session alive" : "",
+          hasLoops ? `${enabledLoops.get(oracle)} loops active` : ""
+        ].filter(Boolean),
+        action: "Auto-disable loops, flag for manual review"
+      });
+    } else if (hours >= ZOMBIE_CRITICAL_H && (hasSession || hasLoops)) {
+      flags.push({
+        type: "zombie",
+        oracle,
+        severity: "warning",
+        reasons: [
+          `No activity for ${Math.round(hours)}h`,
+          hasLoops ? `${enabledLoops.get(oracle)} loops still running` : ""
+        ].filter(Boolean),
+        action: "Notify Bob to check oracle status"
+      });
+    } else if (hours >= ZOMBIE_WARNING_H && hasLoops) {
+      flags.push({
+        type: "zombie",
+        oracle,
+        severity: "notice",
+        reasons: [`No activity for ${Math.round(hours)}h`, `${enabledLoops.get(oracle)} loops enabled`]
+      });
+    }
+  }
+  return flags;
+}
+function detectIslands() {
+  const flags = [];
+  const logEntries = getRecentLogEntries(ISLAND_COMMS_DAYS);
+  const lastFeedEvents = getLastFeedEvents();
+  const feedByKey = new Map;
+  for (const [name, ts] of lastFeedEvents) {
+    let key = name.replace("-Oracle", "").toLowerCase();
+    key = FEED_NAME_ALIASES[key] || key;
+    const existing = feedByKey.get(key) || 0;
+    if (ts > existing)
+      feedByKey.set(key, ts);
+  }
+  for (const oracle of EXPECTED_ORACLES) {
+    const lastActivity = feedByKey.get(oracle);
+    if (!lastActivity || hoursAgo(lastActivity) > ZOMBIE_CRITICAL_H)
+      continue;
+    const reasons = [];
+    let criteriaCount = 0;
+    const oracleVariants = new Set([oracle, `${oracle}-oracle`]);
+    if (oracle === "doc") {
+      oracleVariants.add("doccon");
+      oracleVariants.add("doccon-oracle");
+    }
+    const sessionPrefix = ORACLE_SESSIONS[oracle];
+    const bobMessages = logEntries.filter((e) => {
+      const to = (e.to || "").toLowerCase();
+      if (to !== "bob" && to !== "bob-oracle")
+        return false;
+      if (sessionPrefix && (e.target || "").startsWith(sessionPrefix))
+        return true;
+      const msg = (e.msg || "").toLowerCase();
+      const oracleTitleCase = oracle.charAt(0).toUpperCase() + oracle.slice(1);
+      return msg.includes(`${oracleTitleCase}-Oracle`) || msg.includes(`from ${oracle}`) || msg.includes(`cc: ${oracle}`);
+    });
+    const tasksDone = logEntries.filter((e) => {
+      const to = (e.to || "").replace("-oracle", "").toLowerCase();
+      if (!oracleVariants.has(to) && !oracleVariants.has((e.to || "").toLowerCase()))
+        return false;
+      const msg = (e.msg || "").toLowerCase();
+      return msg.includes("done") || msg.includes("\u0E40\u0E2A\u0E23\u0E47\u0E08") || msg.includes("complete");
+    });
+    if (tasksDone.length >= ISLAND_TASKS_NO_CC && bobMessages.length === 0) {
+      reasons.push(`${tasksDone.length} task completions but 0 cc bob`);
+      criteriaCount++;
+    }
+    const messagesReceived = logEntries.filter((e) => {
+      const to = (e.to || "").replace("-oracle", "").toLowerCase();
+      return oracleVariants.has(to) || oracleVariants.has((e.to || "").toLowerCase());
+    });
+    const messagesSent = logEntries.filter((e) => {
+      const sessionPrefix2 = ORACLE_SESSIONS[oracle];
+      if (sessionPrefix2 && (e.target || "").startsWith(sessionPrefix2))
+        return true;
+      const msg = (e.msg || "").toLowerCase();
+      const oracleTitleCase = oracle.charAt(0).toUpperCase() + oracle.slice(1);
+      return msg.includes(`${oracleTitleCase}-Oracle`) || msg.includes(`from ${oracle}`) || msg.includes(`\u2014 ${oracle}`);
+    });
+    const recentReceived = messagesReceived.filter((e) => daysAgo(new Date(e.ts).getTime()) <= ISLAND_THREAD_DAYS);
+    const recentSent = messagesSent.filter((e) => daysAgo(new Date(e.ts).getTime()) <= ISLAND_THREAD_DAYS);
+    if (recentReceived.length === 0 && recentSent.length === 0) {
+      reasons.push(`No cross-oracle comms in ${ISLAND_THREAD_DAYS}d`);
+      criteriaCount++;
+    }
+    const recentCommits = getRecentCommits(oracle, ISLAND_COMMS_DAYS);
+    if (recentCommits > ISLAND_COMMITS_NO_LINK) {
+      reasons.push(`${recentCommits} commits in ${ISLAND_COMMS_DAYS}d (verify task links)`);
+    }
+    if (criteriaCount >= 2) {
+      flags.push({ type: "island", oracle, severity: "warning", reasons });
+    } else if (criteriaCount === 1) {
+      flags.push({ type: "island", oracle, severity: "notice", reasons });
+    }
+    if (messagesReceived.length === 0 && messagesSent.length === 0 && lastActivity && daysAgo(lastActivity) <= 2) {
+      flags.push({
+        type: "island",
+        oracle,
+        severity: "critical",
+        reasons: [`Active oracle with ZERO cross-oracle communication in ${ISLAND_COMMS_DAYS}d`],
+        action: "Escalate to Bob \u2014 oracle may be working in isolation"
+      });
+    }
+  }
+  return flags;
+}
+function runAntiPatternScan() {
+  const zombies = detectZombies();
+  const islands = detectIslands();
+  const parasites = [];
+  const clones = [];
+  return {
+    timestamp: new Date().toISOString(),
+    zombies,
+    islands,
+    parasites,
+    clones,
+    total: zombies.length + islands.length + parasites.length + clones.length
+  };
+}
+function formatScanResult(result) {
+  const lines = [];
+  lines.push(`\x1B[36m\uD83C\uDFE5 ANTI-PATTERN SCAN\x1B[0m \u2014 ${result.timestamp.split("T")[0]}`);
+  lines.push("\u2501".repeat(50));
+  const sections = [
+    ["zombie", result.zombies],
+    ["island", result.islands],
+    ["parasite", result.parasites],
+    ["clone", result.clones]
+  ];
+  for (const [type, flags] of sections) {
+    const emoji = EMOJI[type];
+    const label = type.charAt(0).toUpperCase() + type.slice(1) + "s";
+    if (flags.length === 0) {
+      lines.push(`${emoji} ${label} (0): \x1B[32mnone\x1B[0m`);
+    } else {
+      lines.push(`${emoji} ${label} (${flags.length}):`);
+      for (const flag of flags) {
+        const color = SEVERITY_COLOR[flag.severity];
+        const severityTag = `${color}${flag.severity.toUpperCase()}\x1B[0m`;
+        lines.push(`   ${severityTag} ${flag.oracle} \u2014 ${flag.reasons.join(", ")}`);
+        if (flag.action) {
+          lines.push(`     \u2192 ${flag.action}`);
+        }
+      }
+    }
+  }
+  lines.push("\u2501".repeat(50));
+  if (result.total === 0) {
+    lines.push(`\x1B[32m\u2713 All clear \u2014 no anti-patterns detected\x1B[0m`);
+  } else {
+    const critical = [...result.zombies, ...result.islands, ...result.parasites, ...result.clones].filter((f) => f.severity === "critical").length;
+    lines.push(`Total: ${result.total} issue${result.total > 1 ? "s" : ""}${critical > 0 ? ` \u2014 \x1B[31m${critical} critical\x1B[0m` : ""}`);
+  }
+  return lines.join(`
+`);
+}
+function cmdPulseScan(opts) {
+  const result = runAntiPatternScan();
+  if (opts.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(formatScanResult(result));
+  }
+}
+var __dirname = "/home/mbank/maw-js/src", FEED_PATH, LOOPS_PATH, LOW_COMMIT_ROLES, FEED_NAME_ALIASES, ZOMBIE_WARNING_H = 24, ZOMBIE_CRITICAL_H = 48, ZOMBIE_SEVERE_H = 168, ISLAND_THREAD_DAYS = 7, ISLAND_COMMS_DAYS = 14, ISLAND_TASKS_NO_CC = 3, ISLAND_COMMITS_NO_LINK = 5, EMOJI, SEVERITY_COLOR;
+var init_anti_patterns = __esm(() => {
+  init_oracle_health();
+  init_maw_log();
+  init_feed();
+  FEED_PATH = join7(homedir5(), ".oracle", "feed.log");
+  LOOPS_PATH = join7(__dirname, "../loops.json");
+  LOW_COMMIT_ROLES = new Set(["hr", "doc", "researcher", "editor"]);
+  FEED_NAME_ALIASES = {
+    doccon: "doc",
+    "doccon-oracle": "doc",
+    bob: "bob"
+  };
+  EMOJI = {
+    zombie: "\uD83E\uDDDF",
+    island: "\uD83C\uDFDD\uFE0F",
+    parasite: "\uD83E\uDDA0",
+    clone: "\uD83E\uDDEC"
+  };
+  SEVERITY_COLOR = {
+    notice: "\x1B[33m",
+    warning: "\x1B[38;5;208m",
+    critical: "\x1B[31m"
+  };
+});
+
+// src/token-index.ts
+import { readdirSync as readdirSync8, readFileSync as readFileSync10, writeFileSync as writeFileSync5, existsSync as existsSync7, statSync } from "fs";
+import { join as join15, basename as basename2 } from "path";
+import { homedir as homedir10 } from "os";
+import { execSync as execSync2 } from "child_process";
 function projectName(dirName) {
   const parts = dirName.split("-");
   const comIdx = parts.lastIndexOf("com");
@@ -747,7 +1445,7 @@ function projectName(dirName) {
 }
 function scanSession(filePath) {
   try {
-    const raw = readFileSync8(filePath, "utf-8");
+    const raw = readFileSync10(filePath, "utf-8");
     let inputTokens = 0, outputTokens = 0, cacheRead = 0, cacheCreate = 0, turns = 0;
     let firstTs = "", lastTs = "";
     for (const line of raw.split(`
@@ -773,22 +1471,22 @@ function scanSession(filePath) {
     }
     if (turns === 0)
       return null;
-    return { sessionId: basename(filePath, ".jsonl"), inputTokens, outputTokens, cacheRead, cacheCreate, turns, firstTs, lastTs };
+    return { sessionId: basename2(filePath, ".jsonl"), inputTokens, outputTokens, cacheRead, cacheCreate, turns, firstTs, lastTs };
   } catch {
     return null;
   }
 }
 function loadIndex() {
-  if (!existsSync4(INDEX_PATH))
+  if (!existsSync7(INDEX_PATH))
     return { updatedAt: "", sessions: [] };
   try {
-    return JSON.parse(readFileSync8(INDEX_PATH, "utf-8"));
+    return JSON.parse(readFileSync10(INDEX_PATH, "utf-8"));
   } catch {
     return { updatedAt: "", sessions: [] };
   }
 }
 function saveIndex(index) {
-  writeFileSync3(INDEX_PATH, JSON.stringify(index, null, 2), "utf-8");
+  writeFileSync5(INDEX_PATH, JSON.stringify(index, null, 2), "utf-8");
 }
 function buildIndex(verbose = false) {
   const existing = loadIndex();
@@ -797,23 +1495,23 @@ function buildIndex(verbose = false) {
     existingMap.set(s.sessionId, s);
   const sessions = [];
   let scanned = 0, skipped = 0, total = 0;
-  if (!existsSync4(CLAUDE_PROJECTS))
+  if (!existsSync7(CLAUDE_PROJECTS))
     return { updatedAt: new Date().toISOString(), sessions: [] };
-  for (const projDir of readdirSync7(CLAUDE_PROJECTS)) {
-    const projPath = join13(CLAUDE_PROJECTS, projDir);
+  for (const projDir of readdirSync8(CLAUDE_PROJECTS)) {
+    const projPath = join15(CLAUDE_PROJECTS, projDir);
     if (!statSync(projPath).isDirectory())
       continue;
     const project = projectName(projDir);
     let files;
     try {
-      files = readdirSync7(projPath).filter((f) => f.endsWith(".jsonl"));
+      files = readdirSync8(projPath).filter((f) => f.endsWith(".jsonl"));
     } catch {
       continue;
     }
     for (const file of files) {
       total++;
-      const fp = join13(projPath, file);
-      const sid = basename(file, ".jsonl");
+      const fp = join15(projPath, file);
+      const sid = basename2(file, ".jsonl");
       const mtime = statSync(fp).mtimeMs;
       const prev = existingMap.get(sid);
       if (prev && prev.mtimeMs === mtime) {
@@ -878,11 +1576,11 @@ function realtimeRate(windowSeconds = 300) {
   const mmin = Math.ceil(windowSeconds / 60) + 1;
   let inputTokens = 0, outputTokens = 0, turns = 0;
   const byProject = new Map;
-  if (!existsSync4(CLAUDE_PROJECTS))
+  if (!existsSync7(CLAUDE_PROJECTS))
     return emptyRate(windowSeconds);
   let recentFiles;
   try {
-    const out = execSync(`find ${CLAUDE_PROJECTS} -name "*.jsonl" -not -path "*/subagent*" -mmin -${mmin} 2>/dev/null`, { encoding: "utf-8", timeout: 3000 });
+    const out = execSync2(`find ${CLAUDE_PROJECTS} -name "*.jsonl" -not -path "*/subagent*" -mmin -${mmin} 2>/dev/null`, { encoding: "utf-8", timeout: 3000 });
     recentFiles = out.trim().split(`
 `).filter(Boolean);
   } catch {
@@ -892,7 +1590,7 @@ function realtimeRate(windowSeconds = 300) {
     const parts = fp.replace(CLAUDE_PROJECTS + "/", "").split("/");
     const project = projectName(parts[0] || "unknown");
     try {
-      const raw = readFileSync8(fp, "utf-8").slice(-200000);
+      const raw = readFileSync10(fp, "utf-8").slice(-200000);
       for (const line of raw.split(`
 `)) {
         if (!line || line[0] !== "{")
@@ -942,8 +1640,8 @@ function emptyRate(windowSeconds) {
 }
 var CLAUDE_PROJECTS, INDEX_PATH, _rateCache, RATE_CACHE_TTL = 15000;
 var init_token_index = __esm(() => {
-  CLAUDE_PROJECTS = join13(homedir6(), ".claude", "projects");
-  INDEX_PATH = join13(homedir6(), ".oracle", "token-index.json");
+  CLAUDE_PROJECTS = join15(homedir10(), ".claude", "projects");
+  INDEX_PATH = join15(homedir10(), ".oracle", "token-index.json");
   _rateCache = new Map;
 });
 
@@ -957,19 +1655,19 @@ var require_package = __commonJS((exports, module) => {
       maw: "./src/cli.ts"
     },
     scripts: {
-      "build:office": "cd office && bunx vite build",
+      "build:office": "cd $HOME/repos/github.com/BankCurfew/office-v2 && bun run build && cp -r dist/* $HOME/maw-js/dist-office/",
       "build:cf": "cd office && bunx vite build --base / --outDir ../dist-cf",
       "deploy:cf": "bun run build:cf && bunx wrangler deploy",
-      dev: `pm2 start ecosystem.config.cjs && echo '→ maw backend (watch src/) on :3456
-→ maw-dev vite HMR on :5173
-→ pm2 logs to follow'`,
-      "dev:office": "cd office && bunx vite",
-      "dev:stop": "pm2 delete maw maw-dev 2>/dev/null; echo '→ dev stopped'",
+      dev: `pm2 start ecosystem.config.cjs && echo '\u2192 maw backend (watch src/) on :3456
+\u2192 maw-dev vite HMR on :5173
+\u2192 pm2 logs to follow'`,
+      "dev:office": "cd $HOME/repos/github.com/BankCurfew/office-v2 && bunx vite",
+      "dev:stop": "pm2 delete maw maw-dev 2>/dev/null; echo '\u2192 dev stopped'",
       deploy: "bun install && bun run build:office && pm2 delete maw-dev 2>/dev/null; pm2 restart maw",
       "build:8bit": "cd office-8bit && bash build.sh",
-      "deploy:remote": "bun run build:office && rsync -az dist-office/ white.local:~/Code/github.com/Soul-Brews-Studio/maw-js/dist-office/ && rsync -az dist-8bit-office/ white.local:~/Code/github.com/Soul-Brews-Studio/maw-js/dist-8bit-office/ && rsync -az src/ white.local:~/Code/github.com/Soul-Brews-Studio/maw-js/src/ && ssh white.local 'export PATH=$HOME/.bun/bin:$PATH && pm2 restart maw' && echo '→ deployed to white.local:3456'"
+      "deploy:remote": "bun run build:office && rsync -az dist-office/ white.local:~/Code/github.com/Soul-Brews-Studio/maw-js/dist-office/ && rsync -az dist-8bit-office/ white.local:~/Code/github.com/Soul-Brews-Studio/maw-js/dist-8bit-office/ && rsync -az src/ white.local:~/Code/github.com/Soul-Brews-Studio/maw-js/src/ && ssh white.local 'export PATH=$HOME/.bun/bin:$PATH && pm2 restart maw' && echo '\u2192 deployed to white.local:3456'"
     },
-    description: "maw.js — Multi-Agent Workflow in Bun/TS. Remote tmux orchestra control. CLI + Web UI.",
+    description: "maw.js \u2014 Multi-Agent Workflow in Bun/TS. Remote tmux orchestra control. CLI + Web UI.",
     dependencies: {
       "@monaco-editor/react": "^4.7.0",
       "@xterm/addon-fit": "^0.10.0",
@@ -995,11 +1693,11 @@ var require_package = __commonJS((exports, module) => {
 });
 
 // src/task-log.ts
-import { readFileSync as readFileSync9, appendFileSync as appendFileSync2, existsSync as existsSync5, mkdirSync as mkdirSync3, readdirSync as readdirSync8 } from "node:fs";
-import { join as join17 } from "node:path";
+import { readFileSync as readFileSync11, appendFileSync as appendFileSync4, existsSync as existsSync8, mkdirSync as mkdirSync5, readdirSync as readdirSync9 } from "fs";
+import { join as join17 } from "path";
 function ensureDir() {
-  if (!existsSync5(LOG_DIR))
-    mkdirSync3(LOG_DIR, { recursive: true });
+  if (!existsSync8(LOG_DIR))
+    mkdirSync5(LOG_DIR, { recursive: true });
 }
 function logPath(taskId) {
   const safe = taskId.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -1010,15 +1708,15 @@ function appendActivity(activity) {
   const ts = new Date().toISOString();
   const id = `${ts.replace(/[:.]/g, "-")}-${activity.oracle || "system"}`;
   const full = { ...activity, id, ts };
-  appendFileSync2(logPath(activity.taskId), JSON.stringify(full) + `
+  appendFileSync4(logPath(activity.taskId), JSON.stringify(full) + `
 `, "utf-8");
   return full;
 }
 function readTaskLog(taskId) {
   const path = logPath(taskId);
-  if (!existsSync5(path))
+  if (!existsSync8(path))
     return [];
-  const lines = readFileSync9(path, "utf-8").split(`
+  const lines = readFileSync11(path, "utf-8").split(`
 `).filter(Boolean);
   return lines.map((line) => {
     try {
@@ -1048,7 +1746,7 @@ function getAllLogSummaries() {
   ensureDir();
   const summaries = {};
   try {
-    const files = readdirSync8(LOG_DIR).filter((f) => f.endsWith(".jsonl"));
+    const files = readdirSync9(LOG_DIR).filter((f) => f.endsWith(".jsonl"));
     for (const file of files) {
       const taskId = file.replace(/\.jsonl$/, "");
       const summary = getTaskLogSummary(taskId);
@@ -1064,36 +1762,7 @@ var init_task_log = __esm(() => {
 });
 
 // src/autopilot.ts
-import { appendFileSync as appendFileSync3, readdirSync as readdirSync9, readFileSync as readFileSync10 } from "node:fs";
-import { join as join18 } from "node:path";
-function writeFeedNotification(oracle, message) {
-  const now = new Date;
-  const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-  const host = "VuttiServer";
-  const flat = message.replace(/\n/g, " ␤ ");
-  const line = `${ts} | ${oracle} | ${host} | Notification | ${oracle} | autopilot » ${flat}
-`;
-  try {
-    appendFileSync3(FEED_LOG, line);
-  } catch {}
-}
-function buildOracleMap() {
-  const map = {};
-  try {
-    const fleetDir = join18(import.meta.dir, "../fleet");
-    const files = readdirSync9(fleetDir).filter((f) => f.endsWith(".json"));
-    for (const f of files) {
-      try {
-        const config = JSON.parse(readFileSync10(join18(fleetDir, f), "utf-8"));
-        const sessionName = config.name || f.replace(".json", "");
-        const key = sessionName.replace(/^\d+-/, "").toLowerCase();
-        const oracleName = config.windows?.[0]?.name || key;
-        map[key] = oracleName;
-      } catch {}
-    }
-  } catch {}
-  return map;
-}
+import { join as join18 } from "path";
 function routeTask(title) {
   const lower = title.toLowerCase();
   for (const rule of ROUTING_RULES) {
@@ -1132,28 +1801,21 @@ async function commentResult(repo, issueNumber, resultSummary) {
 async function closeIssue(repo, issueNumber) {
   await ssh(`gh issue close ${issueNumber} --repo '${repo}' --reason completed`);
 }
-async function getRecentCommits(oracle, since) {
-  const oracleName = ORACLE_MAP[oracle.toLowerCase()];
-  if (!oracleName)
-    return [];
-  const ghqRoot = loadConfig().ghqRoot;
-  const repoPath = `${ghqRoot}/BankCurfew/${oracleName}`;
-  try {
-    const sinceArg = since ? `--since='${since} 00:00:00'` : "--since='12 hours ago'";
-    const log = await ssh(`git -C '${repoPath}' log --oneline ${sinceArg}`);
-    return log.split(`
-`).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-var FEED_LOG, ORACLE_MAP, ROUTING_RULES, cachedProjectMeta = null;
+var FEED_LOG2, ORACLE_MAP, ROUTING_RULES, cachedProjectMeta = null;
 var init_autopilot = __esm(() => {
   init_ssh();
   init_wake();
   init_config();
-  FEED_LOG = join18(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
-  ORACLE_MAP = buildOracleMap();
+  FEED_LOG2 = join18(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
+  ORACLE_MAP = {
+    bob: "BoB-Oracle",
+    dev: "Dev-Oracle",
+    qa: "QA-Oracle",
+    researcher: "Researcher-Oracle",
+    writer: "Writer-Oracle",
+    designer: "Designer-Oracle",
+    hr: "HR-Oracle"
+  };
   ROUTING_RULES = [
     { keywords: ["code", "api", "feature", "implement", "build", "deploy", "rest", "backend", "frontend"], oracle: "dev" },
     { keywords: ["test", "qa", "quality", "bug", "fix", "suite"], oracle: "qa" },
@@ -1179,8 +1841,8 @@ __export(exports_board, {
   addItem: () => addItem,
   addField: () => addField
 });
-import { readFileSync as readFileSync11, writeFileSync as writeFileSync4, existsSync as existsSync6, mkdirSync as mkdirSync4 } from "node:fs";
-import { join as join19 } from "node:path";
+import { readFileSync as readFileSync12, writeFileSync as writeFileSync6, existsSync as existsSync9, mkdirSync as mkdirSync6 } from "fs";
+import { join as join19 } from "path";
 function getOwnerProject() {
   return { owner: OWNER, project: PROJECT };
 }
@@ -1341,9 +2003,9 @@ async function scanUntracked() {
 async function scanMine() {
   const today = new Date().toISOString().slice(0, 10);
   const cachePath = join19(SCAN_MINE_CACHE_DIR, `scan-mine-${today}.json`);
-  if (existsSync6(cachePath)) {
+  if (existsSync9(cachePath)) {
     try {
-      const cached2 = JSON.parse(readFileSync11(cachePath, "utf-8"));
+      const cached2 = JSON.parse(readFileSync12(cachePath, "utf-8"));
       if (Date.now() - cached2.ts < 300000)
         return cached2.results;
     } catch {}
@@ -1367,10 +2029,10 @@ async function scanMine() {
     } catch {}
   }
   try {
-    if (!existsSync6(SCAN_MINE_CACHE_DIR)) {
-      mkdirSync4(SCAN_MINE_CACHE_DIR, { recursive: true });
+    if (!existsSync9(SCAN_MINE_CACHE_DIR)) {
+      mkdirSync6(SCAN_MINE_CACHE_DIR, { recursive: true });
     }
-    writeFileSync4(cachePath, JSON.stringify({ ts: Date.now(), results }), "utf-8");
+    writeFileSync6(cachePath, JSON.stringify({ ts: Date.now(), results }), "utf-8");
   } catch {}
   return results;
 }
@@ -1510,7 +2172,7 @@ async function cmdTaskLog(args) {
   const oracle = process.env.MAW_ORACLE || "cli";
   const activity = appendActivity({ taskId, type, oracle, content, meta });
   const label = item ? `#${item.content.number} ${item.title}` : taskId;
-  console.log(`\x1B[32m✓\x1B[0m Logged ${type} on ${label}`);
+  console.log(`\x1B[32m\u2713\x1B[0m Logged ${type} on ${label}`);
   console.log(`  ${TYPE_ICONS[type]} ${content}`);
 }
 async function cmdTaskLs() {
@@ -1519,7 +2181,7 @@ async function cmdTaskLs() {
   try {
     items = await fetchBoardData();
   } catch {
-    console.error("\x1B[33m⚠\x1B[0m Could not fetch board data");
+    console.error("\x1B[33m\u26A0\x1B[0m Could not fetch board data");
   }
   if (items.length === 0 && Object.keys(summaries).length === 0) {
     console.log("No tasks or activity logs found.");
@@ -1529,7 +2191,7 @@ async function cmdTaskLs() {
 \x1B[36mTask Board + Activity\x1B[0m
 `);
   console.log(`  ${"#".padEnd(6)} ${"Title".padEnd(40)} ${"Oracle".padEnd(12)} ${"Status".padEnd(14)} ${"Logs".padEnd(6)} ${"Last"}`);
-  console.log("  " + "─".repeat(100));
+  console.log("  " + "\u2500".repeat(100));
   for (const item of items) {
     const summary = summaries[item.id];
     const logCount = summary ? String(summary.count) : "-";
@@ -1560,7 +2222,7 @@ async function cmdTaskComment(args) {
   const oracle = process.env.MAW_ORACLE || "cli";
   appendActivity({ taskId, type: "comment", oracle, content: message });
   const label = item ? `#${item.content.number} ${item.title}` : taskId;
-  console.log(`\x1B[32m✓\x1B[0m Comment on ${label}`);
+  console.log(`\x1B[32m\u2713\x1B[0m Comment on ${label}`);
   console.log(`  \x1B[34m\uD83D\uDCAC\x1B[0m \x1B[36m${oracle}\x1B[0m: ${message}`);
 }
 async function cmdTaskShow(args) {
@@ -1588,10 +2250,10 @@ async function cmdTaskShow(args) {
   for (const a of activities) {
     const date = formatDate(a.ts);
     if (date !== lastDate) {
-      console.log(`  \x1B[90m── ${date} ──\x1B[0m`);
+      console.log(`  \x1B[90m\u2500\u2500 ${date} \u2500\u2500\x1B[0m`);
       lastDate = date;
     }
-    const icon = TYPE_ICONS[a.type] || "·";
+    const icon = TYPE_ICONS[a.type] || "\xB7";
     const time = formatTime(a.ts);
     const oracle = a.oracle ? `\x1B[36m${a.oracle}\x1B[0m` : "";
     let extra = "";
@@ -1623,18 +2285,18 @@ var init_task_log2 = __esm(() => {
 });
 
 // src/projects.ts
-import { readFileSync as readFileSync12, writeFileSync as writeFileSync5, existsSync as existsSync7, mkdirSync as mkdirSync5 } from "node:fs";
-import { join as join20 } from "node:path";
+import { readFileSync as readFileSync13, writeFileSync as writeFileSync7, existsSync as existsSync10, mkdirSync as mkdirSync7 } from "fs";
+import { join as join20 } from "path";
 function ensureDir2() {
-  if (!existsSync7(MAW_DIR))
-    mkdirSync5(MAW_DIR, { recursive: true });
+  if (!existsSync10(MAW_DIR))
+    mkdirSync7(MAW_DIR, { recursive: true });
 }
 function loadProjects() {
   ensureDir2();
-  if (!existsSync7(PROJECTS_PATH))
+  if (!existsSync10(PROJECTS_PATH))
     return { projects: [], _taskIndex: {} };
   try {
-    const data = JSON.parse(readFileSync12(PROJECTS_PATH, "utf-8"));
+    const data = JSON.parse(readFileSync13(PROJECTS_PATH, "utf-8"));
     data._taskIndex = {};
     for (const p of data.projects) {
       for (const t of p.tasks) {
@@ -1649,7 +2311,7 @@ function loadProjects() {
 function saveProjects(data) {
   ensureDir2();
   const { _taskIndex, ...clean } = data;
-  writeFileSync5(PROJECTS_PATH, JSON.stringify(clean, null, 2), "utf-8");
+  writeFileSync7(PROJECTS_PATH, JSON.stringify(clean, null, 2), "utf-8");
 }
 function createProject(id, name, description = "") {
   const data = loadProjects();
@@ -1854,12 +2516,12 @@ __export(exports_project, {
 });
 function statusIcon(status) {
   if (status === "Done")
-    return "\x1B[32m✓\x1B[0m";
+    return "\x1B[32m\u2713\x1B[0m";
   if (status === "In Progress")
-    return "\x1B[33m●\x1B[0m";
+    return "\x1B[33m\u25CF\x1B[0m";
   if (status === "Todo")
-    return "\x1B[37m○\x1B[0m";
-  return "\x1B[90m·\x1B[0m";
+    return "\x1B[37m\u25CB\x1B[0m";
+  return "\x1B[90m\xB7\x1B[0m";
 }
 function projectStatusColor(status) {
   if (status === "active")
@@ -1909,7 +2571,7 @@ async function cmdProjectLs() {
         todo++;
     }
     const progress = taskCount > 0 ? Math.round(done / taskCount * 100) : 0;
-    const progressBar = "█".repeat(Math.round(progress / 10)) + "░".repeat(10 - Math.round(progress / 10));
+    const progressBar = "\u2588".repeat(Math.round(progress / 10)) + "\u2591".repeat(10 - Math.round(progress / 10));
     console.log(`  ${color}${project.status.toUpperCase().padEnd(10)}\x1B[0m \x1B[1m${project.name}\x1B[0m \x1B[90m(${project.id})\x1B[0m`);
     console.log(`  ${" ".repeat(10)} ${taskCount} tasks (${topLevel.length} top + ${subtaskCount} sub) | \x1B[32m${done}\x1B[0m done \x1B[33m${inProgress}\x1B[0m wip \x1B[37m${todo}\x1B[0m todo`);
     console.log(`  ${" ".repeat(10)} [${progressBar}] ${progress}%`);
@@ -1923,7 +2585,7 @@ async function cmdProjectLs() {
       assigned.add(t.taskId);
   const unassigned = items.filter((i) => !assigned.has(i.id));
   if (unassigned.length > 0) {
-    console.log(`  \x1B[33m${unassigned.length} unassigned task${unassigned.length !== 1 ? "s" : ""}\x1B[0m — use \x1B[36mmaw project auto-organize\x1B[0m or \x1B[36mmaw project add <project> #<issue>\x1B[0m`);
+    console.log(`  \x1B[33m${unassigned.length} unassigned task${unassigned.length !== 1 ? "s" : ""}\x1B[0m \u2014 use \x1B[36mmaw project auto-organize\x1B[0m or \x1B[36mmaw project add <project> #<issue>\x1B[0m`);
     console.log();
   }
 }
@@ -1968,7 +2630,7 @@ async function cmdProjectShow(args) {
       const subSi = statusIcon(subItem?.status || "");
       const subLog = getTaskLogSummary(sub.taskId);
       const subBadge = subLog ? ` \x1B[90m[${subLog.count}]\x1B[0m` : "";
-      console.log(`    └─ ${subSi} ${subNum.padEnd(6)} ${subTitle.slice(0, 46).padEnd(48)} ${subOracle.padEnd(18)} ${subBadge}`);
+      console.log(`    \u2514\u2500 ${subSi} ${subNum.padEnd(6)} ${subTitle.slice(0, 46).padEnd(48)} ${subOracle.padEnd(18)} ${subBadge}`);
     }
   }
   console.log();
@@ -1982,9 +2644,9 @@ async function cmdProjectCreate(args) {
   }
   try {
     const project = createProject(id, name, args[2] || "");
-    console.log(`\x1B[32m✓\x1B[0m Created project: \x1B[1m${project.name}\x1B[0m (${project.id})`);
+    console.log(`\x1B[32m\u2713\x1B[0m Created project: \x1B[1m${project.name}\x1B[0m (${project.id})`);
   } catch (e) {
-    console.error(`\x1B[31m✗\x1B[0m ${e.message}`);
+    console.error(`\x1B[31m\u2717\x1B[0m ${e.message}`);
     process.exit(1);
   }
 }
@@ -2006,14 +2668,14 @@ async function cmdProjectAdd(args) {
   const item = await resolveItem(taskRef);
   if (!item) {
     addTaskToProject(projectId, taskRef, parentTaskId);
-    console.log(`\x1B[32m✓\x1B[0m Added ${taskRef} to project ${projectId}`);
+    console.log(`\x1B[32m\u2713\x1B[0m Added ${taskRef} to project ${projectId}`);
     return;
   }
   try {
     addTaskToProject(projectId, item.id, parentTaskId);
-    console.log(`\x1B[32m✓\x1B[0m Added #${item.content.number} "${item.title}" to project ${projectId}${parentTaskId ? " (as subtask)" : ""}`);
+    console.log(`\x1B[32m\u2713\x1B[0m Added #${item.content.number} "${item.title}" to project ${projectId}${parentTaskId ? " (as subtask)" : ""}`);
   } catch (e) {
-    console.error(`\x1B[31m✗\x1B[0m ${e.message}`);
+    console.error(`\x1B[31m\u2717\x1B[0m ${e.message}`);
     process.exit(1);
   }
 }
@@ -2029,9 +2691,9 @@ async function cmdProjectRemove(args) {
   try {
     removeTaskFromProject(projectId, taskId);
     const label = item ? `#${item.content.number}` : taskRef;
-    console.log(`\x1B[32m✓\x1B[0m Removed ${label} from project ${projectId}`);
+    console.log(`\x1B[32m\u2713\x1B[0m Removed ${label} from project ${projectId}`);
   } catch (e) {
-    console.error(`\x1B[31m✗\x1B[0m ${e.message}`);
+    console.error(`\x1B[31m\u2717\x1B[0m ${e.message}`);
     process.exit(1);
   }
 }
@@ -2040,15 +2702,15 @@ async function cmdProjectAutoOrganize() {
   try {
     items = await fetchBoardData();
   } catch (e) {
-    console.error(`\x1B[31m✗\x1B[0m Could not fetch board: ${e.message}`);
+    console.error(`\x1B[31m\u2717\x1B[0m Could not fetch board: ${e.message}`);
     process.exit(1);
   }
   const result = autoOrganize(items);
   if (result.created.length > 0) {
-    console.log(`\x1B[32m✓\x1B[0m Created ${result.created.length} project(s): ${result.created.join(", ")}`);
+    console.log(`\x1B[32m\u2713\x1B[0m Created ${result.created.length} project(s): ${result.created.join(", ")}`);
   }
   if (result.moved > 0) {
-    console.log(`\x1B[32m✓\x1B[0m Organized ${result.moved} task(s) into projects`);
+    console.log(`\x1B[32m\u2713\x1B[0m Organized ${result.moved} task(s) into projects`);
   }
   if (result.created.length === 0 && result.moved === 0) {
     console.log("All tasks are already organized into projects.");
@@ -2068,7 +2730,7 @@ async function cmdProjectComment(args) {
     oracle,
     content: message
   });
-  console.log(`\x1B[32m✓\x1B[0m Comment added to project ${projectId}`);
+  console.log(`\x1B[32m\u2713\x1B[0m Comment added to project ${projectId}`);
 }
 async function cmdProjectSetStatus(args, status) {
   const projectId = args[0];
@@ -2078,9 +2740,9 @@ async function cmdProjectSetStatus(args, status) {
   }
   try {
     updateProject(projectId, { status });
-    console.log(`\x1B[32m✓\x1B[0m Project "${projectId}" marked as ${status}`);
+    console.log(`\x1B[32m\u2713\x1B[0m Project "${projectId}" marked as ${status}`);
   } catch (e) {
-    console.error(`\x1B[31m✗\x1B[0m ${e.message}`);
+    console.error(`\x1B[31m\u2717\x1B[0m ${e.message}`);
     process.exit(1);
   }
 }
@@ -2090,18 +2752,521 @@ var init_project = __esm(() => {
   init_task_log();
 });
 
+// src/commands/sovereign.ts
+var exports_sovereign = {};
+__export(exports_sovereign, {
+  verifySovereignHealth: () => verifySovereignHealth,
+  rollbackOracle: () => rollbackOracle,
+  migrateOracle: () => migrateOracle,
+  getSovereignStatus: () => getSovereignStatus,
+  cmdSovereign: () => cmdSovereign
+});
+import { existsSync as existsSync11, mkdirSync as mkdirSync8, readdirSync as readdirSync10, lstatSync, symlinkSync as symlinkSync2, unlinkSync, renameSync as renameSync2, writeFileSync as writeFileSync8, rmSync, statSync as statSync2 } from "fs";
+import { join as join21, resolve } from "path";
+import { homedir as homedir12 } from "os";
+import { execSync as execSync3 } from "child_process";
+function repoToOracleName(repoDir) {
+  return repoDir.replace(/-[Oo]racle$/, "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+}
+function resolveOracleName(input) {
+  const name = input.toLowerCase().replace(/-oracle$/i, "");
+  return NAME_ALIASES[name] || name;
+}
+function getDirSize(dirPath) {
+  try {
+    const out = execSync3(`du -sh "${dirPath}" 2>/dev/null | cut -f1`, { encoding: "utf-8", timeout: 1e4 });
+    return out.trim() || "?";
+  } catch {
+    return "?";
+  }
+}
+function isSymlink(path) {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+function readSymlink(path) {
+  try {
+    const { readlinkSync } = __require("fs");
+    return readlinkSync(path);
+  } catch {
+    return null;
+  }
+}
+function findOracleRepos() {
+  const ghqRoot = loadConfig().ghqRoot;
+  const orgDir = join21(ghqRoot, GHQ_ORG);
+  if (!existsSync11(orgDir))
+    return [];
+  return readdirSync10(orgDir).filter((d) => /(-[Oo]racle|arra-oracle)$/.test(d)).filter((d) => {
+    try {
+      return statSync2(join21(orgDir, d)).isDirectory();
+    } catch {
+      return false;
+    }
+  }).map((d) => ({
+    name: repoToOracleName(d),
+    repoPath: join21(orgDir, d),
+    repoDir: d
+  }));
+}
+function ensureSovereignDir(oracleName) {
+  if (!existsSync11(SOVEREIGN_ROOT2)) {
+    mkdirSync8(SOVEREIGN_ROOT2, { recursive: true });
+  }
+  try {
+    execSync3(`chmod 700 "${SOVEREIGN_ROOT2}"`, { timeout: 5000 });
+  } catch {}
+  const gitignorePath = join21(SOVEREIGN_ROOT2, ".gitignore");
+  if (!existsSync11(gitignorePath)) {
+    writeFileSync8(gitignorePath, `# Sovereign oracle memory \u2014 never commit
+*
+`);
+  }
+  const dir = join21(SOVEREIGN_ROOT2, oracleName);
+  mkdirSync8(dir, { recursive: true });
+  try {
+    execSync3(`chmod 700 "${dir}"`, { timeout: 5000 });
+  } catch {}
+  return dir;
+}
+function createBackup(sourcePath, oracleName) {
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const backupDir = join21(homedir12(), ".oracle", "\u03C8-backup-migration");
+  mkdirSync8(backupDir, { recursive: true });
+  const backupPath = join21(backupDir, `${oracleName}-${ts}`);
+  mkdirSync8(backupPath, { recursive: true });
+  const excludes = BACKUP_EXCLUDE_DIRS.map((d) => `--exclude='${d}/'`).join(" ");
+  execSync3(`rsync -a ${excludes} "${sourcePath}/" "${backupPath}/"`, { timeout: 300000 });
+  return backupPath;
+}
+function copyDirRecursive(src, dest) {
+  const excludes = BACKUP_EXCLUDE_DIRS.map((d) => `--exclude='${d}/'`).join(" ");
+  execSync3(`rsync -a ${excludes} "${src}/" "${dest}/"`, { timeout: 300000 });
+}
+function getSovereignStatus() {
+  const repos = findOracleRepos();
+  const results = [];
+  for (const { name, repoPath, repoDir } of repos) {
+    const psiPath = join21(repoPath, "\u03C8");
+    const sovereignPath = join21(SOVEREIGN_ROOT2, name);
+    const status = {
+      oracle: name,
+      repoPath,
+      sovereignPath
+    };
+    if (isSymlink(psiPath)) {
+      const target = readSymlink(psiPath);
+      if (target && existsSync11(resolve(repoPath, target))) {
+        status.status = "sovereign";
+        status.psiSize = getDirSize(sovereignPath);
+        status.details = `symlink \u2192 ${target}`;
+      } else {
+        status.status = "broken-symlink";
+        status.details = `broken \u2192 ${target}`;
+      }
+    } else if (existsSync11(psiPath)) {
+      status.status = "legacy";
+      status.psiSize = getDirSize(psiPath);
+      status.details = "\u03C8/ is real directory inside repo";
+    } else {
+      if (existsSync11(sovereignPath)) {
+        status.status = "partial";
+        status.details = "sovereign dir exists but no symlink in repo";
+      } else {
+        status.status = "missing";
+        status.details = "no \u03C8/ found";
+      }
+    }
+    results.push(status);
+  }
+  return results;
+}
+function migrateOracle(oracleName, opts = {}) {
+  const result = { oracle: oracleName, success: false, steps: [], errors: [] };
+  const repos = findOracleRepos();
+  const repo = repos.find((r) => r.name === oracleName);
+  if (!repo) {
+    result.errors.push(`Oracle "${oracleName}" not found in ${join21(loadConfig().ghqRoot, GHQ_ORG)}`);
+    return result;
+  }
+  const psiPath = join21(repo.repoPath, "\u03C8");
+  const sovereignPath = join21(SOVEREIGN_ROOT2, oracleName);
+  try {
+    const sessions = execSync3(`tmux list-sessions -F '#{session_name}' 2>/dev/null`, { encoding: "utf-8", timeout: 5000 });
+    const active = sessions.trim().split(`
+`).some((s) => s.toLowerCase().includes(oracleName));
+    if (active) {
+      if (!opts.force) {
+        result.errors.push(`Active tmux session detected for ${oracleName} \u2014 stop with 'maw sleep ${oracleName}' before migrating, or use --force`);
+        return result;
+      }
+      result.steps.push(`\u26A0\uFE0F Active session detected \u2014 proceeding with --force`);
+    }
+  } catch {}
+  if (isSymlink(psiPath)) {
+    const target = readSymlink(psiPath);
+    if (target && existsSync11(resolve(repo.repoPath, target))) {
+      result.steps.push(`Already sovereign (symlink \u2192 ${target})`);
+      result.success = true;
+      return result;
+    } else {
+      result.errors.push(`Broken symlink at ${psiPath} \u2192 ${target}. Use --force or rollback first.`);
+      if (!opts.force)
+        return result;
+      result.steps.push("Removing broken symlink (--force)");
+      if (!opts.dryRun)
+        unlinkSync(psiPath);
+    }
+  }
+  if (!existsSync11(psiPath)) {
+    if (existsSync11(sovereignPath)) {
+      result.steps.push(`Sovereign dir exists at ${sovereignPath} \u2014 creating symlink`);
+      if (!opts.dryRun) {
+        symlinkSync2(sovereignPath, psiPath);
+      }
+      result.success = true;
+      return result;
+    }
+    result.steps.push(`No existing \u03C8/ \u2014 creating fresh sovereign structure`);
+    if (!opts.dryRun) {
+      ensureSovereignDir(oracleName);
+      for (const dir of PSI_DIRS) {
+        mkdirSync8(join21(sovereignPath, dir), { recursive: true });
+      }
+      symlinkSync2(sovereignPath, psiPath);
+    }
+    result.success = true;
+    return result;
+  }
+  result.steps.push(`Backing up ${psiPath}`);
+  if (!opts.dryRun) {
+    try {
+      result.backupPath = createBackup(psiPath, oracleName);
+      result.steps.push(`Backup created at ${result.backupPath}`);
+    } catch (e) {
+      result.errors.push(`Backup failed: ${e.message}`);
+      return result;
+    }
+  }
+  result.steps.push(`Creating sovereign dir: ${sovereignPath}`);
+  if (!opts.dryRun) {
+    ensureSovereignDir(oracleName);
+    for (const dir of PSI_DIRS) {
+      mkdirSync8(join21(sovereignPath, dir), { recursive: true });
+    }
+  }
+  result.steps.push(`Copying \u03C8/ contents to sovereign location`);
+  if (!opts.dryRun) {
+    try {
+      copyDirRecursive(psiPath, sovereignPath);
+    } catch (e) {
+      result.errors.push(`Copy failed: ${e.message}. Backup at ${result.backupPath}`);
+      return result;
+    }
+  }
+  if (!opts.dryRun) {
+    try {
+      const excludeFind = BACKUP_EXCLUDE_DIRS.map((d) => `-not -path '*/${d}/*'`).join(" ");
+      const srcCount = execSync3(`find "${psiPath}" -type f ${excludeFind} 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 30000 }).trim();
+      const dstCount = execSync3(`find "${sovereignPath}" -type f ${excludeFind} 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 30000 }).trim();
+      if (srcCount !== dstCount) {
+        result.errors.push(`File count mismatch: source=${srcCount}, dest=${dstCount}. Aborting \u2014 backup at ${result.backupPath}`);
+        return result;
+      }
+      result.steps.push(`Verified: ${srcCount} files copied`);
+    } catch (e) {
+      result.errors.push(`Verification failed: ${e.message}. Backup at ${result.backupPath}`);
+      return result;
+    }
+  }
+  result.steps.push(`Atomic swap: original \u03C8/ \u2192 symlink`);
+  if (!opts.dryRun) {
+    try {
+      const tmpLink = psiPath + ".sovereign-tmp";
+      try {
+        unlinkSync(tmpLink);
+      } catch {}
+      symlinkSync2(sovereignPath, tmpLink);
+      rmSync(psiPath, { recursive: true, force: true });
+      renameSync2(tmpLink, psiPath);
+    } catch (e) {
+      try {
+        unlinkSync(psiPath + ".sovereign-tmp");
+      } catch {}
+      result.errors.push(`Symlink creation failed: ${e.message}. Restore from backup: cp -a ${result.backupPath} ${psiPath}`);
+      return result;
+    }
+  }
+  if (!opts.dryRun) {
+    if (isSymlink(psiPath) && existsSync11(psiPath)) {
+      result.steps.push(`Symlink verified: ${psiPath} \u2192 ${sovereignPath}`);
+    } else {
+      result.errors.push(`Symlink verification failed! Restore: cp -a ${result.backupPath} ${psiPath}`);
+      return result;
+    }
+  }
+  result.success = true;
+  return result;
+}
+function rollbackOracle(oracleName, opts = {}) {
+  const result = { oracle: oracleName, success: false, steps: [], errors: [] };
+  const repos = findOracleRepos();
+  const repo = repos.find((r) => r.name === oracleName);
+  if (!repo) {
+    result.errors.push(`Oracle "${oracleName}" not found`);
+    return result;
+  }
+  const psiPath = join21(repo.repoPath, "\u03C8");
+  const sovereignPath = join21(SOVEREIGN_ROOT2, oracleName);
+  if (!isSymlink(psiPath)) {
+    if (existsSync11(psiPath)) {
+      result.steps.push("Already legacy layout (\u03C8/ is real directory)");
+      result.success = true;
+      return result;
+    }
+    result.errors.push("No \u03C8/ exists at all \u2014 nothing to rollback");
+    return result;
+  }
+  if (!existsSync11(sovereignPath)) {
+    const backupDir = join21(homedir12(), ".oracle", "\u03C8-backup-migration");
+    const backups = existsSync11(backupDir) ? readdirSync10(backupDir).filter((d) => d.startsWith(oracleName)) : [];
+    if (backups.length > 0) {
+      const latestBackup = join21(backupDir, backups.sort().pop());
+      result.steps.push(`Sovereign dir missing \u2014 restoring from backup: ${latestBackup}`);
+      if (!opts.dryRun) {
+        unlinkSync(psiPath);
+        execSync3(`cp -a "${latestBackup}" "${psiPath}"`, { timeout: 60000 });
+      }
+      result.success = true;
+      return result;
+    }
+    result.errors.push(`No sovereign data at ${sovereignPath} and no backups found`);
+    return result;
+  }
+  result.steps.push(`Removing symlink at ${psiPath}`);
+  if (!opts.dryRun) {
+    unlinkSync(psiPath);
+  }
+  result.steps.push(`Copying sovereign data back to ${psiPath}`);
+  if (!opts.dryRun) {
+    mkdirSync8(psiPath, { recursive: true });
+    copyDirRecursive(sovereignPath, psiPath);
+  }
+  if (!opts.dryRun) {
+    const srcCount = execSync3(`find "${sovereignPath}" -type f 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 30000 }).trim();
+    const dstCount = execSync3(`find "${psiPath}" -type f 2>/dev/null | wc -l`, { encoding: "utf-8", timeout: 30000 }).trim();
+    if (srcCount !== dstCount) {
+      result.errors.push(`File count mismatch after rollback: sovereign=${srcCount}, repo=${dstCount}`);
+      return result;
+    }
+    result.steps.push(`Verified: ${srcCount} files restored`);
+  }
+  result.steps.push(`Sovereign data preserved at ${sovereignPath} (manual cleanup if desired)`);
+  result.success = true;
+  return result;
+}
+function verifySovereignHealth() {
+  const results = [];
+  const repos = findOracleRepos();
+  for (const { name, repoPath } of repos) {
+    const psiPath = join21(repoPath, "\u03C8");
+    const sovereignPath = join21(SOVEREIGN_ROOT2, name);
+    if (isSymlink(psiPath)) {
+      const target = readSymlink(psiPath);
+      if (!target || !existsSync11(resolve(repoPath, target))) {
+        results.push({ oracle: name, ok: false, issue: `Broken symlink \u2192 ${target}` });
+      } else if (!existsSync11(join21(sovereignPath, "memory"))) {
+        results.push({ oracle: name, ok: false, issue: "Sovereign dir missing memory/" });
+      } else {
+        results.push({ oracle: name, ok: true });
+      }
+    } else if (existsSync11(psiPath)) {
+      results.push({ oracle: name, ok: true, issue: "Legacy layout (not migrated)" });
+    } else {
+      results.push({ oracle: name, ok: false, issue: "No \u03C8/ found" });
+    }
+  }
+  const backupRepo = join21(homedir12(), ".oracle", "\u03C8-backup");
+  if (existsSync11(backupRepo)) {
+    try {
+      const lastCommit = execSync3(`git -C "${backupRepo}" log -1 --format='%ct' 2>/dev/null`, { encoding: "utf-8", timeout: 5000 }).trim();
+      const ageHours = (Date.now() / 1000 - parseInt(lastCommit)) / 3600;
+      if (ageHours > 24) {
+        results.push({ oracle: "_backup", ok: false, issue: `\u03C8-backup stale: ${Math.round(ageHours)}h old` });
+      }
+    } catch {}
+  }
+  return results;
+}
+function formatStatus(statuses) {
+  const lines = [];
+  lines.push(`\x1B[36m\uD83C\uDFDB\uFE0F  Oracle Sovereign Status\x1B[0m`);
+  lines.push("\u2501".repeat(60));
+  const sovereign = statuses.filter((s) => s.status === "sovereign");
+  const legacy = statuses.filter((s) => s.status === "legacy");
+  const broken = statuses.filter((s) => s.status === "broken-symlink");
+  const partial = statuses.filter((s) => s.status === "partial");
+  const missing = statuses.filter((s) => s.status === "missing");
+  lines.push(`  \x1B[32m${sovereign.length} sovereign\x1B[0m | \x1B[33m${legacy.length} legacy\x1B[0m | \x1B[31m${broken.length} broken\x1B[0m | \x1B[90m${partial.length} partial, ${missing.length} missing\x1B[0m
+`);
+  for (const s of statuses) {
+    const icon = s.status === "sovereign" ? "\x1B[32m\u2713\x1B[0m" : s.status === "legacy" ? "\x1B[33m\u25CB\x1B[0m" : s.status === "broken-symlink" ? "\x1B[31m\u2717\x1B[0m" : s.status === "partial" ? "\x1B[33m\u25D0\x1B[0m" : "\x1B[90m\xB7\x1B[0m";
+    const size = s.psiSize ? ` (${s.psiSize})` : "";
+    lines.push(`  ${icon} ${s.oracle.padEnd(16)} ${s.status.padEnd(16)}${size}`);
+    if (s.details && (s.status === "broken-symlink" || s.status === "partial")) {
+      lines.push(`    \x1B[90m${s.details}\x1B[0m`);
+    }
+  }
+  lines.push(`
+` + "\u2501".repeat(60));
+  lines.push(`\x1B[90mSovereign root: ${SOVEREIGN_ROOT2}\x1B[0m`);
+  if (legacy.length > 0) {
+    lines.push(`
+\x1B[33mTo migrate:\x1B[0m maw sovereign migrate <oracle>`);
+    lines.push(`\x1B[33mMigrate all:\x1B[0m maw sovereign migrate --all`);
+  }
+  return lines.join(`
+`);
+}
+function formatMigrationResult(result) {
+  const lines = [];
+  const icon = result.success ? "\x1B[32m\u2713\x1B[0m" : "\x1B[31m\u2717\x1B[0m";
+  lines.push(`${icon} ${result.oracle}`);
+  for (const step of result.steps) {
+    lines.push(`  \x1B[32m\u2713\x1B[0m ${step}`);
+  }
+  for (const err of result.errors) {
+    lines.push(`  \x1B[31m\u2717\x1B[0m ${err}`);
+  }
+  if (result.backupPath) {
+    lines.push(`  \x1B[90mBackup: ${result.backupPath}\x1B[0m`);
+  }
+  return lines.join(`
+`);
+}
+function formatVerifyResults(results) {
+  const lines = [];
+  lines.push(`\x1B[36m\uD83D\uDD0D Sovereign Health Check\x1B[0m`);
+  lines.push("\u2501".repeat(50));
+  const ok = results.filter((r) => r.ok && !r.issue);
+  const warn = results.filter((r) => r.ok && r.issue);
+  const fail = results.filter((r) => !r.ok);
+  for (const r of results) {
+    if (r.oracle === "_backup") {
+      const icon2 = r.ok ? "\x1B[32m\u2713\x1B[0m" : "\x1B[31m\u2717\x1B[0m";
+      lines.push(`  ${icon2} backup  ${r.issue || "OK"}`);
+      continue;
+    }
+    const icon = !r.ok ? "\x1B[31m\u2717\x1B[0m" : r.issue ? "\x1B[33m\u25CB\x1B[0m" : "\x1B[32m\u2713\x1B[0m";
+    lines.push(`  ${icon} ${r.oracle.padEnd(16)} ${r.issue || "OK"}`);
+  }
+  lines.push("\u2501".repeat(50));
+  lines.push(`  \x1B[32m${ok.length} healthy\x1B[0m | \x1B[33m${warn.length} legacy\x1B[0m | \x1B[31m${fail.length} issues\x1B[0m`);
+  return lines.join(`
+`);
+}
+async function cmdSovereign(args) {
+  const sub = args[0]?.toLowerCase();
+  if (!sub || sub === "status" || sub === "ls") {
+    const statuses = getSovereignStatus();
+    console.log(formatStatus(statuses));
+  } else if (sub === "migrate") {
+    const target = args[1];
+    const dryRun = args.includes("--dry-run");
+    const force = args.includes("--force");
+    if (!target) {
+      console.error("usage: maw sovereign migrate <oracle> [--dry-run] [--force]");
+      console.error("       maw sovereign migrate --all [--dry-run]");
+      process.exit(1);
+    }
+    if (target === "--all") {
+      console.log(`\x1B[36m\uD83C\uDFDB\uFE0F  Sovereign Migration \u2014 All Oracles\x1B[0m${dryRun ? " (DRY RUN)" : ""}
+`);
+      const repos = findOracleRepos();
+      let migrated = 0, skipped = 0, failed = 0;
+      for (const { name } of repos) {
+        const result = migrateOracle(name, { dryRun, force });
+        console.log(formatMigrationResult(result));
+        if (result.success) {
+          if (result.steps.some((s) => s.startsWith("Already")))
+            skipped++;
+          else
+            migrated++;
+        } else {
+          failed++;
+        }
+      }
+      console.log(`
+${"\u2501".repeat(50)}`);
+      console.log(`  \x1B[32m${migrated} migrated\x1B[0m | \x1B[90m${skipped} already sovereign\x1B[0m | \x1B[31m${failed} failed\x1B[0m`);
+    } else {
+      const oracleName = resolveOracleName(target);
+      console.log(`\x1B[36m\uD83C\uDFDB\uFE0F  Sovereign Migration \u2014 ${oracleName}\x1B[0m${dryRun ? " (DRY RUN)" : ""}
+`);
+      const result = migrateOracle(oracleName, { dryRun, force });
+      console.log(formatMigrationResult(result));
+    }
+  } else if (sub === "rollback") {
+    const target = args[1];
+    const dryRun = args.includes("--dry-run");
+    if (!target) {
+      console.error("usage: maw sovereign rollback <oracle> [--dry-run]");
+      process.exit(1);
+    }
+    const oracleName = resolveOracleName(target);
+    console.log(`\x1B[36m\uD83C\uDFDB\uFE0F  Sovereign Rollback \u2014 ${oracleName}\x1B[0m${dryRun ? " (DRY RUN)" : ""}
+`);
+    const result = rollbackOracle(oracleName, { dryRun });
+    console.log(formatMigrationResult(result));
+  } else if (sub === "verify" || sub === "health") {
+    const results = verifySovereignHealth();
+    console.log(formatVerifyResults(results));
+  } else {
+    console.error(`usage: maw sovereign <status|migrate|rollback|verify>`);
+    console.error(`       maw sovereign status              Show migration status`);
+    console.error(`       maw sovereign migrate <oracle>    Migrate oracle to sovereign`);
+    console.error(`       maw sovereign migrate --all       Migrate all oracles`);
+    console.error(`       maw sovereign rollback <oracle>   Restore original layout`);
+    console.error(`       maw sovereign verify              Health check symlinks`);
+    process.exit(1);
+  }
+}
+var SOVEREIGN_ROOT2, GHQ_ORG = "BankCurfew", PSI_DIRS, BACKUP_EXCLUDE_DIRS, NAME_ALIASES;
+var init_sovereign = __esm(() => {
+  init_config();
+  SOVEREIGN_ROOT2 = join21(homedir12(), ".oracle", "\u03C8");
+  PSI_DIRS = [
+    "inbox/handoff",
+    "memory/learnings",
+    "memory/retrospectives",
+    "memory/resonance",
+    "writing",
+    "lab",
+    "active",
+    "archive",
+    "outbox"
+  ];
+  BACKUP_EXCLUDE_DIRS = ["learn"];
+  NAME_ALIASES = {
+    doc: "doccon"
+  };
+});
+
 // src/worktrees.ts
 var exports_worktrees = {};
 __export(exports_worktrees, {
   scanWorktrees: () => scanWorktrees,
   cleanupWorktree: () => cleanupWorktree
 });
-import { readdirSync as readdirSync10, readFileSync as readFileSync13 } from "fs";
-import { join as join21 } from "path";
+import { readdirSync as readdirSync11, readFileSync as readFileSync15 } from "fs";
+import { join as join22 } from "path";
 async function scanWorktrees() {
   const config = loadConfig();
   const ghqRoot = config.ghqRoot;
-  const fleetDir = join21(import.meta.dir, "../fleet");
+  const fleetDir = join22(import.meta.dir, "../fleet");
   let wtPaths = [];
   try {
     const raw = await ssh(`find ${ghqRoot} -maxdepth 4 -name '*.wt-*' -type d 2>/dev/null`);
@@ -2117,8 +3282,8 @@ async function scanWorktrees() {
   }
   const fleetWindows = new Map;
   try {
-    for (const file of readdirSync10(fleetDir).filter((f) => f.endsWith(".json"))) {
-      const cfg = JSON.parse(readFileSync13(join21(fleetDir, file), "utf-8"));
+    for (const file of readdirSync11(fleetDir).filter((f) => f.endsWith(".json"))) {
+      const cfg = JSON.parse(readFileSync15(join22(fleetDir, file), "utf-8"));
       for (const w of cfg.windows || []) {
         if (w.repo)
           fleetWindows.set(w.repo, file);
@@ -2169,7 +3334,7 @@ async function scanWorktrees() {
   }
   const mainRepos = [...new Set(results.map((r) => r.mainRepo))];
   for (const mainRepo of mainRepos) {
-    const mainPath = join21(ghqRoot, mainRepo);
+    const mainPath = join22(ghqRoot, mainRepo);
     try {
       const prunable = await ssh(`git -C '${mainPath}' worktree list --porcelain 2>/dev/null | grep -A1 'prunable' | grep 'worktree' | sed 's/worktree //'`);
       for (const orphanPath of prunable.split(`
@@ -2196,7 +3361,7 @@ async function scanWorktrees() {
 async function cleanupWorktree(wtPath) {
   const config = loadConfig();
   const ghqRoot = config.ghqRoot;
-  const fleetDir = join21(import.meta.dir, "../fleet");
+  const fleetDir = join22(import.meta.dir, "../fleet");
   const log = [];
   const dirName = wtPath.split("/").pop();
   const parts = dirName.split(".wt-");
@@ -2209,7 +3374,7 @@ async function cleanupWorktree(wtPath) {
   const parentParts = relPath.split("/");
   parentParts.pop();
   const org = parentParts.join("/");
-  const mainPath = join21(ghqRoot, org, mainRepoName);
+  const mainPath = join22(ghqRoot, org, mainRepoName);
   const repo = `${org}/${dirName}`;
   const sessions = await listSessions();
   const wtName = parts[1];
@@ -2246,14 +3411,14 @@ async function cleanupWorktree(wtPath) {
     }
   }
   try {
-    for (const file of readdirSync10(fleetDir).filter((f) => f.endsWith(".json"))) {
-      const filePath = join21(fleetDir, file);
-      const cfg = JSON.parse(readFileSync13(filePath, "utf-8"));
+    for (const file of readdirSync11(fleetDir).filter((f) => f.endsWith(".json"))) {
+      const filePath = join22(fleetDir, file);
+      const cfg = JSON.parse(readFileSync15(filePath, "utf-8"));
       const before = cfg.windows?.length || 0;
       cfg.windows = (cfg.windows || []).filter((w) => w.repo !== repo);
       if (cfg.windows.length < before) {
-        const { writeFileSync: writeFileSync6 } = await import("fs");
-        writeFileSync6(filePath, JSON.stringify(cfg, null, 2) + `
+        const { writeFileSync: writeFileSync9 } = await import("fs");
+        writeFileSync9(filePath, JSON.stringify(cfg, null, 2) + `
 `);
         log.push(`removed from ${file}`);
       }
@@ -2277,10 +3442,10 @@ async function cmdBoardDone(args) {
   const message = args.slice(1).join(" ") || undefined;
   if (!issueNum) {
     console.error('usage: maw board done #<issue> ["message"]');
-    console.error('       e.g. maw board done #5 "เสร็จแล้ว — push commit abc"');
+    console.error('       e.g. maw board done #5 "\u0E40\u0E2A\u0E23\u0E47\u0E08\u0E41\u0E25\u0E49\u0E27 \u2014 push commit abc"');
     process.exit(1);
   }
-  console.log(`\x1B[36m⚡\x1B[0m Looking up issue #${issueNum} on board...`);
+  console.log(`\x1B[36m\u26A1\x1B[0m Looking up issue #${issueNum} on board...`);
   let boardData;
   try {
     const res = await fetch("http://localhost:3456/api/project-board");
@@ -2288,7 +3453,7 @@ async function cmdBoardDone(args) {
       throw new Error(`Board API returned ${res.status}`);
     boardData = await res.json();
   } catch (err) {
-    console.error(`\x1B[31m✗\x1B[0m Cannot reach board API: ${err}`);
+    console.error(`\x1B[31m\u2717\x1B[0m Cannot reach board API: ${err}`);
     process.exit(1);
   }
   let found = null;
@@ -2304,39 +3469,39 @@ async function cmdBoardDone(args) {
       break;
   }
   if (!found) {
-    console.error(`\x1B[31m✗\x1B[0m Issue #${issueNum} not found on board`);
+    console.error(`\x1B[31m\u2717\x1B[0m Issue #${issueNum} not found on board`);
     process.exit(1);
   }
   const { item, repo } = found;
   console.log(`\x1B[90m  Found: "${item.title}" (${item.status}) in ${repo}\x1B[0m`);
   if (item.status === "Done") {
-    console.log(`\x1B[33m⚠\x1B[0m Issue #${issueNum} is already Done`);
+    console.log(`\x1B[33m\u26A0\x1B[0m Issue #${issueNum} is already Done`);
     return;
   }
   try {
     await setItemStatus("BankCurfew", 1, item.id, "Done");
-    console.log(`\x1B[32m✓\x1B[0m Board status → Done`);
+    console.log(`\x1B[32m\u2713\x1B[0m Board status \u2192 Done`);
   } catch (err) {
-    console.error(`\x1B[31m✗\x1B[0m Failed to update board: ${err}`);
+    console.error(`\x1B[31m\u2717\x1B[0m Failed to update board: ${err}`);
   }
   if (message && repo) {
     try {
       await commentResult(repo, issueNum, message);
-      console.log(`\x1B[32m✓\x1B[0m Commented on issue #${issueNum}`);
+      console.log(`\x1B[32m\u2713\x1B[0m Commented on issue #${issueNum}`);
     } catch (err) {
-      console.error(`\x1B[31m✗\x1B[0m Failed to comment: ${err}`);
+      console.error(`\x1B[31m\u2717\x1B[0m Failed to comment: ${err}`);
     }
   }
   if (repo) {
     try {
       await closeIssue(repo, issueNum);
-      console.log(`\x1B[32m✓\x1B[0m Closed issue #${issueNum} in ${repo}`);
+      console.log(`\x1B[32m\u2713\x1B[0m Closed issue #${issueNum} in ${repo}`);
     } catch (err) {
-      console.error(`\x1B[31m✗\x1B[0m Failed to close issue: ${err}`);
+      console.error(`\x1B[31m\u2717\x1B[0m Failed to close issue: ${err}`);
     }
   }
   console.log(`
-\x1B[32m✅ Done!\x1B[0m ${item.title}`);
+\x1B[32m\u2705 Done!\x1B[0m ${item.title}`);
 }
 var init_board_done = __esm(() => {
   init_autopilot();
@@ -2348,8 +3513,8 @@ __export(exports_think, {
   cmdThink: () => cmdThink,
   cmdReview: () => cmdReview
 });
-async function resolveTarget(oracle) {
-  const session = await detectSession2(oracle);
+async function resolveTarget2(oracle) {
+  const session = await detectSession(oracle);
   if (!session)
     return null;
   let windowName = `${oracle}-oracle`;
@@ -2370,7 +3535,7 @@ async function resolveTarget(oracle) {
 async function cmdThink(opts = {}) {
   const oracles = opts.oracles || Object.keys(ORACLE_REPOS);
   console.log(`
-  \x1B[36mBoB's Office — Think Time\x1B[0m`);
+  \x1B[36mBoB's Office \u2014 Think Time\x1B[0m`);
   console.log(`  Asking ${oracles.length} oracles to scan and propose ideas
 `);
   for (const oracle of oracles) {
@@ -2384,25 +3549,25 @@ async function cmdThink(opts = {}) {
   }
   if (opts.dryRun) {
     for (const oracle of oracles) {
-      console.log(`  \x1B[90m○\x1B[0m ${oracle} — would be asked to think`);
+      console.log(`  \x1B[90m\u25CB\x1B[0m ${oracle} \u2014 would be asked to think`);
     }
     console.log(`
-  \x1B[90m(dry run — no messages sent)\x1B[0m
+  \x1B[90m(dry run \u2014 no messages sent)\x1B[0m
 `);
     return;
   }
   const results = await Promise.allSettled(oracles.map(async (oracle) => {
-    const resolved = await resolveTarget(oracle);
+    const resolved = await resolveTarget2(oracle);
     if (!resolved) {
-      console.log(`  \x1B[31m✗\x1B[0m ${oracle} — no active session`);
+      console.log(`  \x1B[31m\u2717\x1B[0m ${oracle} \u2014 no active session`);
       return;
     }
     const prompt = THINK_PROMPTS[oracle];
     if (!prompt)
       return;
-    console.log(`  \x1B[36m>>>\x1B[0m ${oracle} — thinking...`);
+    console.log(`  \x1B[36m>>>\x1B[0m ${oracle} \u2014 thinking...`);
     await sendKeys(resolved.target, prompt);
-    console.log(`  \x1B[32m✓\x1B[0m ${oracle} — prompt sent`);
+    console.log(`  \x1B[32m\u2713\x1B[0m ${oracle} \u2014 prompt sent`);
   }));
   console.log(`
   \x1B[32mDone.\x1B[0m Oracles are scanning and creating proposal issues.`);
@@ -2412,7 +3577,7 @@ async function cmdThink(opts = {}) {
 async function cmdReview() {
   const { ssh: ssh2 } = await Promise.resolve().then(() => (init_ssh(), exports_ssh));
   console.log(`
-  \x1B[36mBoB's Office — Proposal Review\x1B[0m`);
+  \x1B[36mBoB's Office \u2014 Proposal Review\x1B[0m`);
   console.log(`  Scanning all oracle repos for proposals...
 `);
   const proposals = [];
@@ -2429,7 +3594,7 @@ async function cmdReview() {
           body: (issue.body || "").slice(0, 500),
           url: issue.url
         });
-        console.log(`  \x1B[33m●\x1B[0m ${oracle} #${issue.number}: ${issue.title}`);
+        console.log(`  \x1B[33m\u25CF\x1B[0m ${oracle} #${issue.number}: ${issue.title}`);
       }
     } catch {}
   }
@@ -2442,9 +3607,9 @@ async function cmdReview() {
   console.log(`
   Found \x1B[33m${proposals.length}\x1B[0m proposals.`);
   writeProposalsToFeed(proposals);
-  const bobResolved = await resolveTarget("bob");
+  const bobResolved = await resolveTarget2("bob");
   if (!bobResolved) {
-    console.log(`  \x1B[33m!\x1B[0m BoB not available — proposals sent to inbox for แบงค์ to review directly.
+    console.log(`  \x1B[33m!\x1B[0m BoB not available \u2014 proposals sent to inbox for \u0E41\u0E1A\u0E07\u0E04\u0E4C to review directly.
 `);
     return;
   }
@@ -2454,9 +3619,9 @@ ${p.url}`).join(`
 
 `);
   const bobPrompt = [
-    `${proposals.length} proposals from the team are now in แบงค์'s inbox for approval.`,
+    `${proposals.length} proposals from the team are now in \u0E41\u0E1A\u0E07\u0E04\u0E4C's inbox for approval.`,
     `Review them and give your recommendation. For each: APPROVE or SKIP with reason.`,
-    `If แบงค์ approves any, use maw hey to dispatch: maw hey <oracle> "Execute your proposal: <title>"`,
+    `If \u0E41\u0E1A\u0E07\u0E04\u0E4C approves any, use maw hey to dispatch: maw hey <oracle> "Execute your proposal: <title>"`,
     ``,
     `Proposals:`,
     summary
@@ -2464,23 +3629,23 @@ ${p.url}`).join(`
 `);
   console.log(`  \x1B[36m>>>\x1B[0m BoB reviewing in background...`);
   await sendKeys(bobResolved.target, bobPrompt);
-  console.log(`  \x1B[32m✓\x1B[0m Proposals in inbox + BoB reviewing.
+  console.log(`  \x1B[32m\u2713\x1B[0m Proposals in inbox + BoB reviewing.
 `);
 }
 function writeProposalsToFeed(proposals) {
   try {
-    const { appendFileSync: appendFileSync4 } = __require("node:fs");
-    const { join: join22 } = __require("node:path");
-    const FEED_LOG2 = join22(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
+    const { appendFileSync: appendFileSync5 } = __require("fs");
+    const { join: join23 } = __require("path");
+    const FEED_LOG3 = join23(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
     const now = new Date;
     const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
     for (const p of proposals) {
       const data = JSON.stringify({ oracle: p.oracle, title: p.title, url: p.url, body: p.body.slice(0, 300) });
-      const line = `${ts} | BoB-Oracle | VuttiServer | Notification | BoB-Oracle | autopilot » [proposal] ${data}
+      const line = `${ts} | BoB-Oracle | VuttiServer | Notification | BoB-Oracle | autopilot \xBB [proposal] ${data}
 `;
-      appendFileSync4(FEED_LOG2, line);
+      appendFileSync5(FEED_LOG3, line);
     }
-    console.log(`  \x1B[32m✓\x1B[0m ${proposals.length} proposals sent to inbox.
+    console.log(`  \x1B[32m\u2713\x1B[0m ${proposals.length} proposals sent to inbox.
 `);
   } catch {}
 }
@@ -2498,7 +3663,7 @@ var init_think = __esm(() => {
     hr: "BankCurfew/HR-Oracle"
   };
   THINK_PROMPTS = {
-    dev: `Scan your recent work: git log -20, open issues, codebase state. As Dev-Oracle, propose ONE improvement or new initiative that would help BoB's Office. Think about: technical debt, missing features, performance, developer experience, architecture improvements. Create a GitHub issue in your repo with label "proposal" — title: clear action, body: what + why + estimated effort. Use: gh issue create --label proposal --title "..." --body "..."`,
+    dev: `Scan your recent work: git log -20, open issues, codebase state. As Dev-Oracle, propose ONE improvement or new initiative that would help BoB's Office. Think about: technical debt, missing features, performance, developer experience, architecture improvements. Create a GitHub issue in your repo with label "proposal" \u2014 title: clear action, body: what + why + estimated effort. Use: gh issue create --label proposal --title "..." --body "..."`,
     qa: `Scan your recent work: git log -20, open issues, test coverage. As QA-Oracle, propose ONE improvement. Think about: missing test coverage, quality gaps, process improvements, automation opportunities, testing infrastructure. Create a GitHub issue with label "proposal". Use: gh issue create --label proposal --title "..." --body "..."`,
     designer: `Scan your recent work: git log -20, open issues, design system state. As Designer-Oracle, propose ONE improvement. Think about: UX gaps, design system components needed, accessibility improvements, visual consistency, user research needs. Create a GitHub issue with label "proposal". Use: gh issue create --label proposal --title "..."  --body "..."`,
     researcher: `Scan your recent work: git log -20, open issues, research outputs. As Researcher-Oracle, propose ONE research initiative. Think about: competitor moves, technology trends, market gaps, benchmarking needs, knowledge gaps in the team. Create a GitHub issue with label "proposal". Use: gh issue create --label proposal --title "..." --body "..."`,
@@ -2523,7 +3688,7 @@ function selectParticipants(goal, explicit) {
 async function resolveTargets(oracles) {
   const results = [];
   await Promise.allSettled(oracles.map(async (oracle) => {
-    const session = await detectSession2(oracle);
+    const session = await detectSession(oracle);
     if (!session) {
       results.push({ oracle, target: "", status: "dead" });
       return;
@@ -2560,7 +3725,7 @@ async function askOracle(target, goal, allParticipants, timeoutMs) {
   const others = allParticipants.filter((o) => o !== oracle).join(", ");
   const marker = makeMeetingMarker();
   const question = [
-    `[${marker}] Meeting from BoB — Goal: "${goal}".`,
+    `[${marker}] Meeting from BoB \u2014 Goal: "${goal}".`,
     `Team: ${others ? `you, ${others}` : "you"}.`,
     `You are ${oracle} (${role}).`,
     `Answer briefly (under 150 words): What would YOU do? What do you need from others?`
@@ -2618,7 +3783,7 @@ function extractResponseAfterMarker(raw, marker) {
   while (responseStart < lines.length) {
     const line = lines[responseStart].trim();
     const isQuestion = questionPatterns.some((p) => line.includes(p));
-    const isWrap = responseStart > markerIdx && responseStart < markerIdx + 6 && !line.startsWith("●") && !line.startsWith("-") && !line.startsWith("*") && !line.match(/^\d+\./) && !line.startsWith("#") && !line.toLowerCase().startsWith("my ") && !line.toLowerCase().startsWith("i ");
+    const isWrap = responseStart > markerIdx && responseStart < markerIdx + 6 && !line.startsWith("\u25CF") && !line.startsWith("-") && !line.startsWith("*") && !line.match(/^\d+\./) && !line.startsWith("#") && !line.toLowerCase().startsWith("my ") && !line.toLowerCase().startsWith("i ");
     if (!isQuestion && !isWrap && responseStart > markerIdx)
       break;
     responseStart++;
@@ -2639,10 +3804,10 @@ function extractResponseAfterMarker(raw, marker) {
 }
 function isPromptLine(line) {
   const trimmed = line.trim();
-  return trimmed === "❯" || trimmed === "❯" || /^❯\s*$/.test(trimmed) || /^\$\s*$/.test(trimmed);
+  return trimmed === "\u276F" || trimmed === "\u276F" || /^\u276F\s*$/.test(trimmed) || /^\$\s*$/.test(trimmed);
 }
 function isStatusBarLine(line) {
-  return /bypass permissions/i.test(line) || /shift\+tab to cycle/i.test(line) || /ctrl\+[a-z] to/i.test(line) || /^\s*[▘▝▜▛█▌▐]+/.test(line) || /Claude Code v[\d.]+/.test(line);
+  return /bypass permissions/i.test(line) || /shift\+tab to cycle/i.test(line) || /ctrl\+[a-z] to/i.test(line) || /^\s*[\u2598\u259D\u259C\u259B\u2588\u258C\u2590]+/.test(line) || /Claude Code v[\d.]+/.test(line);
 }
 function stripAnsi(text) {
   return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\[\?[0-9;]*[a-zA-Z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "").replace(/[\u2800-\u28FF]/g, "").trim();
@@ -2650,17 +3815,17 @@ function stripAnsi(text) {
 function printTranscript(transcript) {
   const { goal, ts, participants, discussion, tasks, dispatched } = transcript;
   console.log();
-  console.log("\x1B[36m╔══════════════════════════════════════════════╗\x1B[0m");
-  console.log(`\x1B[36m║\x1B[0m     BoB's Office — Meeting                   \x1B[36m║\x1B[0m`);
-  console.log(`\x1B[36m║\x1B[0m     ${ts.padEnd(37)}\x1B[36m║\x1B[0m`);
-  console.log("\x1B[36m╚══════════════════════════════════════════════╝\x1B[0m");
+  console.log("\x1B[36m\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\x1B[0m");
+  console.log(`\x1B[36m\u2551\x1B[0m     BoB's Office \u2014 Meeting                   \x1B[36m\u2551\x1B[0m`);
+  console.log(`\x1B[36m\u2551\x1B[0m     ${ts.padEnd(37)}\x1B[36m\u2551\x1B[0m`);
+  console.log("\x1B[36m\u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D\x1B[0m");
   console.log();
   console.log(`  \x1B[1mGoal:\x1B[0m ${goal}`);
   console.log();
   console.log("  \x1B[1mParticipants:\x1B[0m");
   for (const p of participants) {
     const color = p.status === "ready" ? "\x1B[32m" : p.status === "busy" ? "\x1B[33m" : "\x1B[31m";
-    const icon = p.status === "ready" ? "●" : p.status === "busy" ? "○" : "✗";
+    const icon = p.status === "ready" ? "\u25CF" : p.status === "busy" ? "\u25CB" : "\u2717";
     const label = p.status === "ready" ? "claude running" : p.status === "busy" ? "busy" : "no session";
     console.log(`    ${color}${icon}\x1B[0m ${(p.oracle.charAt(0).toUpperCase() + p.oracle.slice(1)).padEnd(12)} ${color}${label}\x1B[0m`);
   }
@@ -2683,27 +3848,27 @@ function printTranscript(transcript) {
     console.log("  \x1B[1mTasks:\x1B[0m");
     for (const t of tasks) {
       const name = t.oracle.charAt(0).toUpperCase() + t.oracle.slice(1);
-      console.log(`    \x1B[33m${t.priority}\x1B[0m  ${name.padEnd(12)} → ${t.task}`);
+      console.log(`    \x1B[33m${t.priority}\x1B[0m  ${name.padEnd(12)} \u2192 ${t.task}`);
     }
     console.log();
   }
   if (dispatched) {
-    console.log(`  \x1B[32m✓ Tasks assigned\x1B[0m`);
+    console.log(`  \x1B[32m\u2713 Tasks assigned\x1B[0m`);
   } else {
-    console.log("  \x1B[90m(dry run — agents not messaged)\x1B[0m");
+    console.log("  \x1B[90m(dry run \u2014 agents not messaged)\x1B[0m");
   }
 }
 function writeMeetingToFeed(transcript) {
   try {
-    const { appendFileSync: appendFileSync4 } = __require("node:fs");
-    const { join: join22 } = __require("node:path");
-    const FEED_LOG2 = join22(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
+    const { appendFileSync: appendFileSync5 } = __require("fs");
+    const { join: join23 } = __require("path");
+    const FEED_LOG3 = join23(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
     const now = new Date;
     const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-    const flat = JSON.stringify(transcript).replace(/\n/g, " ⎜ ");
-    const line = `${ts} | BoB-Oracle | VuttiServer | Notification | BoB-Oracle | autopilot » [meeting] ${flat}
+    const flat = JSON.stringify(transcript).replace(/\n/g, " \u239C ");
+    const line = `${ts} | BoB-Oracle | VuttiServer | Notification | BoB-Oracle | autopilot \xBB [meeting] ${flat}
 `;
-    appendFileSync4(FEED_LOG2, line);
+    appendFileSync5(FEED_LOG3, line);
   } catch {}
 }
 async function cmdMeeting(goal, opts = {}) {
@@ -2717,9 +3882,9 @@ async function cmdMeeting(goal, opts = {}) {
 `);
   const targets = await resolveTargets(participants);
   for (const t of targets) {
-    const icon = t.status === "ready" ? "\x1B[32m●\x1B[0m" : t.status === "dead" ? "\x1B[31m✗\x1B[0m" : "\x1B[33m○\x1B[0m";
+    const icon = t.status === "ready" ? "\x1B[32m\u25CF\x1B[0m" : t.status === "dead" ? "\x1B[31m\u2717\x1B[0m" : "\x1B[33m\u25CB\x1B[0m";
     const label = t.status === "ready" ? "claude running" : t.status === "dead" ? "no session" : "busy";
-    console.log(`  ${icon} ${t.oracle.padEnd(12)} ${t.target || "(none)"} — ${label}`);
+    console.log(`  ${icon} ${t.oracle.padEnd(12)} ${t.target || "(none)"} \u2014 ${label}`);
   }
   const deadAgents = targets.filter((t) => t.status === "dead");
   if (deadAgents.length > 0) {
@@ -2727,13 +3892,13 @@ async function cmdMeeting(goal, opts = {}) {
   \x1B[33mWaking ${deadAgents.length} offline agents...\x1B[0m`);
     for (const t of deadAgents) {
       try {
-        const wakeTarget = await cmdWake2(t.oracle, {});
+        const wakeTarget = await cmdWake(t.oracle, {});
         t.target = wakeTarget;
         t.status = "ready";
-        console.log(`  \x1B[32m●\x1B[0m ${t.oracle} woken → ${wakeTarget}`);
+        console.log(`  \x1B[32m\u25CF\x1B[0m ${t.oracle} woken \u2192 ${wakeTarget}`);
         await new Promise((r) => setTimeout(r, 5000));
       } catch {
-        console.log(`  \x1B[31m✗\x1B[0m ${t.oracle} couldn't wake — skipping`);
+        console.log(`  \x1B[31m\u2717\x1B[0m ${t.oracle} couldn't wake \u2014 skipping`);
       }
     }
   }
@@ -2743,7 +3908,7 @@ async function cmdMeeting(goal, opts = {}) {
       goal,
       ts,
       participants: targets.map((t) => ({ oracle: t.oracle, target: t.target, status: t.status })),
-      discussion: [{ oracle: "BoB", message: `(dry run — ${readyAgents.length} agents ready, not messaged)` }],
+      discussion: [{ oracle: "BoB", message: `(dry run \u2014 ${readyAgents.length} agents ready, not messaged)` }],
       tasks: [],
       dispatched: false
     };
@@ -2764,21 +3929,21 @@ async function cmdMeeting(goal, opts = {}) {
   }
   console.log(`
   \x1B[33mSending meeting question to ${readyAgents.length} agents in parallel...\x1B[0m`);
-  console.log(`  \x1B[90m(watch their tmux sessions — they're responding live)\x1B[0m
+  console.log(`  \x1B[90m(watch their tmux sessions \u2014 they're responding live)\x1B[0m
 `);
   const discussion = [];
-  discussion.push({ oracle: "BoB", message: `Team meeting: "${goal}" — all oracles answering simultaneously.` });
+  discussion.push({ oracle: "BoB", message: `Team meeting: "${goal}" \u2014 all oracles answering simultaneously.` });
   const askResults = await Promise.allSettled(readyAgents.map(async (agent) => {
     console.log(`  \x1B[36m>>>\x1B[0m ${agent.oracle}`);
     const response = await askOracle(agent, goal, participants, perAgentTimeout);
-    console.log(`  \x1B[32m✓\x1B[0m ${agent.oracle} responded`);
+    console.log(`  \x1B[32m\u2713\x1B[0m ${agent.oracle} responded`);
     return { oracle: agent.oracle, response };
   }));
   for (const result of askResults) {
     if (result.status === "fulfilled") {
       discussion.push({ oracle: result.value.oracle, message: result.value.response });
     } else {
-      console.log(`  \x1B[31m✗\x1B[0m agent failed: ${result.reason}`);
+      console.log(`  \x1B[31m\u2717\x1B[0m agent failed: ${result.reason}`);
     }
   }
   console.log(`
@@ -2797,7 +3962,7 @@ async function cmdMeeting(goal, opts = {}) {
 ${summary}
 `,
       `Create a task list from this. For each task: oracle name, task description, priority (P1/P2/P3).`,
-      `Keep it short — one line per task.`
+      `Keep it short \u2014 one line per task.`
     ].join(" ");
     await sendKeys(bobTarget.target, bobQuestion);
     await new Promise((r) => setTimeout(r, 8000));
@@ -2864,7 +4029,7 @@ function parseTasksFromText(text, validOracles) {
     for (const oracle of validOracles) {
       if (lower.includes(oracle)) {
         const priority = /p1|critical|urgent|blocking/i.test(line) ? "P1" : /p3|nice.to.have|optional|low/i.test(line) ? "P3" : "P2";
-        let task = line.replace(/^[\s\-\*•|●○►▸]+/, "").replace(/\b(P[123])\b/gi, "").trim();
+        let task = line.replace(/^[\s\-\*\u2022|\u25CF\u25CB\u25BA\u25B8]+/, "").replace(/\b(P[123])\b/gi, "").trim();
         if (task.length > 10) {
           tasks.push({ oracle, task, priority });
         }
@@ -2895,17 +4060,17 @@ var exports_loop = {};
 __export(exports_loop, {
   cmdLoop: () => cmdLoop
 });
-import { readFileSync as readFileSync14, writeFileSync as writeFileSync6 } from "fs";
-import { join as join22 } from "path";
+import { readFileSync as readFileSync16, writeFileSync as writeFileSync9 } from "fs";
+import { join as join23 } from "path";
 function loadLoops() {
   try {
-    return JSON.parse(readFileSync14(LOOPS_PATH, "utf-8"));
+    return JSON.parse(readFileSync16(LOOPS_PATH2, "utf-8"));
   } catch {
     return { enabled: true, loops: [] };
   }
 }
 function saveLoops(config) {
-  writeFileSync6(LOOPS_PATH, JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync9(LOOPS_PATH2, JSON.stringify(config, null, 2), "utf-8");
 }
 async function cmdLoop(args) {
   const sub = args[0];
@@ -2914,10 +4079,10 @@ async function cmdLoop(args) {
       const res = await fetch(`${MAW_URL}/api/loops`);
       const data = await res.json();
       console.log(`
-  \x1B[36mLoop Engine\x1B[0m — ${data.enabled ? "\x1B[32mENABLED\x1B[0m" : "\x1B[31mDISABLED\x1B[0m"}
+  \x1B[36mLoop Engine\x1B[0m \u2014 ${data.enabled ? "\x1B[32mENABLED\x1B[0m" : "\x1B[31mDISABLED\x1B[0m"}
 `);
       for (const l of data.loops) {
-        const icon = l.enabled ? l.lastStatus === "ok" ? "\x1B[32m✓\x1B[0m" : l.lastStatus === "error" ? "\x1B[31m✗\x1B[0m" : "\x1B[33m○\x1B[0m" : "\x1B[90m⊘\x1B[0m";
+        const icon = l.enabled ? l.lastStatus === "ok" ? "\x1B[32m\u2713\x1B[0m" : l.lastStatus === "error" ? "\x1B[31m\u2717\x1B[0m" : "\x1B[33m\u25CB\x1B[0m" : "\x1B[90m\u2298\x1B[0m";
         const last = l.lastRun ? `last: ${l.lastRun.slice(0, 19).replace("T", " ")}` : "never ran";
         const next = l.nextRun ? `next: ${l.nextRun.slice(0, 16).replace("T", " ")}` : "";
         console.log(`  ${icon} \x1B[1m${l.id}\x1B[0m [${l.oracle}]`);
@@ -2926,7 +4091,7 @@ async function cmdLoop(args) {
       }
       console.log();
     } catch (e) {
-      console.error(`  \x1B[31mError:\x1B[0m ${e.message} — is maw server running?`);
+      console.error(`  \x1B[31mError:\x1B[0m ${e.message} \u2014 is maw server running?`);
     }
     return;
   }
@@ -2936,7 +4101,7 @@ async function cmdLoop(args) {
     const res = await fetch(url);
     const history = await res.json();
     console.log(`
-  \x1B[36mLoop History\x1B[0m${loopId ? ` — ${loopId}` : ""}
+  \x1B[36mLoop History\x1B[0m${loopId ? ` \u2014 ${loopId}` : ""}
 `);
     if (history.length === 0) {
       console.log(`  No executions yet.
@@ -2944,8 +4109,8 @@ async function cmdLoop(args) {
       return;
     }
     for (const h of history.slice(-20)) {
-      const icon = h.status === "ok" ? "\x1B[32m✓\x1B[0m" : h.status === "error" ? "\x1B[31m✗\x1B[0m" : "\x1B[33m⊘\x1B[0m";
-      console.log(`  ${icon} ${h.ts.slice(0, 19).replace("T", " ")} ${h.loopId}${h.reason ? ` — ${h.reason}` : ""}`);
+      const icon = h.status === "ok" ? "\x1B[32m\u2713\x1B[0m" : h.status === "error" ? "\x1B[31m\u2717\x1B[0m" : "\x1B[33m\u2298\x1B[0m";
+      console.log(`  ${icon} ${h.ts.slice(0, 19).replace("T", " ")} ${h.loopId}${h.reason ? ` \u2014 ${h.reason}` : ""}`);
     }
     console.log();
     return;
@@ -2963,8 +4128,8 @@ async function cmdLoop(args) {
       body: JSON.stringify({ loopId })
     });
     const result = await res.json();
-    const icon = result.status === "ok" ? "\x1B[32m✓\x1B[0m" : "\x1B[31m✗\x1B[0m";
-    console.log(`  ${icon} ${result.status}${result.reason ? ` — ${result.reason}` : ""}`);
+    const icon = result.status === "ok" ? "\x1B[32m\u2713\x1B[0m" : "\x1B[31m\u2717\x1B[0m";
+    console.log(`  ${icon} ${result.status}${result.reason ? ` \u2014 ${result.reason}` : ""}`);
     return;
   }
   if (sub === "add") {
@@ -2983,7 +4148,7 @@ async function cmdLoop(args) {
       const idx = config.loops.findIndex((l) => l.id === newLoop.id);
       if (idx >= 0) {
         config.loops[idx] = { ...config.loops[idx], ...newLoop };
-        console.log(`  \x1B[33m↻\x1B[0m Updated loop: ${newLoop.id}`);
+        console.log(`  \x1B[33m\u21BB\x1B[0m Updated loop: ${newLoop.id}`);
       } else {
         config.loops.push(newLoop);
         console.log(`  \x1B[32m+\x1B[0m Added loop: ${newLoop.id}`);
@@ -3038,7 +4203,7 @@ async function cmdLoop(args) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: true })
     });
-    console.log("  \x1B[32m✓\x1B[0m Loop engine enabled");
+    console.log("  \x1B[32m\u2713\x1B[0m Loop engine enabled");
     return;
   }
   if (sub === "off") {
@@ -3047,16 +4212,351 @@ async function cmdLoop(args) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: false })
     });
-    console.log("  \x1B[31m⊘\x1B[0m Loop engine disabled");
+    console.log("  \x1B[31m\u2298\x1B[0m Loop engine disabled");
     return;
   }
   console.log(`  Unknown subcommand: ${sub}`);
   console.log("  Usage: maw loop [history|trigger|add|remove|enable|disable|on|off]");
 }
-var MAW_URL, LOOPS_PATH;
+var MAW_URL, LOOPS_PATH2;
 var init_loop = __esm(() => {
   MAW_URL = process.env.MAW_URL || "http://localhost:3456";
-  LOOPS_PATH = join22(import.meta.dir, "../../loops.json");
+  LOOPS_PATH2 = join23(import.meta.dir, "../../loops.json");
+});
+
+// src/lib/qr.ts
+function gfMul(a, b) {
+  return a && b ? EXP[LOG[a] + LOG[b]] : 0;
+}
+function rsEncode(data, ecLen) {
+  const gen = new Array(ecLen + 1).fill(0);
+  gen[0] = 1;
+  for (let i = 0;i < ecLen; i++) {
+    for (let j = ecLen;j >= 1; j--) {
+      gen[j] = gfMul(gen[j], EXP[i]) ^ gen[j - 1];
+    }
+    gen[0] = gfMul(gen[0], EXP[i]);
+  }
+  const msg = [...data, ...new Array(ecLen).fill(0)];
+  for (let i = 0;i < data.length; i++) {
+    const coef = msg[i];
+    if (coef === 0)
+      continue;
+    for (let j = 0;j <= ecLen; j++) {
+      msg[i + j] ^= gfMul(gen[j], coef);
+    }
+  }
+  return msg.slice(data.length);
+}
+function selectVersion(dataLen) {
+  for (let i = 0;i < VERSIONS.length; i++) {
+    if (dataLen <= VERSIONS[i].dataCW - 2) {
+      return { ver: i + 1, info: VERSIONS[i] };
+    }
+  }
+  throw new Error(`Data too long (${dataLen} bytes), max ${VERSIONS[VERSIONS.length - 1].dataCW - 2}`);
+}
+function encodeData(text, info) {
+  const bytes = new TextEncoder().encode(text);
+  const bits = [];
+  const push = (val, len) => {
+    for (let i = len - 1;i >= 0; i--)
+      bits.push(val >> i & 1);
+  };
+  push(4, 4);
+  push(bytes.length, 8);
+  for (const b of bytes)
+    push(b, 8);
+  const maxBits = info.dataCW * 8;
+  const termLen = Math.min(4, maxBits - bits.length);
+  push(0, termLen);
+  while (bits.length % 8 !== 0)
+    bits.push(0);
+  const pads = [236, 17];
+  let pi = 0;
+  while (bits.length < maxBits) {
+    push(pads[pi], 8);
+    pi ^= 1;
+  }
+  const result = [];
+  for (let i = 0;i < bits.length; i += 8) {
+    let byte = 0;
+    for (let j = 0;j < 8; j++)
+      byte = byte << 1 | bits[i + j];
+    result.push(byte);
+  }
+  return result;
+}
+function createMatrix(size) {
+  return Array.from({ length: size }, () => new Array(size).fill(null));
+}
+function setModule(m, r, c, dark) {
+  if (r >= 0 && r < m.length && c >= 0 && c < m.length)
+    m[r][c] = dark;
+}
+function placeFinderPattern(m, row, col) {
+  for (let r = -1;r <= 7; r++) {
+    for (let c = -1;c <= 7; c++) {
+      const inOuter = r >= 0 && r <= 6 && c >= 0 && c <= 6;
+      const inInner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+      const onBorder = r === 0 || r === 6 || c === 0 || c === 6;
+      setModule(m, row + r, col + c, inOuter ? onBorder || inInner : false);
+    }
+  }
+}
+function placeAlignmentPattern(m, row, col) {
+  for (let r = -2;r <= 2; r++) {
+    for (let c = -2;c <= 2; c++) {
+      const onBorder = Math.abs(r) === 2 || Math.abs(c) === 2;
+      const isCenter = r === 0 && c === 0;
+      setModule(m, row + r, col + c, onBorder || isCenter);
+    }
+  }
+}
+function placeFixedPatterns(m, info) {
+  const size = info.size;
+  placeFinderPattern(m, 0, 0);
+  placeFinderPattern(m, 0, size - 7);
+  placeFinderPattern(m, size - 7, 0);
+  for (let i = 8;i < size - 8; i++) {
+    m[6][i] = i % 2 === 0;
+    m[i][6] = i % 2 === 0;
+  }
+  if (info.align.length >= 2) {
+    const positions = info.align;
+    for (const r of positions) {
+      for (const c of positions) {
+        if (r <= 8 && c <= 8)
+          continue;
+        if (r <= 8 && c >= size - 8)
+          continue;
+        if (r >= size - 8 && c <= 8)
+          continue;
+        placeAlignmentPattern(m, r, c);
+      }
+    }
+  }
+  m[size - 8][8] = true;
+  for (let i = 0;i <= 8; i++) {
+    if (m[8][i] === null)
+      m[8][i] = false;
+    if (m[i][8] === null)
+      m[i][8] = false;
+  }
+  for (let i = size - 8;i < size; i++) {
+    if (m[8][i] === null)
+      m[8][i] = false;
+    if (m[i][8] === null)
+      m[i][8] = false;
+  }
+}
+function formatInfo(ecLevel, mask) {
+  const data = ecLevel << 3 | mask;
+  let d = data << 10;
+  const gen = 1335;
+  for (let i = 14;i >= 10; i--) {
+    if (d & 1 << i)
+      d ^= gen << i - 10;
+  }
+  return (data << 10 | d) ^ 21522;
+}
+function writeFormatInfo(m, mask) {
+  const size = m.length;
+  const info = formatInfo(1, mask);
+  const posA = [
+    [8, 0],
+    [8, 1],
+    [8, 2],
+    [8, 3],
+    [8, 4],
+    [8, 5],
+    [8, 7],
+    [8, 8],
+    [7, 8],
+    [5, 8],
+    [4, 8],
+    [3, 8],
+    [2, 8],
+    [1, 8],
+    [0, 8]
+  ];
+  const posB = [
+    [size - 1, 8],
+    [size - 2, 8],
+    [size - 3, 8],
+    [size - 4, 8],
+    [size - 5, 8],
+    [size - 6, 8],
+    [size - 7, 8],
+    [8, size - 8],
+    [8, size - 7],
+    [8, size - 6],
+    [8, size - 5],
+    [8, size - 4],
+    [8, size - 3],
+    [8, size - 2],
+    [8, size - 1]
+  ];
+  for (let i = 0;i < 15; i++) {
+    const bit = (info >> i & 1) === 1;
+    m[posA[i][0]][posA[i][1]] = bit;
+    m[posB[i][0]][posB[i][1]] = bit;
+  }
+}
+function placeData(m, dataBits) {
+  const size = m.length;
+  let bitIdx = 0;
+  let upward = true;
+  for (let right = size - 1;right >= 1; right -= 2) {
+    if (right === 6)
+      right = 5;
+    const rows = upward ? Array.from({ length: size }, (_, i) => size - 1 - i) : Array.from({ length: size }, (_, i) => i);
+    for (const row of rows) {
+      for (const col of [right, right - 1]) {
+        if (col < 0)
+          continue;
+        if (m[row][col] !== null)
+          continue;
+        m[row][col] = bitIdx < dataBits.length ? dataBits[bitIdx++] === 1 : false;
+      }
+    }
+    upward = !upward;
+  }
+}
+function applyMask(m, reserved, maskIdx) {
+  const size = m.length;
+  const result = m.map((row) => [...row]);
+  const fn = MASK_FNS[maskIdx];
+  for (let r = 0;r < size; r++) {
+    for (let c = 0;c < size; c++) {
+      if (reserved[r][c] !== null)
+        continue;
+      if (fn(r, c))
+        result[r][c] = !result[r][c];
+    }
+  }
+  return result;
+}
+function penaltyScore(m) {
+  const size = m.length;
+  let score = 0;
+  for (let r = 0;r < size; r++) {
+    let runLen = 1;
+    for (let c = 1;c < size; c++) {
+      if (m[r][c] === m[r][c - 1]) {
+        runLen++;
+      } else {
+        if (runLen >= 5)
+          score += runLen - 2;
+        runLen = 1;
+      }
+    }
+    if (runLen >= 5)
+      score += runLen - 2;
+  }
+  for (let c = 0;c < size; c++) {
+    let runLen = 1;
+    for (let r = 1;r < size; r++) {
+      if (m[r][c] === m[r - 1][c]) {
+        runLen++;
+      } else {
+        if (runLen >= 5)
+          score += runLen - 2;
+        runLen = 1;
+      }
+    }
+    if (runLen >= 5)
+      score += runLen - 2;
+  }
+  for (let r = 0;r < size - 1; r++) {
+    for (let c = 0;c < size - 1; c++) {
+      const v = m[r][c];
+      if (v === m[r][c + 1] && v === m[r + 1][c] && v === m[r + 1][c + 1]) {
+        score += 3;
+      }
+    }
+  }
+  return score;
+}
+function generateQR(text) {
+  const { info } = selectVersion(new TextEncoder().encode(text).length);
+  const dataWords = encodeData(text, info);
+  const ecWords = rsEncode(dataWords, info.ecCW);
+  const allWords = [...dataWords, ...ecWords];
+  const bits = [];
+  for (const w of allWords) {
+    for (let i = 7;i >= 0; i--)
+      bits.push(w >> i & 1);
+  }
+  const reserved = createMatrix(info.size);
+  placeFixedPatterns(reserved, info);
+  const matrix = createMatrix(info.size);
+  placeFixedPatterns(matrix, info);
+  placeData(matrix, bits);
+  let bestMask = 0;
+  let bestScore = Infinity;
+  for (let mask = 0;mask < 8; mask++) {
+    const masked = applyMask(matrix, reserved, mask);
+    writeFormatInfo(masked, mask);
+    const score = penaltyScore(masked);
+    if (score < bestScore) {
+      bestScore = score;
+      bestMask = mask;
+    }
+  }
+  const final = applyMask(matrix, reserved, bestMask);
+  writeFormatInfo(final, bestMask);
+  return final.map((row) => row.map((cell) => cell === true));
+}
+function generateQRSvg(text, cellSize = 4, quietZone = 4) {
+  const modules = generateQR(text);
+  const size = modules.length;
+  const totalSize = (size + quietZone * 2) * cellSize;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${totalSize}" height="${totalSize}">`;
+  svg += `<rect width="${totalSize}" height="${totalSize}" fill="#fff"/>`;
+  for (let r = 0;r < size; r++) {
+    for (let c = 0;c < size; c++) {
+      if (modules[r][c]) {
+        const x = (c + quietZone) * cellSize;
+        const y = (r + quietZone) * cellSize;
+        svg += `<rect x="${x}" y="${y}" width="${cellSize}" height="${cellSize}" fill="#000"/>`;
+      }
+    }
+  }
+  svg += "</svg>";
+  return svg;
+}
+var EXP, LOG, VERSIONS, MASK_FNS;
+var init_qr = __esm(() => {
+  EXP = new Uint8Array(512);
+  LOG = new Uint8Array(256);
+  (() => {
+    let x = 1;
+    for (let i = 0;i < 255; i++) {
+      EXP[i] = x;
+      LOG[x] = i;
+      x = x & 128 ? (x << 1 ^ 285) & 255 : x << 1 & 255;
+    }
+    for (let i = 255;i < 512; i++)
+      EXP[i] = EXP[i - 255];
+  })();
+  VERSIONS = [
+    { size: 21, totalCW: 26, ecCW: 7, dataCW: 19, align: [] },
+    { size: 25, totalCW: 44, ecCW: 10, dataCW: 34, align: [6, 18] },
+    { size: 29, totalCW: 70, ecCW: 15, dataCW: 55, align: [6, 22] },
+    { size: 33, totalCW: 100, ecCW: 20, dataCW: 80, align: [6, 26] },
+    { size: 37, totalCW: 134, ecCW: 26, dataCW: 108, align: [6, 30] }
+  ];
+  MASK_FNS = [
+    (r, c) => (r + c) % 2 === 0,
+    (r, _) => r % 2 === 0,
+    (_, c) => c % 3 === 0,
+    (r, c) => (r + c) % 3 === 0,
+    (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r, c) => r * c % 2 + r * c % 3 === 0,
+    (r, c) => (r * c % 2 + r * c % 3) % 2 === 0,
+    (r, c) => ((r + c) % 2 + r * c % 3) % 2 === 0
+  ];
 });
 
 // src/auth.ts
@@ -3067,20 +4567,25 @@ __export(exports_auth, {
   isAuthEnabled: () => isAuthEnabled,
   handleLogout: () => handleLogout,
   handleLogin: () => handleLogin,
+  getQrTokenStatus: () => getQrTokenStatus,
+  getActiveSessions: () => getActiveSessions,
+  generateQrToken: () => generateQrToken,
+  approveQrToken: () => approveQrToken,
+  QR_APPROVE_PAGE: () => QR_APPROVE_PAGE,
   LOGIN_PAGE: () => LOGIN_PAGE
 });
-import { readFileSync as readFileSync15, writeFileSync as writeFileSync7, existsSync as existsSync9 } from "fs";
-import { join as join23 } from "path";
+import { readFileSync as readFileSync17, writeFileSync as writeFileSync10, existsSync as existsSync13 } from "fs";
+import { join as join24 } from "path";
 function loadAuthConfig() {
   try {
-    if (existsSync9(AUTH_CONFIG_PATH)) {
-      return JSON.parse(readFileSync15(AUTH_CONFIG_PATH, "utf-8"));
+    if (existsSync13(AUTH_CONFIG_PATH)) {
+      return JSON.parse(readFileSync17(AUTH_CONFIG_PATH, "utf-8"));
     }
   } catch {}
   return { enabled: false, username: "", passwordHash: "", sessions: {}, allowLocal: true };
 }
 function saveAuthConfig(config) {
-  writeFileSync7(AUTH_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync10(AUTH_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
 }
 function hashPassword(password) {
   const encoder = new TextEncoder;
@@ -3128,7 +4633,7 @@ function isAuthenticated(req) {
   }
   return true;
 }
-function handleLogin(username, password, userAgent) {
+function handleLogin(username, password, userAgent, ip) {
   const config = loadAuthConfig();
   if (config.username !== username) {
     return { ok: false, error: "Invalid credentials" };
@@ -3136,14 +4641,26 @@ function handleLogin(username, password, userAgent) {
   if (!verifyPassword(password, config.passwordHash)) {
     return { ok: false, error: "Invalid credentials" };
   }
+  const now = Date.now();
+  for (const [id, session] of Object.entries(config.sessions)) {
+    if (now - session.createdAt > SESSION_EXPIRY) {
+      delete config.sessions[id];
+    }
+  }
   const sessionId = generateSessionId();
-  config.sessions[sessionId] = { createdAt: Date.now(), userAgent };
+  config.sessions[sessionId] = { createdAt: Date.now(), userAgent, ip: ip || "unknown" };
   const entries = Object.entries(config.sessions).sort((a, b) => b[1].createdAt - a[1].createdAt);
   if (entries.length > 10) {
     config.sessions = Object.fromEntries(entries.slice(0, 10));
   }
   saveAuthConfig(config);
   return { ok: true, sessionId };
+}
+function getActiveSessions() {
+  const config = loadAuthConfig();
+  const now = Date.now();
+  const active = Object.entries(config.sessions).filter(([_, s]) => now - s.createdAt <= SESSION_EXPIRY).sort((a, b) => b[1].createdAt - a[1].createdAt).map(([id, s]) => ({ id: id.slice(0, 12) + "...", createdAt: s.createdAt, userAgent: s.userAgent, ip: s.ip }));
+  return { total: active.length, sessions: active };
 }
 function handleLogout(req) {
   const sessionId = getSessionFromCookie(req);
@@ -3164,12 +4681,85 @@ function setupAuth(username, password) {
 function isAuthEnabled() {
   return loadAuthConfig().enabled;
 }
-var AUTH_CONFIG_PATH, SESSION_EXPIRY, LOGIN_PAGE = `<!DOCTYPE html>
+function cleanupQrTokens() {
+  const now = Date.now();
+  for (const [key, t] of qrTokens) {
+    if (now > t.expiresAt)
+      qrTokens.delete(key);
+  }
+}
+function generateQrToken(userAgent, ip) {
+  cleanupQrTokens();
+  const pending = [...qrTokens.values()].filter((t) => t.status === "pending");
+  if (pending.length >= QR_MAX_PENDING) {
+    const oldest = pending.sort((a, b) => a.createdAt - b.createdAt)[0];
+    qrTokens.delete(oldest.token);
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const now = Date.now();
+  qrTokens.set(token, {
+    token,
+    createdAt: now,
+    expiresAt: now + QR_EXPIRY,
+    status: "pending",
+    userAgent,
+    ip
+  });
+  const approveUrl = `https://office.vuttipipat.com/auth/qr-approve?token=${token}`;
+  const qrSvg = generateQRSvg(approveUrl, 4, 4);
+  return { token, expiresAt: now + QR_EXPIRY, qrSvg };
+}
+function getQrTokenStatus(token) {
+  cleanupQrTokens();
+  const t = qrTokens.get(token);
+  if (!t)
+    return { status: "expired" };
+  if (Date.now() > t.expiresAt) {
+    qrTokens.delete(token);
+    return { status: "expired" };
+  }
+  if (t.status === "approved" && t.sessionId) {
+    qrTokens.delete(token);
+    return { status: "approved", sessionId: t.sessionId };
+  }
+  return { status: "pending" };
+}
+function approveQrToken(token, approverSessionId, bigScreenUserAgent) {
+  cleanupQrTokens();
+  const t = qrTokens.get(token);
+  if (!t)
+    return { ok: false, error: "Token expired or invalid" };
+  if (Date.now() > t.expiresAt) {
+    qrTokens.delete(token);
+    return { ok: false, error: "Token expired" };
+  }
+  if (t.status === "approved")
+    return { ok: false, error: "Token already used" };
+  const config = loadAuthConfig();
+  const sessionId = generateSessionId();
+  config.sessions[sessionId] = {
+    createdAt: Date.now(),
+    userAgent: bigScreenUserAgent || t.userAgent || "QR Login",
+    ip: t.ip || "qr-login"
+  };
+  const entries = Object.entries(config.sessions).sort((a, b) => b[1].createdAt - a[1].createdAt);
+  if (entries.length > 10) {
+    config.sessions = Object.fromEntries(entries.slice(0, 10));
+  }
+  saveAuthConfig(config);
+  t.status = "approved";
+  t.sessionId = sessionId;
+  t.approvedBy = approverSessionId;
+  return { ok: true };
+}
+var AUTH_CONFIG_PATH, SESSION_EXPIRY, QR_EXPIRY, QR_MAX_PENDING = 20, qrTokens, LOGIN_PAGE = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BoB's Office — Login</title>
+<title>BoB's Office \u2014 Login</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -3256,6 +4846,82 @@ var AUTH_CONFIG_PATH, SESSION_EXPIRY, LOGIN_PAGE = `<!DOCTYPE html>
     margin-bottom: 16px;
     opacity: 0.3;
   }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 24px 0;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+  }
+  .divider span {
+    color: rgba(255,255,255,0.3);
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+  .qr-section {
+    text-align: center;
+  }
+  .qr-container {
+    display: flex;
+    justify-content: center;
+    margin: 16px 0 12px;
+    min-height: 160px;
+    align-items: center;
+  }
+  .qr-container svg {
+    border-radius: 8px;
+    max-width: 160px;
+    max-height: 160px;
+  }
+  .qr-status {
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 1px;
+  }
+  .qr-status.success {
+    color: #22c55e;
+  }
+  .qr-countdown {
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    margin-top: 8px;
+  }
+  .qr-refresh {
+    background: none;
+    border: none;
+    color: #22d3ee;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 4px 8px;
+    letter-spacing: 1px;
+    margin-top: 8px;
+    width: auto;
+    display: inline-block;
+  }
+  .qr-refresh:hover {
+    text-decoration: underline;
+    background: none;
+  }
+  .qr-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .spinner {
+    width: 24px; height: 24px;
+    border: 2px solid rgba(34,211,238,0.2);
+    border-top-color: #22d3ee;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -3271,8 +4937,21 @@ var AUTH_CONFIG_PATH, SESSION_EXPIRY, LOGIN_PAGE = `<!DOCTYPE html>
     <button type="submit">LOGIN</button>
   </form>
   <p class="error" id="error"></p>
+
+  <div class="divider"><span>OR SCAN QR</span></div>
+
+  <div class="qr-section">
+    <p class="qr-label">SCAN WITH YOUR PHONE</p>
+    <div class="qr-container" id="qrContainer">
+      <div class="spinner"></div>
+    </div>
+    <p class="qr-status" id="qrStatus">GENERATING...</p>
+    <p class="qr-countdown" id="qrCountdown"></p>
+    <button class="qr-refresh" id="qrRefresh" style="display:none" onclick="loadQR()">REFRESH QR CODE</button>
+  </div>
 </div>
 <script>
+// Password login
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const err = document.getElementById('error');
@@ -3288,7 +4967,9 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     });
     const data = await res.json();
     if (data.ok) {
-      window.location.href = '/';
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get('redirect');
+      window.location.href = (redirect && redirect.startsWith('/')) ? redirect : '/';
     } else {
       err.textContent = data.error || 'Login failed';
       err.style.display = 'block';
@@ -3298,12 +4979,223 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     err.style.display = 'block';
   }
 });
+
+// QR login
+let qrToken = null;
+let qrExpiry = 0;
+let pollTimer = null;
+let countdownTimer = null;
+
+async function loadQR() {
+  const container = document.getElementById('qrContainer');
+  const status = document.getElementById('qrStatus');
+  const countdown = document.getElementById('qrCountdown');
+  const refresh = document.getElementById('qrRefresh');
+
+  container.innerHTML = '<div class="spinner"></div>';
+  status.textContent = 'GENERATING...';
+  status.className = 'qr-status';
+  countdown.textContent = '';
+  refresh.style.display = 'none';
+  if (pollTimer) clearInterval(pollTimer);
+  if (countdownTimer) clearInterval(countdownTimer);
+
+  try {
+    const res = await fetch('/auth/qr-generate');
+    const data = await res.json();
+    qrToken = data.token;
+    qrExpiry = data.expiresAt;
+
+    container.innerHTML = data.qrSvg;
+    status.textContent = 'WAITING FOR APPROVAL...';
+
+    // Start countdown
+    countdownTimer = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((qrExpiry - Date.now()) / 1000));
+      if (remaining <= 0) {
+        clearInterval(countdownTimer);
+        clearInterval(pollTimer);
+        countdown.textContent = '';
+        status.textContent = 'QR CODE EXPIRED';
+        refresh.style.display = 'inline-block';
+        container.style.opacity = '0.3';
+        return;
+      }
+      const min = Math.floor(remaining / 60);
+      const sec = remaining % 60;
+      countdown.textContent = min + ':' + String(sec).padStart(2, '0');
+    }, 1000);
+
+    // Poll for approval
+    pollTimer = setInterval(async () => {
+      try {
+        const r = await fetch('/auth/qr-status?token=' + qrToken);
+        const d = await r.json();
+        if (d.status === 'approved') {
+          clearInterval(pollTimer);
+          clearInterval(countdownTimer);
+          status.textContent = 'APPROVED!';
+          status.className = 'qr-status success';
+          countdown.textContent = '';
+          // Cookie set by server via Set-Cookie header \u2014 just redirect
+          setTimeout(() => { window.location.href = '/'; }, 500);
+        } else if (d.status === 'expired') {
+          clearInterval(pollTimer);
+          clearInterval(countdownTimer);
+          countdown.textContent = '';
+          status.textContent = 'QR CODE EXPIRED';
+          refresh.style.display = 'inline-block';
+          container.style.opacity = '0.3';
+        }
+      } catch {}
+    }, 2000);
+  } catch (e) {
+    status.textContent = 'FAILED TO GENERATE QR';
+    refresh.style.display = 'inline-block';
+  }
+}
+
+// Auto-load QR on page load
+loadQR();
+</script>
+</body>
+</html>`, QR_APPROVE_PAGE = (token, deviceInfo) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BoB's Office \u2014 Approve Login</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', monospace;
+    background: #020208;
+    color: #cdd6f4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .approve-box {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(34,211,238,0.15);
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.4), 0 0 40px rgba(34,211,238,0.03);
+  }
+  .icon { font-size: 48px; margin-bottom: 16px; }
+  h1 {
+    color: #22d3ee;
+    font-size: 16px;
+    letter-spacing: 4px;
+    margin-bottom: 8px;
+  }
+  .desc {
+    color: rgba(255,255,255,0.4);
+    font-size: 12px;
+    margin-bottom: 24px;
+    line-height: 1.6;
+  }
+  .device-info {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 24px;
+    word-break: break-all;
+    line-height: 1.5;
+  }
+  .device-info strong {
+    color: rgba(255,255,255,0.7);
+  }
+  .btn-approve {
+    width: 100%;
+    padding: 14px;
+    background: rgba(34,211,238,0.2);
+    color: #22d3ee;
+    border: 1px solid rgba(34,211,238,0.4);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-approve:hover { background: rgba(34,211,238,0.3); }
+  .btn-approve:active { transform: scale(0.98); }
+  .btn-approve:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .result {
+    margin-top: 16px;
+    font-size: 13px;
+    display: none;
+  }
+  .result.success { color: #22c55e; }
+  .result.error { color: #ef4444; }
+</style>
+</head>
+<body>
+<div class="approve-box">
+  <div class="icon">&#128272;</div>
+  <h1>APPROVE LOGIN</h1>
+  <p class="desc">A device is requesting access to BoB's Office. Approve only if you initiated this login.</p>
+  <div class="device-info">
+    <strong>Requesting Device:</strong><br>${deviceInfo}
+  </div>
+  <button class="btn-approve" id="approveBtn" onclick="approve()">APPROVE LOGIN</button>
+  <p class="result" id="result"></p>
+</div>
+<script>
+async function approve() {
+  const btn = document.getElementById('approveBtn');
+  const result = document.getElementById('result');
+  btn.disabled = true;
+  btn.textContent = 'APPROVING...';
+  try {
+    const res = await fetch('/auth/qr-approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: '${token}' }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      result.textContent = 'LOGIN APPROVED';
+      result.className = 'result success';
+      result.style.display = 'block';
+      btn.textContent = 'DONE';
+    } else {
+      result.textContent = data.error || 'Approval failed';
+      result.className = 'result error';
+      result.style.display = 'block';
+      btn.textContent = 'APPROVE LOGIN';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    result.textContent = 'Connection error';
+    result.className = 'result error';
+    result.style.display = 'block';
+    btn.textContent = 'APPROVE LOGIN';
+    btn.disabled = false;
+  }
+}
 </script>
 </body>
 </html>`;
 var init_auth = __esm(() => {
-  AUTH_CONFIG_PATH = join23(import.meta.dir, "../auth.json");
+  init_qr();
+  AUTH_CONFIG_PATH = join24(import.meta.dir, "../auth.json");
   SESSION_EXPIRY = 7 * 24 * 60 * 60 * 1000;
+  QR_EXPIRY = 2 * 60 * 1000;
+  qrTokens = new Map;
 });
 
 // node_modules/hono/dist/compose.js
@@ -5096,7 +6988,7 @@ var init_path = () => {};
 var ENCODINGS, ENCODINGS_ORDERED_KEYS, DEFAULT_DOCUMENT = "index.html", serveStatic = (options) => {
   const root = options.root ?? "./";
   const optionPath = options.path;
-  const join24 = options.join ?? defaultJoin;
+  const join25 = options.join ?? defaultJoin;
   return async (c, next) => {
     if (c.finalized) {
       return next();
@@ -5115,9 +7007,9 @@ var ENCODINGS, ENCODINGS_ORDERED_KEYS, DEFAULT_DOCUMENT = "index.html", serveSta
         return next();
       }
     }
-    let path = join24(root, !optionPath && options.rewriteRequestPath ? options.rewriteRequestPath(filename) : filename);
+    let path = join25(root, !optionPath && options.rewriteRequestPath ? options.rewriteRequestPath(filename) : filename);
     if (options.isDir && await options.isDir(path)) {
-      path = join24(path, DEFAULT_DOCUMENT);
+      path = join25(path, DEFAULT_DOCUMENT);
     }
     const getContent = options.getContent;
     let content = await getContent(path, c);
@@ -5164,8 +7056,8 @@ var init_serve_static = __esm(() => {
 });
 
 // node_modules/hono/dist/adapter/bun/serve-static.js
-import { stat } from "node:fs/promises";
-import { join as join24 } from "node:path";
+import { stat } from "fs/promises";
+import { join as join25 } from "path";
 var serveStatic2 = (options) => {
   return async function serveStatic22(c, next) {
     const getContent = async (path) => {
@@ -5183,7 +7075,7 @@ var serveStatic2 = (options) => {
     return serveStatic({
       ...options,
       getContent,
-      join: join24,
+      join: join25,
       isDir
     })(c, next);
   };
@@ -5354,116 +7246,9 @@ var init_bun = __esm(() => {
   init_server();
 });
 
-// src/commands/overview.ts
-function processMirror(raw2, lines) {
-  const sep = "─".repeat(60);
-  const filtered = raw2.replace(/[─━]{6,}/g, sep).split(`
-`).filter((l) => l.trim() !== "");
-  const visible = filtered.slice(-lines);
-  const pad = Math.max(0, lines - visible.length);
-  return `
-`.repeat(pad) + visible.join(`
-`);
-}
-var init_overview = __esm(() => {
-  init_ssh();
-});
-
-// src/lib/feed.ts
-function parseLine(line) {
-  if (!line || !line.includes(" | "))
-    return null;
-  const parts = line.split(" | ").map((s) => s.trim());
-  if (parts.length < 5)
-    return null;
-  const timestamp = parts[0];
-  const oracle = parts[1];
-  const host = parts[2];
-  const event = parts[3];
-  const project = parts[4];
-  const rest = parts.slice(5).join(" | ");
-  let sessionId = "";
-  let message = "";
-  const guiIdx = rest.indexOf(" » ");
-  if (guiIdx !== -1) {
-    sessionId = rest.slice(0, guiIdx).trim();
-    message = rest.slice(guiIdx + 3).trim();
-  } else {
-    sessionId = rest.trim();
-  }
-  const ts = new Date(timestamp.replace(" ", "T") + "+07:00").getTime();
-  if (isNaN(ts))
-    return null;
-  return { timestamp, oracle, host, event, project, sessionId, message, ts };
-}
-function activeOracles(events, windowMs = 5 * 60000) {
-  const cutoff = Date.now() - windowMs;
-  const map = new Map;
-  for (const e of events) {
-    if (e.ts < cutoff)
-      continue;
-    const prev = map.get(e.oracle);
-    if (!prev || e.ts > prev.ts)
-      map.set(e.oracle, e);
-  }
-  return map;
-}
-function describeActivity(event) {
-  switch (event.event) {
-    case "PreToolUse": {
-      const colonIdx = event.message.indexOf(":");
-      const tool = colonIdx > 0 ? event.message.slice(0, colonIdx).trim() : event.message.split(" ")[0];
-      const icon = TOOL_ICONS[tool] || "\uD83D\uDD27";
-      const detail = colonIdx > 0 ? event.message.slice(colonIdx + 1).trim() : "";
-      const short = detail.length > 60 ? detail.slice(0, 57) + "..." : detail;
-      return short ? `${icon} ${tool}: ${short}` : `${icon} ${tool}`;
-    }
-    case "PostToolUse":
-    case "PostToolUseFailure": {
-      const ok = event.event === "PostToolUse";
-      const tool = event.message.replace(/ [✓✗].*$/, "").trim() || "Tool";
-      return ok ? `✓ ${tool} done` : `✗ ${tool} failed`;
-    }
-    case "UserPromptSubmit": {
-      const short = event.message.length > 60 ? event.message.slice(0, 57) + "..." : event.message;
-      return `\uD83D\uDCAC ${short || "New prompt"}`;
-    }
-    case "SubagentStart":
-      return `\uD83E\uDD16 Subagent started`;
-    case "SubagentStop":
-      return `\uD83E\uDD16 Subagent done`;
-    case "SessionStart":
-      return `\uD83D\uDFE2 Session started`;
-    case "SessionEnd":
-      return `⏹ Session ended`;
-    case "Stop": {
-      const short = event.message.length > 60 ? event.message.slice(0, 57) + "..." : event.message;
-      return `⏹ ${short || "Stopped"}`;
-    }
-    case "Notification":
-      return `\uD83D\uDD14 ${event.message || "Notification"}`;
-    default:
-      return event.message || event.event;
-  }
-}
-var TOOL_ICONS;
-var init_feed = __esm(() => {
-  TOOL_ICONS = {
-    Bash: "⚡",
-    Read: "\uD83D\uDCD6",
-    Edit: "✏️",
-    Write: "\uD83D\uDCDD",
-    Grep: "\uD83D\uDD0D",
-    Glob: "\uD83D\uDCC2",
-    Agent: "\uD83E\uDD16",
-    WebFetch: "\uD83C\uDF10",
-    WebSearch: "\uD83D\uDD0E"
-  };
-});
-
 // src/feed-tail.ts
-import { statSync as statSync2, openSync, readSync, closeSync } from "node:fs";
-import { join as join25 } from "node:path";
+import { statSync as statSync3, openSync, readSync, closeSync } from "fs";
+import { join as join26 } from "path";
 
 class FeedTailer {
   path;
@@ -5526,7 +7311,7 @@ class FeedTailer {
   }
   poll() {
     try {
-      const stat2 = statSync2(this.path);
+      const stat2 = statSync3(this.path);
       const size = stat2.size;
       if (size < this.offset) {
         this.offset = 0;
@@ -5562,12 +7347,12 @@ class FeedTailer {
 var DEFAULT_PATH, POLL_MS = 1000, DEFAULT_MAX_BUFFER = 200;
 var init_feed_tail = __esm(() => {
   init_feed();
-  DEFAULT_PATH = join25(process.env.HOME || "/home/nat", ".oracle", "feed.log");
+  DEFAULT_PATH = join26(process.env.HOME || "/home/nat", ".oracle", "feed.log");
 });
 
 // src/loops.ts
-import { readFileSync as readFileSync16, writeFileSync as writeFileSync8, existsSync as existsSync10, appendFileSync as appendFileSync4 } from "fs";
-import { join as join26 } from "path";
+import { readFileSync as readFileSync18, writeFileSync as writeFileSync11, existsSync as existsSync14, appendFileSync as appendFileSync5 } from "fs";
+import { join as join27 } from "path";
 function parseCronField(field, min, max) {
   const values = [];
   for (const part of field.split(",")) {
@@ -5629,7 +7414,7 @@ async function isSessionAlive(tmuxTarget) {
 async function isIdle(tmuxTarget) {
   try {
     const pane = await exec(`tmux capture-pane -t '${tmuxTarget}' -p 2>/dev/null | tail -5`);
-    return pane.includes("❯");
+    return pane.includes("\u276F");
   } catch {
     return false;
   }
@@ -5637,7 +7422,7 @@ async function isIdle(tmuxTarget) {
 async function hasActiveOracles() {
   try {
     const now = Date.now();
-    const feed = await exec(`tail -50 ${FEED_LOG2} 2>/dev/null`);
+    const feed = await exec(`tail -50 ${FEED_LOG3} 2>/dev/null`);
     for (const line of feed.split(`
 `).reverse()) {
       const match2 = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
@@ -5677,8 +7462,8 @@ async function runCommand(command) {
 }
 function loadLog() {
   try {
-    if (existsSync10(LOOPS_LOG_PATH)) {
-      const data = JSON.parse(readFileSync16(LOOPS_LOG_PATH, "utf-8"));
+    if (existsSync14(LOOPS_LOG_PATH)) {
+      const data = JSON.parse(readFileSync18(LOOPS_LOG_PATH, "utf-8"));
       return Array.isArray(data) ? data.slice(-500) : [];
     }
   } catch {}
@@ -5687,20 +7472,20 @@ function loadLog() {
 function appendLog(entry) {
   const log = loadLog();
   log.push(entry);
-  writeFileSync8(LOOPS_LOG_PATH, JSON.stringify(log.slice(-500), null, 2), "utf-8");
+  writeFileSync11(LOOPS_LOG_PATH, JSON.stringify(log.slice(-500), null, 2), "utf-8");
 }
 function feedLog(message) {
   const now = new Date;
   const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-  const line = `${ts} | LoopEngine | ${__require("os").hostname()} | Notification | LoopEngine | loop » ${message}
+  const line = `${ts} | LoopEngine | ${__require("os").hostname()} | Notification | LoopEngine | loop \xBB ${message}
 `;
   try {
-    appendFileSync4(FEED_LOG2, line);
+    appendFileSync5(FEED_LOG3, line);
   } catch {}
 }
 function loadLoops2() {
   try {
-    return JSON.parse(readFileSync16(LOOPS_PATH2, "utf-8"));
+    return JSON.parse(readFileSync18(LOOPS_PATH3, "utf-8"));
   } catch {
     return { enabled: false, loops: [] };
   }
@@ -5714,7 +7499,7 @@ class LoopEngine {
     if (this.interval)
       return;
     this.broadcast = broadcastFn || null;
-    console.log("  ⏰ LoopEngine started — checking every 30s");
+    console.log("  \u23F0 LoopEngine started \u2014 checking every 30s");
     feedLog("LoopEngine started");
     setTimeout(() => this.tick(), 5000);
     this.interval = setInterval(() => this.tick(), CHECK_INTERVAL);
@@ -5744,12 +7529,12 @@ class LoopEngine {
   }
   async executeLoop(loop) {
     const ts = new Date().toISOString();
-    console.log(`  ⏰ Loop [${loop.id}] firing...`);
+    console.log(`  \u23F0 Loop [${loop.id}] firing...`);
     try {
       if (loop.command && !loop.tmux) {
         await runCommand(loop.command);
         this.logExecution({ loopId: loop.id, ts, status: "ok" });
-        feedLog(`[${loop.id}] ✓ executed command: ${loop.command}`);
+        feedLog(`[${loop.id}] \u2713 executed command: ${loop.command}`);
         return;
       }
       if (!loop.tmux || !loop.prompt) {
@@ -5765,14 +7550,14 @@ class LoopEngine {
       }
       let alive = await isSessionAlive(loop.tmux);
       if (!alive && loop.autoRestart && loop.restartDir) {
-        feedLog(`[${loop.id}] session down — auto-restarting ${loop.tmux}`);
+        feedLog(`[${loop.id}] session down \u2014 auto-restarting ${loop.tmux}`);
         alive = await restartSession(loop.tmux, loop.restartDir);
         if (!alive) {
           this.logExecution({ loopId: loop.id, ts, status: "error", reason: "auto-restart failed" });
-          feedLog(`[${loop.id}] ✗ auto-restart failed for ${loop.tmux}`);
+          feedLog(`[${loop.id}] \u2717 auto-restart failed for ${loop.tmux}`);
           return;
         }
-        feedLog(`[${loop.id}] ✓ session restarted successfully`);
+        feedLog(`[${loop.id}] \u2713 session restarted successfully`);
       }
       if (!alive) {
         this.logExecution({ loopId: loop.id, ts, status: "skipped", reason: "session not running" });
@@ -5785,18 +7570,18 @@ class LoopEngine {
           idle = await isIdle(loop.tmux);
           if (!idle) {
             this.logExecution({ loopId: loop.id, ts, status: "skipped", reason: "oracle busy after retry" });
-            feedLog(`[${loop.id}] skipped — ${loop.oracle} busy after retry`);
+            feedLog(`[${loop.id}] skipped \u2014 ${loop.oracle} busy after retry`);
             return;
           }
         }
       }
       await sendPrompt(loop.tmux, loop.prompt);
       this.logExecution({ loopId: loop.id, ts, status: "ok" });
-      feedLog(`[${loop.id}] ✓ sent to ${loop.oracle}`);
-      console.log(`  ⏰ Loop [${loop.id}] ✓ sent to ${loop.oracle}`);
+      feedLog(`[${loop.id}] \u2713 sent to ${loop.oracle}`);
+      console.log(`  \u23F0 Loop [${loop.id}] \u2713 sent to ${loop.oracle}`);
     } catch (e) {
       this.logExecution({ loopId: loop.id, ts, status: "error", reason: e.message });
-      feedLog(`[${loop.id}] ✗ error: ${e.message}`);
+      feedLog(`[${loop.id}] \u2717 error: ${e.message}`);
     }
   }
   logExecution(entry) {
@@ -5845,24 +7630,24 @@ class LoopEngine {
     if (!loop)
       return false;
     loop.enabled = enabled;
-    writeFileSync8(LOOPS_PATH2, JSON.stringify(config, null, 2), "utf-8");
+    writeFileSync11(LOOPS_PATH3, JSON.stringify(config, null, 2), "utf-8");
     return true;
   }
   toggleEngine(enabled) {
     const config = loadLoops2();
     config.enabled = enabled;
-    writeFileSync8(LOOPS_PATH2, JSON.stringify(config, null, 2), "utf-8");
+    writeFileSync11(LOOPS_PATH3, JSON.stringify(config, null, 2), "utf-8");
     feedLog(enabled ? "LoopEngine enabled" : "LoopEngine disabled");
   }
   isEnabled() {
     return loadLoops2().enabled;
   }
 }
-var LOOPS_PATH2, LOOPS_LOG_PATH, FEED_LOG2, CHECK_INTERVAL = 30000;
+var LOOPS_PATH3, LOOPS_LOG_PATH, FEED_LOG3, CHECK_INTERVAL = 30000;
 var init_loops = __esm(() => {
-  LOOPS_PATH2 = join26(import.meta.dir, "../loops.json");
-  LOOPS_LOG_PATH = join26(import.meta.dir, "../loops-log.json");
-  FEED_LOG2 = join26(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
+  LOOPS_PATH3 = join27(import.meta.dir, "../loops.json");
+  LOOPS_LOG_PATH = join27(import.meta.dir, "../loops-log.json");
+  FEED_LOG3 = join27(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
 });
 
 // src/handlers.ts
@@ -5963,7 +7748,7 @@ var subscribe = (ws, data, engine) => {
             taskId: data.itemId,
             type: "status_change",
             oracle: "dashboard",
-            content: `Status changed: ${item.status || "none"} → ${data.value}`,
+            content: `Status changed: ${item.status || "none"} \u2192 ${data.value}`,
             meta: { oldStatus: item.status, newStatus: data.value }
           });
         }
@@ -6216,7 +8001,9 @@ var init_handlers = __esm(() => {
 });
 
 // src/engine.ts
-import { statSync as statSync3 } from "fs";
+import { statSync as statSync4, appendFileSync as appendFileSync6 } from "fs";
+import { join as join28 } from "path";
+import { homedir as homedir13 } from "os";
 
 class MawEngine {
   clients = new Set;
@@ -6232,6 +8019,12 @@ class MawEngine {
   feedTailer;
   mawLogInterval = null;
   mawLogOffset = 0;
+  healthInterval = null;
+  lastRestartAttempt = new Map;
+  restartLog = [];
+  pendingMessages = new Map;
+  commAlerts = [];
+  lastHealthSummary = null;
   constructor({ feedTailer }) {
     this.feedTailer = feedTailer;
     registerBuiltinHandlers(this);
@@ -6339,6 +8132,148 @@ class MawEngine {
         ws.send(msg);
     } catch {}
   }
+  getHealthSummary() {
+    return this.lastHealthSummary;
+  }
+  checkOracleHealth() {
+    const liveSessions = new Set(this.cachedSessions.map((s) => s.name));
+    const now = Date.now();
+    const activeMap = this.feedTailer.getActive(5 * 60000);
+    const oracles = [];
+    let liveCount = 0;
+    let deadCount = 0;
+    for (const oracle of EXPECTED_ORACLES) {
+      const sessionName = oracleToSession(oracle);
+      const isLive = liveSessions.has(sessionName);
+      const lastEvent = activeMap.get(oracle.charAt(0).toUpperCase() + oracle.slice(1) + "-Oracle") || activeMap.get(oracle.toUpperCase().slice(0, 1) + oracle.slice(1) + "-Oracle") || activeMap.get(FEED_ORACLE_NAMES[oracle] || "") || activeMap.get(oracle);
+      const lastSeen = lastEvent ? new Date(lastEvent.ts).toISOString() : "";
+      let pendingCount = 0;
+      for (const [, pm] of this.pendingMessages) {
+        if (pm.to === oracle && !pm.responded)
+          pendingCount++;
+      }
+      let status;
+      if (isLive && lastEvent && now - lastEvent.ts < 5 * 60000) {
+        status = "alive";
+        liveCount++;
+      } else if (isLive) {
+        status = "idle";
+        liveCount++;
+      } else {
+        status = "dead";
+        deadCount++;
+        const lastAttempt = this.lastRestartAttempt.get(oracle) || 0;
+        if (now - lastAttempt >= RESTART_COOLDOWN_MS) {
+          this.lastRestartAttempt.set(oracle, now);
+          const alert = {
+            id: alertId("dead-session", oracle),
+            type: "dead-session",
+            oracle,
+            waitingMin: 0,
+            tier: 2,
+            ts: new Date().toISOString(),
+            action: "restarting"
+          };
+          this.emitAlert(alert);
+          this.appendHealthLog(`auto-restart triggered: ${oracle}`);
+          try {
+            Bun.spawn(["maw", "wake", oracle]);
+            this.restartLog.push({ oracle, ts: new Date().toISOString(), success: true });
+          } catch {
+            this.restartLog.push({ oracle, ts: new Date().toISOString(), success: false });
+          }
+        }
+      }
+      oracles.push({
+        name: oracle,
+        status,
+        sessionName,
+        lastSeen,
+        pendingMessages: pendingCount,
+        avgResponseMin: 0,
+        responseRate: 0
+      });
+    }
+    const totalPending = [...this.pendingMessages.values()].filter((m) => !m.responded).length;
+    const summary = {
+      timestamp: new Date().toISOString(),
+      responseRate: totalPending === 0 ? 100 : Math.round([...this.pendingMessages.values()].filter((m) => m.responded).length / Math.max(this.pendingMessages.size, 1) * 100),
+      liveCount,
+      deadCount,
+      totalOracles: EXPECTED_ORACLES.size,
+      oracles,
+      alerts: [...this.commAlerts],
+      restartLog: this.restartLog.slice(-20)
+    };
+    this.lastHealthSummary = summary;
+    this.broadcast(JSON.stringify({ type: "oracle-health", health: summary }));
+  }
+  trackPendingMessages(entries) {
+    const now = Date.now();
+    for (const entry of entries) {
+      if (entry.ch === "heartbeat")
+        continue;
+      const from = entry.from || "";
+      const to = entry.to || "";
+      if (EXPECTED_ORACLES.has(to) && isTrackableSender(from)) {
+        const key = `${entry.ts}:${to}`;
+        if (!this.pendingMessages.has(key)) {
+          this.pendingMessages.set(key, {
+            id: key,
+            from,
+            to,
+            ts: now,
+            msg: (entry.msg || "").slice(0, 100),
+            responded: false,
+            alertedTier: 0
+          });
+        }
+      }
+      if (EXPECTED_ORACLES.has(from)) {
+        for (const [key, pm] of this.pendingMessages) {
+          if (pm.to === from && !pm.responded) {
+            pm.responded = true;
+          }
+        }
+      }
+    }
+    for (const [key, pm] of this.pendingMessages) {
+      if (pm.responded)
+        continue;
+      const waitingMin = (now - pm.ts) / 60000;
+      const tier = getTier(waitingMin);
+      if (tier > 0 && tier > pm.alertedTier) {
+        pm.alertedTier = tier;
+        const alert = {
+          id: alertId("no-response", pm.to, pm.from),
+          type: "no-response",
+          oracle: pm.to,
+          from: pm.from,
+          waitingMin: Math.round(waitingMin),
+          tier,
+          ts: new Date().toISOString()
+        };
+        this.emitAlert(alert);
+      }
+      if (waitingMin > 24 * 60) {
+        this.pendingMessages.delete(key);
+      }
+    }
+  }
+  emitAlert(alert) {
+    this.commAlerts = this.commAlerts.filter((a) => a.id !== alert.id);
+    this.commAlerts.push(alert);
+    if (this.commAlerts.length > 50)
+      this.commAlerts = this.commAlerts.slice(-50);
+    this.broadcast(JSON.stringify({ type: "comm-alert", alert }));
+  }
+  appendHealthLog(message) {
+    try {
+      const line = `${new Date().toISOString()} | ${message}
+`;
+      appendFileSync6(HEALTH_LOG_PATH, line);
+    } catch {}
+  }
   startIntervals() {
     if (this.captureInterval)
       return;
@@ -6358,17 +8293,16 @@ class MawEngine {
         ws.send(msg);
     });
     try {
-      this.mawLogOffset = statSync3(MAW_LOG_PATH).size;
+      this.mawLogOffset = statSync4(MAW_LOG_PATH).size;
     } catch {
       this.mawLogOffset = 0;
     }
     this.mawLogInterval = setInterval(() => this.checkMawLog(), 2000);
+    this.healthInterval = setInterval(() => this.checkOracleHealth(), 30000);
   }
   checkMawLog() {
-    if (this.clients.size === 0)
-      return;
     try {
-      const size = statSync3(MAW_LOG_PATH).size;
+      const size = statSync4(MAW_LOG_PATH).size;
       if (size <= this.mawLogOffset)
         return;
       const buf = Buffer.alloc(size - this.mawLogOffset);
@@ -6385,9 +8319,12 @@ class MawEngine {
         } catch {}
       }
       if (entries.length > 0) {
-        const msg = JSON.stringify({ type: "maw-log", entries });
-        for (const ws of this.clients)
-          ws.send(msg);
+        if (this.clients.size > 0) {
+          const msg = JSON.stringify({ type: "maw-log", entries });
+          for (const ws of this.clients)
+            ws.send(msg);
+        }
+        this.trackPendingMessages(entries);
       }
     } catch {}
   }
@@ -6410,6 +8347,10 @@ class MawEngine {
       clearInterval(this.mawLogInterval);
       this.mawLogInterval = null;
     }
+    if (this.healthInterval) {
+      clearInterval(this.healthInterval);
+      this.healthInterval = null;
+    }
     if (this.feedUnsub) {
       this.feedUnsub();
       this.feedUnsub = null;
@@ -6417,409 +8358,242 @@ class MawEngine {
     this.feedTailer.stop();
   }
 }
+var HEALTH_LOG_PATH, FEED_ORACLE_NAMES;
 var init_engine = __esm(() => {
   init_ssh();
   init_tmux();
   init_handlers();
   init_maw_log();
+  init_oracle_health();
+  HEALTH_LOG_PATH = join28(homedir13(), ".oracle", "oracle-health.log");
+  FEED_ORACLE_NAMES = {
+    bob: "BoB-Oracle",
+    dev: "Dev-Oracle",
+    qa: "QA-Oracle",
+    researcher: "Researcher-Oracle",
+    writer: "Writer-Oracle",
+    designer: "Designer-Oracle",
+    hr: "HR-Oracle",
+    aia: "AIA-Oracle",
+    data: "Data-Oracle",
+    admin: "Admin-Oracle",
+    botdev: "BotDev-Oracle",
+    creator: "Creator-Oracle",
+    doc: "DocCon-Oracle",
+    editor: "Editor-Oracle",
+    security: "Security-Oracle",
+    fe: "FE-Oracle",
+    pa: "PA-Oracle"
+  };
 });
 
-// src/auth.ts
-import { readFileSync as readFileSync18, writeFileSync as writeFileSync9, existsSync as existsSync11 } from "fs";
-import { join as join27 } from "path";
-function loadAuthConfig2() {
-  try {
-    if (existsSync11(AUTH_CONFIG_PATH2)) {
-      return JSON.parse(readFileSync18(AUTH_CONFIG_PATH2, "utf-8"));
-    }
-  } catch {}
-  return { enabled: false, username: "", passwordHash: "", sessions: {}, allowLocal: true };
+// src/lib/federation-auth.ts
+function signRequest(method, path, token) {
+  const timestamp = Date.now().toString();
+  const payload = `${method}:${path}:${timestamp}`;
+  const hmac = new Bun.CryptoHasher("sha256", token);
+  hmac.update(payload);
+  const signature = hmac.digest("hex");
+  return { timestamp, signature };
 }
-function saveAuthConfig2(config) {
-  writeFileSync9(AUTH_CONFIG_PATH2, JSON.stringify(config, null, 2), "utf-8");
+function signHeaders(token, method, path) {
+  const { timestamp, signature } = signRequest(method, path, token);
+  return {
+    "X-Maw-Timestamp": timestamp,
+    "X-Maw-Signature": signature
+  };
 }
-function hashPassword2(password) {
-  const encoder = new TextEncoder;
-  const data = encoder.encode(password + "maw-salt-2026");
-  let hash = 2166136261;
-  for (const byte of data) {
-    hash ^= byte;
-    hash = Math.imul(hash, 16777619);
-  }
-  return `maw1$${(hash >>> 0).toString(16)}$${data.length}`;
-}
-function verifyPassword2(password, hash) {
-  return hashPassword2(password) === hash;
-}
-function generateSessionId2() {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-function isLocalRequest2(req) {
-  const host = new URL(req.url).hostname;
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
-}
-function getSessionFromCookie2(req) {
-  const cookie = req.headers.get("cookie") || "";
-  const match2 = cookie.match(/maw_session=([a-f0-9]+)/);
-  return match2 ? match2[1] : null;
-}
-function isAuthenticated2(req) {
-  const config = loadAuthConfig2();
-  if (!config.enabled)
-    return true;
-  if (config.allowLocal && isLocalRequest2(req))
-    return true;
-  const sessionId = getSessionFromCookie2(req);
-  if (!sessionId)
+function verifyRequest(method, path, timestamp, signature) {
+  if (!timestamp || !signature)
     return false;
-  const session = config.sessions[sessionId];
-  if (!session)
-    return false;
-  if (Date.now() - session.createdAt > SESSION_EXPIRY2) {
-    delete config.sessions[sessionId];
-    saveAuthConfig2(config);
-    return false;
-  }
-  return true;
-}
-function handleLogin2(username, password, userAgent) {
-  const config = loadAuthConfig2();
-  if (config.username !== username) {
-    return { ok: false, error: "Invalid credentials" };
-  }
-  if (!verifyPassword2(password, config.passwordHash)) {
-    return { ok: false, error: "Invalid credentials" };
-  }
-  const sessionId = generateSessionId2();
-  config.sessions[sessionId] = { createdAt: Date.now(), userAgent };
-  const entries = Object.entries(config.sessions).sort((a, b) => b[1].createdAt - a[1].createdAt);
-  if (entries.length > 10) {
-    config.sessions = Object.fromEntries(entries.slice(0, 10));
-  }
-  saveAuthConfig2(config);
-  return { ok: true, sessionId };
-}
-function handleLogout2(req) {
-  const sessionId = getSessionFromCookie2(req);
-  if (!sessionId)
-    return;
-  const config = loadAuthConfig2();
-  delete config.sessions[sessionId];
-  saveAuthConfig2(config);
-}
-var AUTH_CONFIG_PATH2, SESSION_EXPIRY2, LOGIN_PAGE2 = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BoB's Office — Login</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'SF Mono', 'Cascadia Code', monospace;
-    background: #020208;
-    color: #cdd6f4;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-  }
-  .login-box {
-    background: rgba(255,255,255,0.02);
-    border: 1px solid rgba(34,211,238,0.15);
-    border-radius: 16px;
-    padding: 40px;
-    width: 360px;
-    box-shadow: 0 4px 30px rgba(0,0,0,0.4), 0 0 40px rgba(34,211,238,0.03);
-  }
-  h1 {
-    color: #22d3ee;
-    font-size: 18px;
-    letter-spacing: 6px;
-    text-align: center;
-    margin-bottom: 8px;
-  }
-  .subtitle {
-    text-align: center;
-    color: rgba(255,255,255,0.3);
-    font-size: 11px;
-    margin-bottom: 32px;
-    letter-spacing: 2px;
-  }
-  label {
-    display: block;
-    color: rgba(255,255,255,0.5);
-    font-size: 11px;
-    margin-bottom: 6px;
-    letter-spacing: 1px;
-  }
-  input {
-    width: 100%;
-    padding: 10px 14px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
-    color: #cdd6f4;
-    font-family: inherit;
-    font-size: 14px;
-    outline: none;
-    margin-bottom: 16px;
-    transition: border-color 0.2s;
-  }
-  input:focus {
-    border-color: rgba(34,211,238,0.4);
-    box-shadow: 0 0 12px rgba(34,211,238,0.1);
-  }
-  button {
-    width: 100%;
-    padding: 12px;
-    background: rgba(34,211,238,0.15);
-    color: #22d3ee;
-    border: 1px solid rgba(34,211,238,0.3);
-    border-radius: 8px;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: bold;
-    letter-spacing: 2px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  button:hover { background: rgba(34,211,238,0.25); }
-  button:active { transform: scale(0.98); }
-  .error {
-    color: #ef4444;
-    font-size: 12px;
-    text-align: center;
-    margin-top: 12px;
-    display: none;
-  }
-  .lock-icon {
-    text-align: center;
-    font-size: 32px;
-    margin-bottom: 16px;
-    opacity: 0.3;
-  }
-</style>
-</head>
-<body>
-<div class="login-box">
-  <div class="lock-icon">&#128274;</div>
-  <h1>BOB'S OFFICE</h1>
-  <p class="subtitle">AUTHENTICATION REQUIRED</p>
-  <form id="loginForm">
-    <label>USERNAME</label>
-    <input type="text" id="username" autocomplete="username" autofocus>
-    <label>PASSWORD</label>
-    <input type="password" id="password" autocomplete="current-password">
-    <button type="submit">LOGIN</button>
-  </form>
-  <p class="error" id="error"></p>
-</div>
-<script>
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const err = document.getElementById('error');
-  err.style.display = 'none';
-  try {
-    const res = await fetch('/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: document.getElementById('username').value,
-        password: document.getElementById('password').value,
-      }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      window.location.href = '/';
-    } else {
-      err.textContent = data.error || 'Login failed';
-      err.style.display = 'block';
-    }
-  } catch (e) {
-    err.textContent = 'Connection error';
-    err.style.display = 'block';
-  }
-});
-</script>
-</body>
-</html>`;
-var init_auth2 = __esm(() => {
-  AUTH_CONFIG_PATH2 = join27(import.meta.dir, "../auth.json");
-  SESSION_EXPIRY2 = 7 * 24 * 60 * 60 * 1000;
-});
-
-// src/worktrees.ts
-import { readdirSync as readdirSync11, readFileSync as readFileSync19 } from "fs";
-import { join as join28 } from "path";
-async function scanWorktrees2() {
   const config = loadConfig();
-  const ghqRoot = config.ghqRoot;
-  const fleetDir = join28(import.meta.dir, "../fleet");
-  let wtPaths = [];
-  try {
-    const raw2 = await ssh(`find ${ghqRoot} -maxdepth 4 -name '*.wt-*' -type d 2>/dev/null`);
-    wtPaths = raw2.split(`
-`).filter(Boolean);
-  } catch {}
-  const sessions = await listSessions();
-  const runningWindows = new Set;
-  for (const s of sessions) {
-    for (const w of s.windows) {
-      runningWindows.add(w.name);
+  const token = config.federationToken;
+  if (!token)
+    return false;
+  const ts = parseInt(timestamp, 10);
+  if (isNaN(ts))
+    return false;
+  const drift = Math.abs(Date.now() - ts);
+  if (drift > MAX_DRIFT_MS)
+    return false;
+  const payload = `${method}:${path}:${timestamp}`;
+  const hmac = new Bun.CryptoHasher("sha256", token);
+  hmac.update(payload);
+  const expected = hmac.digest("hex");
+  return signature === expected;
+}
+function requireHmac() {
+  return async (c, next) => {
+    const timestamp = c.req.header("x-maw-timestamp");
+    const signature = c.req.header("x-maw-signature");
+    const method = c.req.method;
+    const path = new URL(c.req.url).pathname;
+    if (!verifyRequest(method, path, timestamp, signature)) {
+      return c.json({ error: "invalid or missing HMAC signature" }, 401);
     }
-  }
-  const fleetWindows = new Map;
-  try {
-    for (const file of readdirSync11(fleetDir).filter((f) => f.endsWith(".json"))) {
-      const cfg = JSON.parse(readFileSync19(join28(fleetDir, file), "utf-8"));
-      for (const w of cfg.windows || []) {
-        if (w.repo)
-          fleetWindows.set(w.repo, file);
-      }
-    }
-  } catch {}
-  const results = [];
-  for (const wtPath of wtPaths) {
-    const dirName = wtPath.split("/").pop();
-    const parts = dirName.split(".wt-");
-    if (parts.length < 2)
-      continue;
-    const mainRepoName = parts[0];
-    const wtName = parts[1];
-    const relPath = wtPath.replace(ghqRoot + "/", "");
-    const parentParts = relPath.split("/");
-    parentParts.pop();
-    const org = parentParts.join("/");
-    const mainRepo = `${org}/${mainRepoName}`;
-    const repo = `${org}/${dirName}`;
-    let branch = "";
+    await next();
+  };
+}
+var MAX_DRIFT_MS = 60000;
+var init_federation_auth = __esm(() => {
+  init_config();
+});
+
+// src/lib/peers.ts
+function isCacheValid() {
+  return !!cache && Date.now() - cache.ts < CACHE_TTL;
+}
+function getNamedPeers() {
+  const config = loadConfig();
+  return config.namedPeers || [];
+}
+async function checkPeerHealth() {
+  const peers = getNamedPeers();
+  if (peers.length === 0)
+    return [];
+  const results = await Promise.allSettled(peers.map(async (peer) => {
+    const start = performance.now();
     try {
-      branch = (await ssh(`git -C '${wtPath}' rev-parse --abbrev-ref HEAD 2>/dev/null`)).trim();
+      const res = await fetch(`${peer.url}/api/config`, {
+        signal: AbortSignal.timeout(5000)
+      });
+      const latencyMs = Math.round(performance.now() - start);
+      return {
+        name: peer.name,
+        url: peer.url,
+        reachable: res.ok,
+        latencyMs
+      };
     } catch {
-      branch = "unknown";
+      return {
+        name: peer.name,
+        url: peer.url,
+        reachable: false,
+        latencyMs: null
+      };
     }
-    let tmuxWindow;
-    const fleetFile = fleetWindows.get(repo);
-    for (const s of sessions) {
-      for (const w of s.windows) {
-        const taskPart = wtName.replace(/^\d+-/, "");
-        if (w.name.endsWith(`-${taskPart}`) || w.name === taskPart) {
-          tmuxWindow = w.name;
-        }
-      }
-    }
-    const status = tmuxWindow ? "active" : "stale";
-    results.push({
-      path: wtPath,
-      branch,
-      repo,
-      mainRepo,
-      name: wtName,
-      status,
-      tmuxWindow,
-      fleetFile
-    });
+  }));
+  return results.map((r) => r.status === "fulfilled" ? r.value : { name: "unknown", url: "", reachable: false, latencyMs: null });
+}
+async function aggregateAgents(localSessions) {
+  const config = loadConfig();
+  const nodeName = config.node || "local";
+  const agents = {};
+  const staticAgents = config.agents || {};
+  for (const [name, node] of Object.entries(staticAgents)) {
+    if (typeof node === "string" && node)
+      agents[name] = node;
   }
-  const mainRepos = [...new Set(results.map((r) => r.mainRepo))];
-  for (const mainRepo of mainRepos) {
-    const mainPath = join28(ghqRoot, mainRepo);
+  for (const s of localSessions) {
+    const name = s.replace(/^\d+-/, "");
+    agents[name] = nodeName;
+  }
+  if (isCacheValid() && cache) {
+    Object.assign(agents, cache.agents);
+    return agents;
+  }
+  const peers = getNamedPeers();
+  const remoteAgents = {};
+  await Promise.allSettled(peers.map(async (peer) => {
     try {
-      const prunable = await ssh(`git -C '${mainPath}' worktree list --porcelain 2>/dev/null | grep -A1 'prunable' | grep 'worktree' | sed 's/worktree //'`);
-      for (const orphanPath of prunable.split(`
-`).filter(Boolean)) {
-        const existing = results.find((r) => r.path === orphanPath);
-        if (existing) {
-          existing.status = "orphan";
-        } else {
-          const dirName = orphanPath.split("/").pop() || "";
-          results.push({
-            path: orphanPath,
-            branch: "(prunable)",
-            repo: dirName,
-            mainRepo,
-            name: dirName,
-            status: "orphan"
-          });
+      const res = await fetch(`${peer.url}/api/config`, {
+        signal: AbortSignal.timeout(5000)
+      });
+      if (!res.ok)
+        return;
+      const data = await res.json();
+      if (data.agents) {
+        for (const [name, node] of Object.entries(data.agents)) {
+          remoteAgents[name] = node;
         }
       }
     } catch {}
-  }
-  return results;
+  }));
+  cache = { agents: remoteAgents, sessions: [], ts: Date.now() };
+  Object.assign(agents, remoteAgents);
+  return agents;
 }
-async function cleanupWorktree2(wtPath) {
+async function crossNodeSend(target, text) {
+  const colonIdx = target.indexOf(":");
+  if (colonIdx === -1)
+    return { ok: false, error: "not a cross-node target" };
+  const nodeName = target.slice(0, colonIdx);
+  const remoteTarget = target.slice(colonIdx + 1);
   const config = loadConfig();
-  const ghqRoot = config.ghqRoot;
-  const fleetDir = join28(import.meta.dir, "../fleet");
-  const log = [];
-  const dirName = wtPath.split("/").pop();
-  const parts = dirName.split(".wt-");
-  if (parts.length < 2) {
-    log.push(`not a worktree: ${dirName}`);
-    return log;
-  }
-  const mainRepoName = parts[0];
-  const relPath = wtPath.replace(ghqRoot + "/", "");
-  const parentParts = relPath.split("/");
-  parentParts.pop();
-  const org = parentParts.join("/");
-  const mainPath = join28(ghqRoot, org, mainRepoName);
-  const repo = `${org}/${dirName}`;
-  const sessions = await listSessions();
-  const wtName = parts[1];
-  const taskPart = wtName.replace(/^\d+-/, "");
-  for (const s of sessions) {
-    for (const w of s.windows) {
-      if (w.name.endsWith(`-${taskPart}`) || w.name === taskPart) {
-        try {
-          await ssh(`tmux kill-window -t '${s.name}:${w.name}'`);
-          log.push(`killed window ${s.name}:${w.name}`);
-        } catch {
-          log.push(`window already closed: ${w.name}`);
-        }
-      }
+  const peers = config.namedPeers || [];
+  const peer = peers.find((p) => p.name === nodeName);
+  if (!peer)
+    return { ok: false, error: `unknown peer: ${nodeName}` };
+  const path = "/api/federation/send";
+  const token = config.federationToken;
+  if (!token)
+    return { ok: false, error: "no federationToken configured" };
+  const { timestamp, signature } = signRequest("POST", path, token);
+  try {
+    const res = await fetch(`${peer.url}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Maw-Timestamp": timestamp,
+        "X-Maw-Signature": signature
+      },
+      body: JSON.stringify({ target: remoteTarget, text, from: config.node || "unknown" }),
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { ok: false, error: `peer responded ${res.status}: ${body}` };
     }
-  }
-  let branch = "";
-  try {
-    branch = (await ssh(`git -C '${wtPath}' rev-parse --abbrev-ref HEAD`)).trim();
-  } catch {}
-  try {
-    await ssh(`git -C '${mainPath}' worktree remove '${wtPath}' --force`);
-    await ssh(`git -C '${mainPath}' worktree prune`);
-    log.push(`removed worktree ${dirName}`);
+    return { ok: true, forwarded: true };
   } catch (e) {
-    log.push(`worktree remove failed: ${e.message || e}`);
+    return { ok: false, error: `peer unreachable: ${e.message}` };
   }
-  if (branch && branch !== "main" && branch !== "HEAD" && branch !== "unknown") {
-    try {
-      await ssh(`git -C '${mainPath}' branch -d '${branch}'`);
-      log.push(`deleted branch ${branch}`);
-    } catch {
-      log.push(`branch ${branch} not deleted (may have unmerged changes)`);
-    }
-  }
-  try {
-    for (const file of readdirSync11(fleetDir).filter((f) => f.endsWith(".json"))) {
-      const filePath = join28(fleetDir, file);
-      const cfg = JSON.parse(readFileSync19(filePath, "utf-8"));
-      const before = cfg.windows?.length || 0;
-      cfg.windows = (cfg.windows || []).filter((w) => w.repo !== repo);
-      if (cfg.windows.length < before) {
-        const { writeFileSync: writeFileSync10 } = await import("fs");
-        writeFileSync10(filePath, JSON.stringify(cfg, null, 2) + `
-`);
-        log.push(`removed from ${file}`);
-      }
-    }
-  } catch {}
-  return log;
 }
-var init_worktrees2 = __esm(() => {
-  init_ssh();
+async function aggregateSessions(localSessions) {
+  const config = loadConfig();
+  const nodeName = config.node || "local";
+  const tagged = localSessions.map((s) => ({
+    ...s,
+    node: nodeName
+  }));
+  const peers = getNamedPeers();
+  if (peers.length === 0)
+    return { sessions: tagged, nodes: [nodeName] };
+  const nodes = [nodeName];
+  const remoteSessions = [];
+  await Promise.allSettled(peers.map(async (peer) => {
+    try {
+      const res = await fetch(`${peer.url}/api/sessions`, {
+        signal: AbortSignal.timeout(5000)
+      });
+      if (!res.ok)
+        return;
+      const data = await res.json();
+      const sessions = Array.isArray(data) ? data : data.sessions || [];
+      for (const s of sessions) {
+        remoteSessions.push({ ...s, node: peer.name });
+      }
+      nodes.push(peer.name);
+    } catch {}
+  }));
+  return { sessions: [...tagged, ...remoteSessions], nodes };
+}
+var cache = null, CACHE_TTL = 30000;
+var init_peers = __esm(() => {
   init_config();
+  init_federation_auth();
+});
+
+// src/progress.ts
+function readProgress() {
+  return [...progressMap.values()];
+}
+function getOracleProgress(oracle) {
+  return progressMap.get(oracle);
+}
+var progressMap;
+var init_progress = __esm(() => {
+  progressMap = new Map;
 });
 
 // src/pty.ts
@@ -6958,159 +8732,7 @@ var init_pty = __esm(() => {
 });
 
 // src/auto-report.ts
-async function findBobTarget() {
-  try {
-    const sessions2 = await listSessions();
-    for (const s of sessions2) {
-      for (const w of s.windows) {
-        if (/bob/i.test(w.name)) {
-          const target = `${s.name}:${w.index}`;
-          try {
-            const cmd = await getPaneCommand(target);
-            if (/claude|node/i.test(cmd))
-              return target;
-          } catch {}
-        }
-      }
-    }
-  } catch {}
-  return null;
-}
-function hasReportedRecently(oracle) {
-  const last = lastReportedToBob.get(oracle.toLowerCase());
-  if (!last)
-    return false;
-  return Date.now() - last < 5 * 60000;
-}
-async function autoReportToBob(oracle, event) {
-  const oracleLower = oracle.toLowerCase();
-  const oracleName = ORACLE_MAP[oracleLower] || oracle;
-  if (BOB_NAMES.some((n) => n.toLowerCase() === oracleLower))
-    return;
-  if (hasReportedRecently(oracleLower))
-    return;
-  const commits = await getRecentCommits(oracleLower).catch(() => []);
-  const lastCommit = commits[0] || "(no recent commits)";
-  const reportMsg = [
-    `[auto-report] ${oracleName} session ended.`,
-    `Last commit: ${lastCommit}`,
-    commits.length > 1 ? `(${commits.length} commits in last 12h)` : "",
-    event.message ? `Stop reason: ${event.message.slice(0, 200)}` : "",
-    ``,
-    `⚠️ Oracle did not /talk-to bob — this is an auto-report (LAW #7).`
-  ].filter(Boolean).join(`
-`);
-  const bobTarget = await findBobTarget();
-  if (bobTarget) {
-    try {
-      await sendKeys(bobTarget, reportMsg + "\r");
-      console.log(`  \x1B[36m\uD83D\uDCEC\x1B[0m Auto-report: ${oracleName} → Bob (LAW #7)`);
-    } catch (e) {
-      console.log(`  \x1B[33m⚠\x1B[0m Auto-report failed to send to Bob: ${e.message}`);
-    }
-  }
-  writeFeedNotification(oracleName, `[report] ${reportMsg}`);
-  lastReportedToBob.set(oracleLower, Date.now());
-}
-function recordTalkToBob(oracle) {
-  lastReportedToBob.set(oracle.toLowerCase(), Date.now());
-}
-async function sendCcBobReminder(oracle) {
-  const oracleName = ORACLE_MAP[oracle] || oracle;
-  const now = Date.now();
-  const lastReminder = lastCcBobReminder.get(oracle) || 0;
-  if (now - lastReminder < CC_BOB_REMINDER_COOLDOWN)
-    return;
-  try {
-    const sessions2 = await listSessions();
-    for (const s of sessions2) {
-      const key = s.name.replace(/^\d+-/, "").toLowerCase();
-      if (key === oracle) {
-        const target = `${s.name}:${s.windows[0]?.index ?? 0}`;
-        const cmd = await getPaneCommand(target);
-        if (/claude|node/i.test(cmd)) {
-          await sendKeys(target, `[LAW #7 reminder] สรุปงานที่ทำอยู่ cc bob ด้วยนะ — ใช้ /talk-to bob สรุปสถานะ\r`);
-          lastCcBobReminder.set(oracle, now);
-          console.log(`  \x1B[33m⚠\x1B[0m cc-bob reminder sent to ${oracleName}`);
-        }
-        break;
-      }
-    }
-  } catch {}
-}
-function processFeedEvent(event) {
-  const oracleLower = event.oracle.toLowerCase();
-  if (event.event === "SessionStart" || event.event === "PreToolUse" || event.event === "UserPromptSubmit") {
-    activeSessions.set(oracleLower, event.ts);
-  }
-  if (event.event === "PreToolUse" || event.event === "PostToolUse") {
-    if (!BOB_NAMES.some((n) => n.toLowerCase() === oracleLower) && ORACLE_MAP[oracleLower]) {
-      const count = (toolCallCounts.get(oracleLower) || 0) + 1;
-      toolCallCounts.set(oracleLower, count);
-      if (count >= CC_BOB_TOOL_THRESHOLD && !hasReportedRecently(oracleLower)) {
-        sendCcBobReminder(oracleLower).catch(() => {});
-        toolCallCounts.set(oracleLower, 0);
-      }
-    }
-  }
-  if (event.event === "Notification" && event.message) {
-    try {
-      if (event.message.includes("[handoff]")) {
-        const json = JSON.parse(event.message.slice(event.message.indexOf("[handoff]") + "[handoff] ".length));
-        if (json.to && BOB_NAMES.some((n) => n.toLowerCase() === json.to.toLowerCase())) {
-          recordTalkToBob(json.from || oracleLower);
-          toolCallCounts.set(oracleLower, 0);
-        }
-      }
-    } catch {}
-  }
-  if (event.event === "UserPromptSubmit" && event.message) {
-    const msg = event.message.toLowerCase();
-    if (msg.includes("cc bob") || msg.includes("/talk-to bob") || msg.includes("talk-to bob")) {
-      recordTalkToBob(oracleLower);
-      toolCallCounts.set(oracleLower, 0);
-    }
-  }
-  if (event.event === "Stop" || event.event === "SessionEnd") {
-    if (BOB_NAMES.some((n) => n.toLowerCase() === oracleLower))
-      return;
-    if (!ORACLE_MAP[oracleLower])
-      return;
-    const stopKey = `${oracleLower}-${Math.floor(event.ts / 30000)}`;
-    if (processedStops.has(stopKey))
-      return;
-    processedStops.add(stopKey);
-    if (processedStops.size > 100) {
-      const arr = [...processedStops];
-      for (let i = 0;i < arr.length - 50; i++)
-        processedStops.delete(arr[i]);
-    }
-    const lastActive = activeSessions.get(oracleLower);
-    if (!lastActive || event.ts - lastActive > 10 * 60000)
-      return;
-    setTimeout(() => {
-      if (!hasReportedRecently(oracleLower)) {
-        autoReportToBob(oracleLower, event).catch(() => {});
-      }
-    }, 15000);
-  }
-}
-function installAutoReport(feedTailer) {
-  feedTailer.onEvent(processFeedEvent);
-  console.log("  \x1B[36m●\x1B[0m Auto-report to Bob installed (LAW #7)");
-}
-var BOB_NAMES, lastReportedToBob, activeSessions, processedStops, toolCallCounts, lastCcBobReminder, CC_BOB_TOOL_THRESHOLD = 20, CC_BOB_REMINDER_COOLDOWN;
-var init_auto_report = __esm(() => {
-  init_ssh();
-  init_autopilot();
-  BOB_NAMES = ["bob", "bob-oracle", "BoB-Oracle"];
-  lastReportedToBob = new Map;
-  activeSessions = new Map;
-  processedStops = new Set;
-  toolCallCounts = new Map;
-  lastCcBobReminder = new Map;
-  CC_BOB_REMINDER_COOLDOWN = 30 * 60000;
-});
+function installAutoReport(_feedTailer) {}
 
 // src/server.ts
 var exports_server = {};
@@ -7118,14 +8740,43 @@ __export(exports_server, {
   startServer: () => startServer,
   app: () => app
 });
-import { readdirSync as readdirSync12, readFileSync as readFileSync20, writeFileSync as writeFileSync10, renameSync as renameSync2, unlinkSync, existsSync as existsSync13 } from "fs";
-import { join as join29, basename as basename2 } from "path";
-import { mkdirSync as mkdirSync6 } from "fs";
+import { readdirSync as readdirSync12, readFileSync as readFileSync20, writeFileSync as writeFileSync12, renameSync as renameSync3, unlinkSync as unlinkSync2, existsSync as existsSync15 } from "fs";
+import { join as join29, basename as basename4 } from "path";
+import { mkdirSync as mkdirSync9 } from "fs";
 import { randomUUID } from "crypto";
 import { extname } from "path";
-import { appendFileSync as appendFileSync5 } from "fs";
+import { appendFileSync as appendFileSync7 } from "fs";
+function isInternalOnly(path) {
+  if (INTERNAL_ONLY_PATHS.has(path))
+    return true;
+  if (path.startsWith("/api/progress/"))
+    return true;
+  return false;
+}
+function isReadOnlyCmd(cmd) {
+  const trimmed = cmd.trim();
+  return READONLY_CMDS.some((prefix) => trimmed === prefix || trimmed.startsWith(prefix + " "));
+}
+function parseSignature(sig) {
+  const m = sig.match(/^\[([^:\]]+):([^\]]+)\]$/);
+  if (!m)
+    return null;
+  return { originHost: m[1], originAgent: m[2], isAnon: m[2].startsWith("anon-") };
+}
+function resolvePeerUrl(peer) {
+  const config = loadConfig();
+  const namedPeers = config?.namedPeers ?? [];
+  const match2 = namedPeers.find((p) => p.name === peer);
+  if (match2)
+    return match2.url;
+  if (/^[\w.-]+:\d+$/.test(peer))
+    return `http://${peer}`;
+  if (peer.startsWith("http://") || peer.startsWith("https://"))
+    return peer;
+  return null;
+}
 function startServer(port = +(process.env.MAW_PORT || loadConfig().port || 3456)) {
-  const engine = new MawEngine({ feedTailer });
+  engine = new MawEngine({ feedTailer });
   installAutoReport(feedTailer);
   const wsHandler = {
     open: (ws) => {
@@ -7151,7 +8802,7 @@ function startServer(port = +(process.env.MAW_PORT || loadConfig().port || 3456)
   const fetchHandler = (req, server2) => {
     const url = new URL(req.url);
     if (url.pathname === "/ws/pty" || url.pathname === "/ws") {
-      if (!isAuthenticated2(req)) {
+      if (!isAuthenticated(req)) {
         return new Response("Unauthorized", { status: 401 });
       }
       const mode = url.pathname === "/ws/pty" ? "pty" : undefined;
@@ -7170,14 +8821,14 @@ function startServer(port = +(process.env.MAW_PORT || loadConfig().port || 3456)
       setTimeout(() => tmux.run("send-keys", "-t", "shell:0", "claude --dangerously-skip-permissions", "Enter").catch(() => {}), 1000);
     }
   });
-  console.log(`maw serve → http://localhost:${port} (ws://localhost:${port}/ws)`);
+  console.log(`maw serve \u2192 http://localhost:${port} (ws://localhost:${port}/ws)`);
   const certPath = join29(import.meta.dir, "../white.local+3.pem");
   const keyPath = join29(import.meta.dir, "../white.local+3-key.pem");
-  if (existsSync13(certPath) && existsSync13(keyPath)) {
+  if (existsSync15(certPath) && existsSync15(keyPath)) {
     const tlsPort = port + 1;
     const tls = { cert: readFileSync20(certPath), key: readFileSync20(keyPath) };
     Bun.serve({ port: tlsPort, tls, fetch: fetchHandler, websocket: wsHandler });
-    console.log(`maw serve → https://localhost:${tlsPort} (wss://localhost:${tlsPort}/ws) [TLS]`);
+    console.log(`maw serve \u2192 https://localhost:${tlsPort} (wss://localhost:${tlsPort}/ws) [TLS]`);
   }
   return server;
 }
@@ -7216,10 +8867,10 @@ ${fmt(rate.totalPerMin)} tok/min (${fmt(rate.inputPerMin)} in, ${fmt(rate.output
       ch: "heartbeat"
     }) + `
 `;
-    appendFileSync5(MAW_LOG_PATH, entry);
+    appendFileSync7(MAW_LOG_PATH, entry);
   } catch {}
 }
-var app, ORACLE_URL3, roomsPath, uiStatePath, asksPath, fleetDir, hallOfFamePath, feedTailer, loopEngine, JARVIS_API_URL, attachDir;
+var app, engine = null, INTERNAL_ONLY_PATHS, ORACLE_URL2, roomsPath, pinAttempts, uiStatePath, asksPath, fleetDir, hallOfFamePath, feedTailer, PE_SESSION_TOKEN, PE_COOKIE_NAME = "pe_session", PE_COOKIE_MAX_AGE, READONLY_CMDS, BOB_PANE, loopEngine, JARVIS_API_URL, attachDir;
 var init_server2 = __esm(() => {
   init_dist();
   init_cors();
@@ -7230,15 +8881,17 @@ var init_server2 = __esm(() => {
   init_feed_tail();
   init_engine();
   init_loops();
-  init_auth2();
+  init_auth();
+  init_federation_auth();
+  init_peers();
   init_config();
   init_task_log();
   init_projects();
-  init_worktrees2();
+  init_worktrees();
   init_token_index();
   init_maw_log();
+  init_progress();
   init_pty();
-  init_auto_report();
   init_maw_log();
   init_feed();
   app = new Hono2;
@@ -7247,10 +8900,11 @@ var init_server2 = __esm(() => {
     c.header("Access-Control-Allow-Private-Network", "true");
   });
   app.use("/api/*", cors());
-  app.get("/auth/login", (c) => c.html(LOGIN_PAGE2));
+  app.get("/auth/login", (c) => c.html(LOGIN_PAGE));
   app.post("/auth/login", async (c) => {
     const { username, password } = await c.req.json();
-    const result = handleLogin2(username, password, c.req.header("user-agent") || "");
+    const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "direct";
+    const result = handleLogin(username, password, c.req.header("user-agent") || "", ip);
     if (result.ok) {
       return c.json({ ok: true }, 200, {
         "Set-Cookie": `maw_session=${result.sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`
@@ -7259,20 +8913,97 @@ var init_server2 = __esm(() => {
     return c.json({ ok: false, error: result.error }, 401);
   });
   app.get("/auth/logout", (c) => {
-    handleLogout2(c.req.raw);
+    handleLogout(c.req.raw);
     return c.redirect("/auth/login", 302, {
       "Set-Cookie": "maw_session=; Path=/; HttpOnly; Max-Age=0"
     });
   });
+  app.post("/auth/logout", (c) => {
+    handleLogout(c.req.raw);
+    return c.json({ ok: true }, 200, {
+      "Set-Cookie": "maw_session=; Path=/; HttpOnly; Max-Age=0"
+    });
+  });
+  app.get("/auth/me", (c) => {
+    const authed = isAuthenticated(c.req.raw);
+    return c.json({ authenticated: authed, authEnabled: isAuthEnabled() });
+  });
+  app.get("/api/auth/sessions", (c) => {
+    if (!isAuthenticated(c.req.raw))
+      return c.json({ error: "unauthorized" }, 401);
+    return c.json(getActiveSessions());
+  });
+  app.get("/auth/qr-generate", (c) => {
+    const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "direct";
+    const ua = c.req.header("user-agent") || "";
+    const result = generateQrToken(ua, ip);
+    return c.json(result);
+  });
+  app.get("/auth/qr-approve", (c) => {
+    const token = c.req.query("token");
+    if (!token)
+      return c.text("Missing token", 400);
+    if (!isAuthenticated(c.req.raw)) {
+      return c.redirect(`/auth/login?redirect=/auth/qr-approve?token=${encodeURIComponent(token)}`);
+    }
+    const ua = c.req.header("user-agent") || "Unknown device";
+    return c.html(QR_APPROVE_PAGE(token, ua));
+  });
+  app.post("/auth/qr-approve", async (c) => {
+    if (!isAuthenticated(c.req.raw)) {
+      return c.json({ ok: false, error: "Not authenticated" }, 401);
+    }
+    const { token } = await c.req.json();
+    if (!token)
+      return c.json({ ok: false, error: "Missing token" }, 400);
+    const cookie = c.req.header("cookie") || "";
+    const match2 = cookie.match(/maw_session=([a-f0-9]+)/);
+    const approverSession = match2 ? match2[1] : "unknown";
+    const result = approveQrToken(token, approverSession);
+    if (!result.ok)
+      return c.json(result, 400);
+    return c.json({ ok: true });
+  });
+  app.get("/auth/qr-status", (c) => {
+    const token = c.req.query("token");
+    if (!token)
+      return c.json({ error: "Missing token" }, 400);
+    const result = getQrTokenStatus(token);
+    if (result.status === "approved" && result.sessionId) {
+      return c.json({ status: "approved" }, 200, {
+        "Set-Cookie": `maw_session=${result.sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`
+      });
+    }
+    return c.json(result);
+  });
   app.use("*", async (c, next) => {
     const path = new URL(c.req.url).pathname;
-    if (path.startsWith("/auth/"))
+    if (path.startsWith("/auth/") || path.startsWith("/api/attachments/"))
       return next();
-    if (!isAuthenticated2(c.req.raw)) {
+    if (!isAuthenticated(c.req.raw)) {
       if (path.startsWith("/api/") || path.startsWith("/ws")) {
         return c.json({ error: "unauthorized" }, 401);
       }
       return c.redirect("/auth/login");
+    }
+    return next();
+  });
+  INTERNAL_ONLY_PATHS = new Set([
+    "/api/sessions/federated",
+    "/api/feed",
+    "/api/tokens",
+    "/api/tokens/rate",
+    "/api/maw-log",
+    "/api/progress",
+    "/api/oracle-health"
+  ]);
+  app.use("/api/*", async (c, next) => {
+    const path = new URL(c.req.url).pathname;
+    if (isInternalOnly(path)) {
+      const cfIp = c.req.header("cf-connecting-ip");
+      if (cfIp) {
+        return c.json({ error: "internal_only", hint: "This endpoint is not available externally" }, 403);
+      }
     }
     return next();
   });
@@ -7299,8 +9030,49 @@ var init_server2 = __esm(() => {
     const { target, text } = await c.req.json();
     if (!target || !text)
       return c.json({ error: "target and text required" }, 400);
+    if (target.includes(":")) {
+      const result = await crossNodeSend(target, text);
+      if (!result.ok)
+        return c.json({ error: result.error }, 502);
+      return c.json({ ok: true, target, text, forwarded: true });
+    }
     await sendKeys(target, text);
     return c.json({ ok: true, target, text });
+  });
+  app.post("/api/federation/send", requireHmac(), async (c) => {
+    const { target, text, from: senderName } = await c.req.json();
+    if (!target || !text)
+      return c.json({ error: "target and text required" }, 400);
+    const sessions2 = await listSessions();
+    const resolved = findWindow2(sessions2, target) || target;
+    await sendKeys(resolved, text);
+    try {
+      const { appendFileSync: appendFileSync8, mkdirSync: mkdirSync10 } = await import("fs");
+      const { join: join30 } = await import("path");
+      const { homedir: homedir14, hostname: hostname2 } = await import("os");
+      const home = homedir14();
+      const host = hostname2();
+      const from = senderName || "federation";
+      const ts = new Date().toISOString();
+      const logDir = join30(home, ".oracle");
+      mkdirSync10(logDir, { recursive: true });
+      appendFileSync8(join30(logDir, "maw-log.jsonl"), JSON.stringify({ ts, from, to: target, target: resolved, msg: text, host, sid: null }) + `
+`);
+      const now = new Date;
+      const pad = (n) => String(n).padStart(2, "0");
+      const feedTs = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      const flat = text.replace(/\n/g, " \u239C ");
+      appendFileSync8(join30(logDir, "feed.log"), `${feedTs} | ${from} | ${host} | Notification | ${from} | maw-hey \xBB [handoff] ${JSON.stringify({ from, to: target, message: flat })}
+`);
+      const inboxDir = join30(logDir, "inbox");
+      const inboxTarget = target.replace(/[^a-zA-Z0-9_-]/g, "");
+      if (inboxTarget) {
+        mkdirSync10(inboxDir, { recursive: true });
+        appendFileSync8(join30(inboxDir, `${inboxTarget}.jsonl`), JSON.stringify({ ts, from, type: "msg", msg: text, thread: null }) + `
+`);
+      }
+    } catch {}
+    return c.json({ ok: true, target: resolved, original: target !== resolved ? target : undefined, text });
   });
   app.post("/api/select", async (c) => {
     const { target } = await c.req.json();
@@ -7310,13 +9082,10 @@ var init_server2 = __esm(() => {
     return c.json({ ok: true, target });
   });
   app.get("/", serveStatic2({ root: "./dist-office", path: "/index.html" }));
-  app.get("/dashboard", (c) => c.redirect("/#orbital"));
-  app.get("/office", (c) => c.redirect("/#office"));
   app.get("/assets/*", serveStatic2({ root: "./dist-office" }));
-  app.get("/office/*", serveStatic2({
-    root: "./",
-    rewriteRequestPath: (p) => p.replace(/^\/office/, "/dist-office")
-  }));
+  app.get("/favicon.svg", serveStatic2({ root: "./dist-office" }));
+  app.get("/*.html", serveStatic2({ root: "./dist-office" }));
+  app.get("/*.mp3", serveStatic2({ root: "./dist-office" }));
   app.get("/office-8bit", serveStatic2({ root: "./dist-8bit-office", path: "/index.html" }));
   app.get("/office-8bit/*", serveStatic2({
     root: "./",
@@ -7337,7 +9106,7 @@ var init_server2 = __esm(() => {
     root: "./",
     rewriteRequestPath: (p) => p.replace(/^\/superman/, "/dist-superman")
   }));
-  ORACLE_URL3 = process.env.ORACLE_URL || loadConfig().oracleUrl;
+  ORACLE_URL2 = process.env.ORACLE_URL || loadConfig().oracleUrl;
   app.get("/api/oracle/search", async (c) => {
     const q2 = c.req.query("q");
     if (!q2)
@@ -7347,7 +9116,7 @@ var init_server2 = __esm(() => {
     if (model)
       params.set("model", model);
     try {
-      const res = await fetch(`${ORACLE_URL3}/api/search?${params}`);
+      const res = await fetch(`${ORACLE_URL2}/api/search?${params}`);
       return c.json(await res.json());
     } catch (e) {
       return c.json({ error: `Oracle unreachable: ${e.message}` }, 502);
@@ -7356,7 +9125,7 @@ var init_server2 = __esm(() => {
   app.get("/api/oracle/traces", async (c) => {
     const limit = c.req.query("limit") || "10";
     try {
-      const res = await fetch(`${ORACLE_URL3}/api/traces?limit=${limit}`);
+      const res = await fetch(`${ORACLE_URL2}/api/traces?limit=${limit}`);
       return c.json(await res.json());
     } catch (e) {
       return c.json({ error: `Oracle unreachable: ${e.message}` }, 502);
@@ -7364,7 +9133,7 @@ var init_server2 = __esm(() => {
   });
   app.get("/api/oracle/stats", async (c) => {
     try {
-      const res = await fetch(`${ORACLE_URL3}/api/stats`);
+      const res = await fetch(`${ORACLE_URL2}/api/stats`);
       return c.json(await res.json());
     } catch (e) {
       return c.json({ error: `Oracle unreachable: ${e.message}` }, 502);
@@ -7373,7 +9142,7 @@ var init_server2 = __esm(() => {
   roomsPath = join29(import.meta.dir, "../rooms.json");
   app.get("/api/rooms", (c) => {
     try {
-      if (!existsSync13(roomsPath))
+      if (!existsSync15(roomsPath))
         return c.json({ rooms: [] });
       return c.json(JSON.parse(readFileSync20(roomsPath, "utf-8")));
     } catch {
@@ -7384,16 +9153,51 @@ var init_server2 = __esm(() => {
     try {
       const body = await c.req.json();
       body.updatedAt = new Date().toISOString();
-      writeFileSync10(roomsPath, JSON.stringify(body, null, 2), "utf-8");
+      writeFileSync12(roomsPath, JSON.stringify(body, null, 2), "utf-8");
       return c.json({ ok: true });
     } catch (e) {
       return c.json({ error: e.message }, 400);
     }
   });
+  pinAttempts = new Map;
+  app.get("/api/pin-info", (c) => {
+    const config = loadConfig();
+    const pin = config.pin || "";
+    return c.json({ length: pin.length, enabled: pin.length > 0 });
+  });
+  app.post("/api/pin-set", async (c) => {
+    const { pin } = await c.req.json();
+    const newPin = typeof pin === "string" ? pin.replace(/\D/g, "") : "";
+    saveConfig({ pin: newPin });
+    return c.json({ ok: true, length: newPin.length, enabled: newPin.length > 0 });
+  });
+  app.post("/api/pin-verify", async (c) => {
+    const ip = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "local";
+    const now = Date.now();
+    const entry = pinAttempts.get(ip) || { count: 0, resetAt: now + 60000 };
+    if (now > entry.resetAt) {
+      entry.count = 0;
+      entry.resetAt = now + 60000;
+    }
+    entry.count++;
+    pinAttempts.set(ip, entry);
+    if (entry.count > 5) {
+      return c.json({ ok: false, error: "Too many attempts. Wait 1 minute." }, 429);
+    }
+    const { pin } = await c.req.json();
+    const config = loadConfig();
+    const correct = config.pin || "";
+    if (!correct)
+      return c.json({ ok: true });
+    const ok = pin === correct;
+    if (ok)
+      pinAttempts.delete(ip);
+    return c.json({ ok });
+  });
   uiStatePath = join29(import.meta.dir, "../ui-state.json");
   app.get("/api/ui-state", (c) => {
     try {
-      if (!existsSync13(uiStatePath))
+      if (!existsSync15(uiStatePath))
         return c.json({});
       return c.json(JSON.parse(readFileSync20(uiStatePath, "utf-8")));
     } catch {
@@ -7403,7 +9207,7 @@ var init_server2 = __esm(() => {
   app.post("/api/ui-state", async (c) => {
     try {
       const body = await c.req.json();
-      writeFileSync10(uiStatePath, JSON.stringify(body, null, 2), "utf-8");
+      writeFileSync12(uiStatePath, JSON.stringify(body, null, 2), "utf-8");
       return c.json({ ok: true });
     } catch (e) {
       return c.json({ error: e.message }, 400);
@@ -7412,7 +9216,7 @@ var init_server2 = __esm(() => {
   asksPath = join29(import.meta.dir, "../asks.json");
   app.get("/api/asks", (c) => {
     try {
-      if (!existsSync13(asksPath))
+      if (!existsSync15(asksPath))
         return c.json([]);
       const asks = JSON.parse(readFileSync20(asksPath, "utf-8"));
       const clean = asks.filter((a) => {
@@ -7427,7 +9231,7 @@ var init_server2 = __esm(() => {
   app.post("/api/asks", async (c) => {
     try {
       const body = await c.req.json();
-      writeFileSync10(asksPath, JSON.stringify(body, null, 2), "utf-8");
+      writeFileSync12(asksPath, JSON.stringify(body, null, 2), "utf-8");
       return c.json({ ok: true });
     } catch (e) {
       return c.json({ error: e.message }, 400);
@@ -7527,7 +9331,7 @@ var init_server2 = __esm(() => {
     if (!filePath)
       return c.json({ error: "path required" }, 400);
     const fullPath = join29(import.meta.dir, "..", filePath);
-    if (!existsSync13(fullPath))
+    if (!existsSync15(fullPath))
       return c.json({ error: "not found" }, 404);
     try {
       const content = readFileSync20(fullPath, "utf-8");
@@ -7564,7 +9368,7 @@ var init_server2 = __esm(() => {
         }
         saveConfig(parsed);
       } else {
-        writeFileSync10(fullPath, content + `
+        writeFileSync12(fullPath, content + `
 `, "utf-8");
       }
       return c.json({ ok: true });
@@ -7577,12 +9381,12 @@ var init_server2 = __esm(() => {
     if (!filePath || !filePath.startsWith("fleet/"))
       return c.json({ error: "invalid path" }, 400);
     const fullPath = join29(import.meta.dir, "..", filePath);
-    if (!existsSync13(fullPath))
+    if (!existsSync15(fullPath))
       return c.json({ error: "not found" }, 404);
     const isDisabled = filePath.endsWith(".disabled");
     const newPath = isDisabled ? fullPath.replace(/\.disabled$/, "") : fullPath + ".disabled";
     const newRelPath = isDisabled ? filePath.replace(/\.disabled$/, "") : filePath + ".disabled";
-    renameSync2(fullPath, newPath);
+    renameSync3(fullPath, newPath);
     return c.json({ ok: true, newPath: newRelPath });
   });
   app.delete("/api/config-file", async (c) => {
@@ -7590,32 +9394,48 @@ var init_server2 = __esm(() => {
     if (!filePath || !filePath.startsWith("fleet/"))
       return c.json({ error: "cannot delete" }, 400);
     const fullPath = join29(import.meta.dir, "..", filePath);
-    if (!existsSync13(fullPath))
+    if (!existsSync15(fullPath))
       return c.json({ error: "not found" }, 404);
-    unlinkSync(fullPath);
+    unlinkSync2(fullPath);
     return c.json({ ok: true });
   });
   app.put("/api/config-file", async (c) => {
     const { name, content } = await c.req.json();
     if (!name || !name.endsWith(".json"))
       return c.json({ error: "name must end with .json" }, 400);
-    const safeName = basename2(name);
+    const safeName = basename4(name);
     const fullPath = join29(fleetDir, safeName);
-    if (existsSync13(fullPath))
+    if (existsSync15(fullPath))
       return c.json({ error: "file already exists" }, 409);
     try {
       JSON.parse(content);
     } catch {
       return c.json({ error: "invalid JSON" }, 400);
     }
-    writeFileSync10(fullPath, content + `
+    writeFileSync12(fullPath, content + `
 `, "utf-8");
     return c.json({ ok: true, path: `fleet/${safeName}` });
   });
-  app.get("/api/config", (c) => {
+  app.get("/api/config", async (c) => {
     if (c.req.query("raw") === "1")
       return c.json(loadConfig());
-    return c.json(configForDisplay());
+    const config = loadConfig();
+    const display = configForDisplay();
+    const sessions2 = await listSessions().catch(() => []);
+    const sessionNames = sessions2.map((s) => typeof s === "string" ? s : s.name || "");
+    const agents = await aggregateAgents(sessionNames);
+    const namedPeers = {};
+    for (const p of config.namedPeers || []) {
+      namedPeers[p.name] = p.url;
+    }
+    return c.json({
+      ...display,
+      node: config.node || "local",
+      agents,
+      namedPeers,
+      rooms: config.rooms || {},
+      federationToken: undefined
+    });
   });
   app.post("/api/config", async (c) => {
     try {
@@ -7636,7 +9456,7 @@ var init_server2 = __esm(() => {
   });
   app.get("/api/worktrees", async (c) => {
     try {
-      return c.json(await scanWorktrees2());
+      return c.json(await scanWorktrees());
     } catch (e) {
       return c.json({ error: e.message }, 500);
     }
@@ -7646,7 +9466,7 @@ var init_server2 = __esm(() => {
     if (!path)
       return c.json({ error: "path required" }, 400);
     try {
-      const log = await cleanupWorktree2(path);
+      const log = await cleanupWorktree(path);
       return c.json({ ok: true, log });
     } catch (e) {
       return c.json({ error: e.message }, 500);
@@ -7655,7 +9475,7 @@ var init_server2 = __esm(() => {
   hallOfFamePath = join29(process.env.HOME || "/home/mbank", "repos/github.com/BankCurfew/HR-Oracle/hall-of-fame/data.json");
   app.get("/api/hall-of-fame", (c) => {
     try {
-      if (!existsSync13(hallOfFamePath))
+      if (!existsSync15(hallOfFamePath))
         return c.json({ error: "data.json not found" }, 404);
       return c.json(JSON.parse(readFileSync20(hallOfFamePath, "utf-8")));
     } catch (e) {
@@ -7694,6 +9514,16 @@ var init_server2 = __esm(() => {
     entries = entries.slice(-limit);
     return c.json({ entries, total });
   });
+  app.get("/api/progress", (c) => {
+    return c.json(readProgress());
+  });
+  app.get("/api/progress/:oracle", (c) => {
+    const oracle = c.req.param("oracle").toLowerCase();
+    const progress = getOracleProgress(oracle);
+    if (!progress)
+      return c.json({ error: "no progress found" }, 404);
+    return c.json(progress);
+  });
   feedTailer = new FeedTailer;
   app.get("/api/feed", (c) => {
     const limit = Math.min(200, +(c.req.query("limit") || "50"));
@@ -7703,6 +9533,227 @@ var init_server2 = __esm(() => {
       events = events.filter((e) => e.oracle === oracle);
     const active = [...feedTailer.getActive().keys()];
     return c.json({ events: events.reverse(), total: events.length, active_oracles: active });
+  });
+  app.get("/api/federation/status", async (c) => {
+    const peers = await checkPeerHealth();
+    return c.json({ peers });
+  });
+  PE_SESSION_TOKEN = crypto.randomUUID().replace(/-/g, "");
+  PE_COOKIE_MAX_AGE = 60 * 60 * 24;
+  READONLY_CMDS = ["/dig", "/trace", "/recap", "/standup", "/who-are-you", "/philosophy", "/where-we-are"];
+  app.get("/api/peer/session", (c) => {
+    c.header("Set-Cookie", `${PE_COOKIE_NAME}=${PE_SESSION_TOKEN}; HttpOnly; SameSite=Strict; Path=/api/peer; Max-Age=${PE_COOKIE_MAX_AGE}`);
+    return c.json({ ok: true, rotates: "on_server_restart" });
+  });
+  app.post("/api/peer/exec", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "invalid_body" }, 400);
+    const { peer, cmd, args = [], signature } = body;
+    if (!peer || !cmd || !signature)
+      return c.json({ error: "missing_fields", required: ["peer", "cmd", "signature"] }, 400);
+    const parsed = parseSignature(signature);
+    if (!parsed)
+      return c.json({ error: "bad_signature", expected: "[host:agent]" }, 400);
+    const readonly = isReadOnlyCmd(cmd);
+    if (!readonly) {
+      const config = loadConfig();
+      const allowed = config?.wormhole?.shellPeers ?? [];
+      if (!allowed.includes(parsed.originHost)) {
+        return c.json({
+          error: "shell_peer_denied",
+          origin: parsed.originHost,
+          hint: parsed.isAnon ? "anonymous browser visitors are read-only" : "add this origin to config.wormhole.shellPeers to permit shell cmds"
+        }, 403);
+      }
+    }
+    const peerUrl = resolvePeerUrl(peer);
+    if (!peerUrl)
+      return c.json({ error: "unknown_peer", peer }, 404);
+    try {
+      const start = Date.now();
+      const path = "/api/peer/exec";
+      const headers = { "Content-Type": "application/json" };
+      const config = loadConfig();
+      if (config?.federationToken)
+        Object.assign(headers, signHeaders(config.federationToken, "POST", path));
+      const response = await fetch(`${peerUrl}${path}`, { method: "POST", headers, body: JSON.stringify({ cmd, args, signature }) });
+      const text = await response.text();
+      return c.json({
+        output: text,
+        from: peerUrl,
+        elapsed_ms: Date.now() - start,
+        status: response.status,
+        trust_tier: readonly ? "readonly" : "shell_allowlisted"
+      });
+    } catch (err) {
+      return c.json({ error: "relay_failed", peer: peerUrl, reason: err?.message ?? String(err) }, 502);
+    }
+  });
+  app.get("/api/sessions/federated", async (c) => {
+    const localSessions = await listSessions().catch(() => []);
+    const result = await aggregateSessions(localSessions);
+    return c.json(result);
+  });
+  app.get("/api/oracle-health", (c) => {
+    if (!engine) {
+      return c.json({ error: "Server not fully initialized", timestamp: new Date().toISOString() }, 503);
+    }
+    const summary = engine.getHealthSummary();
+    if (!summary) {
+      return c.json({ error: "Health data not yet available \u2014 check back in 30s", timestamp: new Date().toISOString() }, 503);
+    }
+    return c.json(summary);
+  });
+  app.get("/api/bob/state", (c) => {
+    const stream = new ReadableStream({
+      start(controller) {
+        const send2 = (data) => {
+          controller.enqueue(`data: ${JSON.stringify(data)}
+
+`);
+        };
+        let lastEmotion = "";
+        let idleSince = Date.now();
+        const tick = () => {
+          const active = feedTailer.getActive();
+          const recent = feedTailer.getActive(15000);
+          const activeCount = active.size;
+          const recentCount = recent.size;
+          const hour = (new Date().getUTCHours() + 7) % 24;
+          const recentEvents = feedTailer.getRecent(50);
+          const now = Date.now();
+          const hasRecentError = recentEvents.some((e) => e.event === "PostToolUseFailure" && now - e.ts < 30000);
+          const hasRecentComplete = recentEvents.some((e) => e.event === "TaskCompleted" && now - e.ts < 1e4);
+          let emotion = "neutral";
+          let message = null;
+          if (hasRecentError) {
+            emotion = "error";
+            const errEvent = recentEvents.find((e) => e.event === "PostToolUseFailure" && now - e.ts < 30000);
+            message = errEvent ? `${errEvent.oracle}: ${errEvent.message.slice(0, 60)}` : "Something went wrong";
+          } else if (hasRecentComplete) {
+            emotion = "happy";
+            const doneEvent = recentEvents.find((e) => e.event === "TaskCompleted" && now - e.ts < 1e4);
+            message = doneEvent ? `${doneEvent.oracle} finished a task!` : "Task done!";
+          } else if (activeCount === 0 && hour >= 0 && hour < 6) {
+            emotion = "sleeping";
+            message = "zzZ...";
+          } else if (activeCount === 0) {
+            const idleDuration = now - idleSince;
+            if (idleDuration > 5 * 60000) {
+              emotion = "sleeping";
+              message = null;
+            } else {
+              emotion = "neutral";
+              message = null;
+            }
+          } else if (recentCount >= 3) {
+            emotion = "working";
+            const names = [...recent.keys()].slice(0, 3).join(", ");
+            message = `${recentCount} oracles busy: ${names}`;
+          } else if (recentCount >= 1) {
+            const latestOracle = [...recent.values()][0];
+            const isToolUse = latestOracle?.event === "PreToolUse";
+            if (isToolUse) {
+              emotion = "thinking";
+              message = `${latestOracle.oracle} is working...`;
+            } else {
+              emotion = "working";
+              const names = [...recent.keys()].join(", ");
+              message = `watching ${names}`;
+            }
+          } else if (activeCount >= 1) {
+            emotion = "alert";
+            const names = [...active.keys()].slice(0, 3).join(", ");
+            message = `${activeCount} oracle${activeCount > 1 ? "s" : ""} online: ${names}`;
+          }
+          if (activeCount > 0)
+            idleSince = now;
+          const payload = { emotion, message, activeCount, timestamp: new Date().toISOString() };
+          if (emotion !== lastEmotion) {
+            send2(payload);
+            lastEmotion = emotion;
+          } else {
+            send2(payload);
+          }
+        };
+        tick();
+        const id = setInterval(tick, 5000);
+        c.req.raw.signal.addEventListener("abort", () => clearInterval(id));
+      }
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive"
+      }
+    });
+  });
+  BOB_PANE = process.env.BOB_PANE || "01-bob:0";
+  app.post("/api/bob/chat", async (c) => {
+    const body = await c.req.json();
+    if (!body.message?.trim()) {
+      return c.json({ error: "message required" }, 400);
+    }
+    try {
+      const before = await capture(BOB_PANE, 40);
+      const beforeLines = before.split(`
+`).length;
+      const proc = Bun.spawn(["bun", "src/cli.ts", "hey", "bob", body.message], {
+        cwd: import.meta.dir + "/..",
+        stdout: "pipe",
+        stderr: "pipe"
+      });
+      await proc.exited;
+      let response = "";
+      const maxAttempts = 30;
+      let settled = 0;
+      for (let i = 0;i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const after = await capture(BOB_PANE, 60);
+        const afterLines = after.split(`
+`);
+        const newLines = afterLines.slice(beforeLines).join(`
+`).trim();
+        if (newLines.length > 0) {
+          if (newLines === response) {
+            settled++;
+            if (settled >= 3)
+              break;
+          } else {
+            response = newLines;
+            settled = 0;
+          }
+        }
+      }
+      const clean = response.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").trim();
+      return c.json({ response: clean || "(BoB didn't respond \u2014 he may be busy)" });
+    } catch (err) {
+      return c.json({ error: `maw hey error: ${err.message}` }, 500);
+    }
+  });
+  app.get("/api/anti-patterns", (c) => {
+    const { runAntiPatternScan: runAntiPatternScan2 } = (init_anti_patterns(), __toCommonJS(exports_anti_patterns));
+    return c.json(runAntiPatternScan2());
+  });
+  app.get("/api/sovereign", (c) => {
+    const { getSovereignStatus: getSovereignStatus2, verifySovereignHealth: verifySovereignHealth2 } = (init_sovereign(), __toCommonJS(exports_sovereign));
+    return c.json({ status: getSovereignStatus2(), health: verifySovereignHealth2() });
+  });
+  app.post("/api/wake/:oracle", async (c) => {
+    const oracle = c.req.param("oracle");
+    try {
+      const proc = Bun.spawn(["bun", "run", "src/cli.ts", "wake", oracle], {
+        cwd: import.meta.dir.replace(/\/src$/, ""),
+        stdout: "pipe",
+        stderr: "pipe"
+      });
+      await proc.exited;
+      return c.json({ ok: true, oracle });
+    } catch (e) {
+      return c.json({ error: e.message }, 500);
+    }
   });
   loopEngine = new LoopEngine;
   app.get("/api/loops", (c) => {
@@ -7725,7 +9776,7 @@ var init_server2 = __esm(() => {
       const newLoop = await c.req.json();
       if (!newLoop.id || !newLoop.schedule)
         return c.json({ error: "id and schedule required" }, 400);
-      const { readFileSync: readFileSync21, writeFileSync: writeFileSync11 } = await import("fs");
+      const { readFileSync: readFileSync21, writeFileSync: writeFileSync13 } = await import("fs");
       const { join: join30 } = await import("path");
       const loopsPath = join30(import.meta.dir, "../loops.json");
       const config = JSON.parse(readFileSync21(loopsPath, "utf-8"));
@@ -7735,7 +9786,7 @@ var init_server2 = __esm(() => {
       } else {
         config.loops.push(newLoop);
       }
-      writeFileSync11(loopsPath, JSON.stringify(config, null, 2), "utf-8");
+      writeFileSync13(loopsPath, JSON.stringify(config, null, 2), "utf-8");
       return c.json({ ok: true, action: idx >= 0 ? "updated" : "added" });
     } catch (e) {
       return c.json({ error: e.message }, 400);
@@ -7745,13 +9796,13 @@ var init_server2 = __esm(() => {
     const loopId = c.req.query("id");
     if (!loopId)
       return c.json({ error: "id required" }, 400);
-    const { readFileSync: readFileSync21, writeFileSync: writeFileSync11 } = await import("fs");
+    const { readFileSync: readFileSync21, writeFileSync: writeFileSync13 } = await import("fs");
     const { join: join30 } = await import("path");
     const loopsPath = join30(import.meta.dir, "../loops.json");
     const config = JSON.parse(readFileSync21(loopsPath, "utf-8"));
     const before = config.loops.length;
     config.loops = config.loops.filter((l) => l.id !== loopId);
-    writeFileSync11(loopsPath, JSON.stringify(config, null, 2), "utf-8");
+    writeFileSync13(loopsPath, JSON.stringify(config, null, 2), "utf-8");
     return c.json({ ok: config.loops.length < before });
   });
   app.post("/api/loops/toggle", async (c) => {
@@ -7782,7 +9833,7 @@ var init_server2 = __esm(() => {
     }
   });
   attachDir = join29(import.meta.dir, "../attachments");
-  mkdirSync6(attachDir, { recursive: true });
+  mkdirSync9(attachDir, { recursive: true });
   app.post("/api/attach", async (c) => {
     try {
       const form = await c.req.formData();
@@ -7795,9 +9846,11 @@ var init_server2 = __esm(() => {
       const id = `${Date.now()}-${randomUUID().slice(0, 8)}${ext}`;
       const buf = await file.arrayBuffer();
       const fullPath = join29(attachDir, id);
-      writeFileSync10(fullPath, Buffer.from(buf));
+      writeFileSync12(fullPath, Buffer.from(buf));
       const url = `/api/attachments/${id}`;
-      return c.json({ ok: true, id, url, name: file.name, size: file.size, mimeType: file.type });
+      const port = +(process.env.MAW_PORT || loadConfig().port || 3456);
+      const localUrl = `http://localhost:${port}${url}`;
+      return c.json({ ok: true, id, url, localUrl, name: file.name, size: file.size, mimeType: file.type });
     } catch (e) {
       return c.json({ error: e.message }, 400);
     }
@@ -7807,7 +9860,7 @@ var init_server2 = __esm(() => {
     if (!id || /[/\\]/.test(id))
       return c.json({ error: "invalid id" }, 400);
     const fullPath = join29(attachDir, id);
-    if (!existsSync13(fullPath))
+    if (!existsSync15(fullPath))
       return c.json({ error: "not found" }, 404);
     const file = Bun.file(fullPath);
     return new Response(file, {
@@ -7832,10 +9885,10 @@ init_ssh();
 
 // src/hooks.ts
 import { readFile } from "fs/promises";
-import { homedir } from "os";
+import { homedir as homedir2 } from "os";
 import { join as join2 } from "path";
 import { spawn } from "child_process";
-var CONFIG_PATH = join2(homedir(), ".oracle", "maw.hooks.json");
+var CONFIG_PATH = join2(homedir2(), ".oracle", "maw.hooks.json");
 var configCache = null;
 async function loadConfig2() {
   if (configCache)
@@ -7851,7 +9904,7 @@ async function loadConfig2() {
 }
 function expandPath(p) {
   if (p.startsWith("~/"))
-    return join2(homedir(), p.slice(2));
+    return join2(homedir2(), p.slice(2));
   return p;
 }
 function inferCaller() {
@@ -7889,8 +9942,55 @@ async function runHook(event, data) {
 
 // src/commands/comm.ts
 import { appendFile, mkdir } from "fs/promises";
-import { homedir as homedir2 } from "os";
+import { homedir as homedir3 } from "os";
 import { join as join3 } from "path";
+
+// src/routing.ts
+function resolveTarget(query, config, sessions) {
+  if (!query)
+    return { type: "error", reason: "empty_query", detail: "no target specified", hint: "usage: maw hey <agent> <message>" };
+  const selfNode = config.node ?? "local";
+  const localTarget = findWindow2(sessions, query);
+  if (localTarget) {
+    return { type: "local", target: localTarget };
+  }
+  if (query.includes(":") && !query.includes("/")) {
+    const colonIdx = query.indexOf(":");
+    const nodeName = query.slice(0, colonIdx);
+    const agentName = query.slice(colonIdx + 1);
+    if (!nodeName || !agentName)
+      return { type: "error", reason: "empty_node_or_agent", detail: `invalid format: '${query}'`, hint: "use node:agent format (e.g. mba:homekeeper)" };
+    if (nodeName === selfNode) {
+      const selfTarget = findWindow2(sessions, agentName);
+      return selfTarget ? { type: "self-node", target: selfTarget } : { type: "error", reason: "self_not_running", detail: `'${agentName}' not found in local sessions on ${selfNode}`, hint: `maw wake ${agentName}` };
+    }
+    const peerUrl = findPeerUrl(nodeName, config);
+    if (peerUrl) {
+      return { type: "peer", peerUrl, target: agentName, node: nodeName };
+    }
+    return { type: "error", reason: "unknown_node", detail: `node '${nodeName}' not in namedPeers or peers`, hint: "add to maw.config.json namedPeers" };
+  }
+  const agentNode = config.agents?.[query] || config.agents?.[query.replace(/-oracle$/, "")];
+  if (agentNode) {
+    if (agentNode === selfNode)
+      return { type: "error", reason: "self_not_running", detail: `'${query}' mapped to ${selfNode} (local) but not found in sessions`, hint: `maw wake ${query}` };
+    const peerUrl = findPeerUrl(agentNode, config);
+    if (peerUrl) {
+      return { type: "peer", peerUrl, target: query, node: agentNode };
+    }
+    return { type: "error", reason: "no_peer_url", detail: `'${query}' mapped to node '${agentNode}' but no URL found`, hint: `add ${agentNode} to maw.config.json namedPeers` };
+  }
+  return { type: "error", reason: "not_found", detail: `'${query}' not in local sessions or agents map`, hint: "check: maw ls" };
+}
+function findPeerUrl(nodeName, config) {
+  const peer = config.namedPeers?.find((p) => p.name === nodeName);
+  if (peer)
+    return peer.url;
+  return config.peers?.find((p) => p.includes(nodeName));
+}
+
+// src/commands/comm.ts
+init_config();
 async function cmdList() {
   const sessions = await listSessions();
   const targets = [];
@@ -7909,14 +10009,14 @@ async function cmdList() {
       let dot;
       let suffix = "";
       if (cwdBroken) {
-        dot = "\x1B[31m●\x1B[0m";
+        dot = "\x1B[31m\u25CF\x1B[0m";
         suffix = "  \x1B[31m(path deleted)\x1B[0m";
       } else if (w.active && isAgent) {
-        dot = "\x1B[32m●\x1B[0m";
+        dot = "\x1B[32m\u25CF\x1B[0m";
       } else if (isAgent) {
-        dot = "\x1B[34m●\x1B[0m";
+        dot = "\x1B[34m\u25CF\x1B[0m";
       } else {
-        dot = "\x1B[31m●\x1B[0m";
+        dot = "\x1B[31m\u25CF\x1B[0m";
         suffix = `  \x1B[90m(${info.command || "?"})\x1B[0m`;
       }
       console.log(`  ${dot} ${w.index}: ${w.name}${suffix}`);
@@ -7952,8 +10052,37 @@ async function cmdPeek(query) {
   console.log(content);
 }
 async function cmdSend(query, message, force = false) {
+  const config = loadConfig();
   const sessions = await listSessions();
-  const target = findWindow(sessions, query);
+  const resolved = resolveTarget(query, config, sessions);
+  if (resolved?.type === "peer") {
+    const server = process.env.MAW_SERVER || "http://localhost:3456";
+    const crossTarget = `${resolved.node}:${resolved.target}`;
+    try {
+      const res = await fetch(`${server}/api/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: crossTarget, text: message })
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error(`\x1B[31merror\x1B[0m: ${body.error || `HTTP ${res.status}`}`);
+        process.exit(1);
+      }
+      console.log(`\x1B[32msent\x1B[0m \u2192 ${crossTarget}: ${message}`);
+      return;
+    } catch (e) {
+      console.error(`\x1B[31merror\x1B[0m: server unreachable: ${e.message}`);
+      process.exit(1);
+    }
+  }
+  if (resolved?.type === "error") {
+    console.error(`\x1B[31merror\x1B[0m: ${resolved.detail}`);
+    if (resolved.hint)
+      console.error(`\x1B[33mhint\x1B[0m:  ${resolved.hint}`);
+    process.exit(1);
+  }
+  const target = resolved?.type === "local" || resolved?.type === "self-node" ? resolved.target : findWindow(sessions, query);
   if (!target) {
     console.error(`window not found: ${query}`);
     process.exit(1);
@@ -7969,7 +10098,7 @@ async function cmdSend(query, message, force = false) {
   }
   await sendKeys(target, message);
   await runHook("after_send", { to: query, message });
-  const logDir = join3(homedir2(), ".oracle");
+  const logDir = join3(homedir3(), ".oracle");
   const logFile = join3(logDir, "maw-log.jsonl");
   const host = (await import("os")).hostname();
   const from = process.env.CLAUDE_AGENT_NAME || "cli";
@@ -7981,15 +10110,15 @@ async function cmdSend(query, message, force = false) {
     await appendFile(logFile, line);
   } catch {}
   try {
-    const feedLog = join3(homedir2(), ".oracle", "feed.log");
+    const feedLog = join3(homedir3(), ".oracle", "feed.log");
     const now = new Date;
     const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-    const flat = message.replace(/\n/g, " ⎜ ");
-    const feedLine = `${ts} | ${from} | ${host} | Notification | ${from} | maw-hey » [handoff] ${JSON.stringify({ from, to: query, message: flat })}
+    const flat = message.replace(/\n/g, " \u239C ");
+    const feedLine = `${ts} | ${from} | ${host} | Notification | ${from} | maw-hey \xBB [handoff] ${JSON.stringify({ from, to: query, message: flat })}
 `;
     await appendFile(feedLog, feedLine);
   } catch {}
-  const inboxDir = join3(homedir2(), ".oracle", "inbox");
+  const inboxDir = join3(homedir3(), ".oracle", "inbox");
   const inboxTarget = query.replace(/[^a-zA-Z0-9_-]/g, "");
   if (inboxTarget) {
     const signal = JSON.stringify({ ts: new Date().toISOString(), from, type: "msg", msg: message, thread: null }) + `
@@ -7999,7 +10128,7 @@ async function cmdSend(query, message, force = false) {
       await appendFile(join3(inboxDir, `${inboxTarget}.jsonl`), signal);
     } catch {}
   }
-  console.log(`\x1B[32msent\x1B[0m → ${target}: ${message}`);
+  console.log(`\x1B[32msent\x1B[0m \u2192 ${target}: ${message}`);
 }
 
 // src/commands/view.ts
@@ -8030,12 +10159,12 @@ async function cmdView(agent, windowHint, clean = false) {
   const t = new Tmux;
   await t.killSession(viewName);
   await t.newGroupedSession(sessionName, viewName, { cols: 200, rows: 50 });
-  console.log(`\x1B[36mcreated\x1B[0m → ${viewName} (grouped with ${sessionName})`);
+  console.log(`\x1B[36mcreated\x1B[0m \u2192 ${viewName} (grouped with ${sessionName})`);
   if (windowHint) {
     const win = allWindows.find((w) => w.session === sessionName && (w.name === windowHint || w.name.includes(windowHint) || String(w.index) === windowHint));
     if (win) {
       await t.selectWindow(`${viewName}:${win.index}`);
-      console.log(`\x1B[36mwindow\x1B[0m  → ${win.name} (${win.index})`);
+      console.log(`\x1B[36mwindow\x1B[0m  \u2192 ${win.name} (${win.index})`);
     } else {
       console.error(`\x1B[33mwarn\x1B[0m: window '${windowHint}' not found, using default`);
     }
@@ -8046,11 +10175,11 @@ async function cmdView(agent, windowHint, clean = false) {
   const host = process.env.MAW_HOST || loadConfig().host || "white.local";
   const isLocal = host === "local" || host === "localhost";
   const attachArgs = isLocal ? ["tmux", "attach-session", "-t", viewName] : ["ssh", "-tt", host, `tmux attach-session -t '${viewName}'`];
-  console.log(`\x1B[36mattach\x1B[0m  → ${viewName}${clean ? " (clean)" : ""}`);
+  console.log(`\x1B[36mattach\x1B[0m  \u2192 ${viewName}${clean ? " (clean)" : ""}`);
   const proc = Bun.spawn(attachArgs, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
   const exitCode = await proc.exited;
   await t.killSession(viewName);
-  console.log(`\x1B[90mcleaned\x1B[0m → ${viewName}`);
+  console.log(`\x1B[90mcleaned\x1B[0m \u2192 ${viewName}`);
   process.exit(exitCode);
 }
 
@@ -8085,355 +10214,14 @@ async function cmdCompletions(sub) {
   }
 }
 
-// src/commands/overview.ts
-init_ssh();
-var PANES_PER_PAGE = 9;
-function buildTargets(sessions, filters) {
-  let targets = sessions.filter((s) => /^\d+-/.test(s.name) && s.name !== "0-overview").map((s) => {
-    const active = s.windows.find((w) => w.active) || s.windows[0];
-    const oracleName = s.name.replace(/^\d+-/, "");
-    return { session: s.name, window: active?.index ?? 1, windowName: active?.name ?? oracleName, oracle: oracleName };
-  });
-  if (filters.length) {
-    targets = targets.filter((t) => filters.some((f) => t.oracle.includes(f) || t.session.includes(f)));
-  }
-  return targets;
-}
-var PANE_COLORS = [
-  "colour204",
-  "colour114",
-  "colour81",
-  "colour220",
-  "colour177",
-  "colour208",
-  "colour44",
-  "colour196",
-  "colour83",
-  "colour141"
-];
-function paneColor(index) {
-  return PANE_COLORS[index % PANE_COLORS.length];
-}
-function paneTitle(t) {
-  return `${t.oracle} (${t.session}:${t.window})`;
-}
-function mirrorCmd(t) {
-  const target = encodeURIComponent(`${t.session}:${t.window}`);
-  const port = process.env.MAW_PORT || "3456";
-  return `watch --color -t -n0.5 'curl -s "http://localhost:${port}/api/mirror?target=${target}&lines=\\$(tput lines)"'`;
-}
-function pickLayout(count) {
-  if (count <= 2)
-    return "even-horizontal";
-  return "tiled";
-}
-function chunkTargets(targets) {
-  const pages = [];
-  for (let i = 0;i < targets.length; i += PANES_PER_PAGE) {
-    pages.push(targets.slice(i, i + PANES_PER_PAGE));
-  }
-  return pages;
-}
-async function cmdOverview(filterArgs) {
-  const kill = filterArgs.includes("--kill") || filterArgs.includes("-k");
-  const filters = filterArgs.filter((a) => !a.startsWith("-"));
-  try {
-    await ssh("tmux kill-session -t 0-overview 2>/dev/null");
-  } catch {}
-  if (kill) {
-    console.log("overview killed");
-    return;
-  }
-  const sessions = await listSessions();
-  const targets = buildTargets(sessions, filters);
-  if (!targets.length) {
-    console.error("no oracle sessions found");
-    return;
-  }
-  const pages = chunkTargets(targets);
-  await ssh("tmux new-session -d -s 0-overview -n page-1");
-  await ssh("tmux set -t 0-overview pane-border-status top");
-  await ssh('tmux set -t 0-overview pane-border-format " #{pane_title} "');
-  await ssh("tmux set -t 0-overview pane-border-style fg=colour238");
-  await ssh("tmux set -t 0-overview pane-active-border-style fg=colour45");
-  await ssh("tmux set -t 0-overview status-style bg=colour235,fg=colour248");
-  await ssh("tmux set -t 0-overview status-left-length 40");
-  await ssh("tmux set -t 0-overview status-right-length 60");
-  await ssh(`tmux set -t 0-overview status-left '#[fg=colour16,bg=colour204,bold] █ MAW #[fg=colour204,bg=colour238] #[fg=colour255,bg=colour238] ${targets.length} oracles #[fg=colour238,bg=colour235] '`);
-  await ssh(`tmux set -t 0-overview status-right '#[fg=colour238,bg=colour235]#[fg=colour114,bg=colour238] ● live #[fg=colour81,bg=colour238] %H:%M #[fg=colour16,bg=colour81,bold] %d-%b '`);
-  await ssh("tmux set -t 0-overview status-justify centre");
-  await ssh("tmux set -t 0-overview window-status-format '#[fg=colour248,bg=colour235] #I:#W '");
-  await ssh("tmux set -t 0-overview window-status-current-format '#[fg=colour16,bg=colour45,bold] #I:#W '");
-  for (let p = 0;p < pages.length; p++) {
-    const page = pages[p];
-    const winName = `page-${p + 1}`;
-    if (p > 0) {
-      await ssh(`tmux new-window -t 0-overview -n ${winName}`);
-    }
-    const baseIdx = p * PANES_PER_PAGE;
-    const pane0 = `0-overview:${winName}.0`;
-    const color0 = paneColor(baseIdx);
-    await ssh(`tmux select-pane -t ${pane0} -T '#[fg=${color0},bold]${paneTitle(page[0])}#[default]'`);
-    await ssh(`tmux send-keys -t ${pane0} "${mirrorCmd(page[0]).replace(/"/g, "\\\"")}" Enter`);
-    for (let i = 1;i < page.length; i++) {
-      await ssh(`tmux split-window -t 0-overview:${winName}`);
-      const paneId = `0-overview:${winName}.${i}`;
-      const color = paneColor(baseIdx + i);
-      await ssh(`tmux select-pane -t ${paneId} -T '#[fg=${color},bold]${paneTitle(page[i])}#[default]'`);
-      await ssh(`tmux send-keys -t ${paneId} "${mirrorCmd(page[i]).replace(/"/g, "\\\"")}" Enter`);
-      await ssh(`tmux select-layout -t 0-overview:${winName} tiled`);
-    }
-    const layout = pickLayout(page.length);
-    await ssh(`tmux select-layout -t 0-overview:${winName} ${layout}`);
-  }
-  await ssh("tmux select-window -t 0-overview:page-1");
-  console.log(`\x1B[32m✅\x1B[0m overview: ${targets.length} oracles across ${pages.length} page${pages.length > 1 ? "s" : ""}`);
-  for (let p = 0;p < pages.length; p++) {
-    console.log(`  page-${p + 1}: ${pages[p].map((t) => t.oracle).join(", ")}`);
-  }
-  console.log(`
-  attach: tmux attach -t 0-overview`);
-  if (pages.length > 1)
-    console.log(`  navigate: Ctrl-b n/p (next/prev page)`);
-}
-
-// src/commands/wake.ts
-init_ssh();
-init_tmux();
-init_config();
-import { readdirSync as readdirSync2, readFileSync as readFileSync3 } from "fs";
-import { join as join5 } from "path";
-async function fetchIssuePrompt(issueNum, repo) {
-  let repoSlug = repo;
-  if (!repoSlug) {
-    try {
-      const remote = await ssh("git remote get-url origin 2>/dev/null");
-      const m = remote.match(/github\.com[:/](.+?)(?:\.git)?$/);
-      if (m)
-        repoSlug = m[1];
-    } catch {}
-  }
-  if (!repoSlug)
-    throw new Error("Could not detect repo — pass --repo org/name");
-  const json = await ssh(`gh issue view ${issueNum} --repo '${repoSlug}' --json title,body,labels`);
-  const issue = JSON.parse(json);
-  const labels = (issue.labels || []).map((l) => l.name).join(", ");
-  const parts = [
-    `Work on issue #${issueNum}: ${issue.title}`,
-    labels ? `Labels: ${labels}` : "",
-    "",
-    issue.body || "(no description)"
-  ];
-  return parts.filter(Boolean).join(`
-`);
-}
-async function resolveOracle(oracle) {
-  let ghqOut = "";
-  try {
-    ghqOut = await ssh(`ghq list --full-path 2>/dev/null | grep -i '/${oracle}[^/]*-oracle$' | head -1`);
-  } catch {}
-  if (!ghqOut?.trim()) {
-    try {
-      ghqOut = await ssh(`ls -d $HOME/repos/github.com/BankCurfew/${oracle}*-Oracle $HOME/repos/github.com/BankCurfew/${oracle}*-oracle 2>/dev/null | head -1`);
-    } catch {}
-  }
-  if (ghqOut?.trim()) {
-    const repoPath = ghqOut.trim();
-    const repoName = repoPath.split("/").pop();
-    const parentDir = repoPath.replace(/\/[^/]+$/, "");
-    return { repoPath, repoName, parentDir };
-  }
-  const fleetDir = join5(import.meta.dir, "../../fleet");
-  try {
-    for (const file of readdirSync2(fleetDir).filter((f) => f.endsWith(".json"))) {
-      const config = JSON.parse(readFileSync3(join5(fleetDir, file), "utf-8"));
-      const oracleLower = oracle.toLowerCase();
-      const win = (config.windows || []).find((w) => {
-        const wl = w.name.toLowerCase();
-        return wl === `${oracleLower}-oracle` || wl.startsWith(`${oracleLower}`) && wl.endsWith("-oracle");
-      });
-      if (win?.repo) {
-        let repoPath = "";
-        try {
-          const fullPath = await ssh(`ghq list --full-path | grep -i '/${win.repo.replace(/^[^/]+\//, "")}$' | head -1`);
-          if (fullPath?.trim())
-            repoPath = fullPath.trim();
-        } catch {}
-        if (!repoPath) {
-          const repoName = win.repo.replace(/^[^/]+\//, "");
-          const candidates = [
-            `$HOME/repos/github.com/${win.repo}`,
-            `$HOME/${repoName}`
-          ];
-          for (const c of candidates) {
-            try {
-              const resolved = await ssh(`eval echo ${c}`);
-              const exists = await ssh(`test -d "${resolved}" && echo "${resolved}"`);
-              if (exists?.trim()) {
-                repoPath = exists.trim();
-                break;
-              }
-            } catch {}
-          }
-        }
-        if (repoPath) {
-          const repoName = repoPath.split("/").pop();
-          const parentDir = repoPath.replace(/\/[^/]+$/, "");
-          return { repoPath, repoName, parentDir };
-        }
-      }
-    }
-  } catch {}
-  console.error(`oracle repo not found: ${oracle} (tried ${oracle}-oracle pattern and fleet configs)`);
-  process.exit(1);
-}
-async function findWorktrees(parentDir, repoName) {
-  const lsOut = await ssh(`ls -d ${parentDir}/${repoName}.wt-* 2>/dev/null || true`);
-  return lsOut.split(`
-`).filter(Boolean).map((p) => {
-    const base = p.split("/").pop();
-    const suffix = base.replace(`${repoName}.wt-`, "");
-    return { path: p, name: suffix };
-  });
-}
-function getSessionMap() {
-  return loadConfig().sessions;
-}
-function resolveFleetSession(oracle) {
-  const fleetDir = join5(import.meta.dir, "../../fleet");
-  try {
-    for (const file of readdirSync2(fleetDir).filter((f) => f.endsWith(".json") && !f.endsWith(".disabled"))) {
-      const config = JSON.parse(readFileSync3(join5(fleetDir, file), "utf-8"));
-      const hasOracleWindow = (config.windows || []).some((w) => w.name === `${oracle}-oracle` || w.name === oracle);
-      if (hasOracleWindow)
-        return config.name;
-    }
-  } catch {}
-  return null;
-}
-async function detectSession(oracle) {
-  const sessions = await tmux.listSessions();
-  const mapped = getSessionMap()[oracle];
-  if (mapped) {
-    const exists = sessions.find((s) => s.name === mapped);
-    if (exists)
-      return mapped;
-  }
-  const patternMatch = sessions.find((s) => /^\d+-/.test(s.name) && s.name.endsWith(`-${oracle}`))?.name || sessions.find((s) => s.name === oracle)?.name;
-  if (patternMatch)
-    return patternMatch;
-  const fleetSession = resolveFleetSession(oracle);
-  if (fleetSession) {
-    const exists = sessions.find((s) => s.name === fleetSession);
-    if (exists)
-      return fleetSession;
-  }
-  return null;
-}
-async function setSessionEnv(session) {
-  for (const [key, val] of Object.entries(getEnvVars())) {
-    await tmux.setEnvironment(session, key, val);
-  }
-}
-async function cmdWake(oracle, opts) {
-  const { repoPath, repoName, parentDir } = await resolveOracle(oracle);
-  let session = await detectSession(oracle);
-  if (!session) {
-    session = getSessionMap()[oracle] || resolveFleetSession(oracle) || oracle;
-    const mainWindowName = `${oracle}-oracle`;
-    await tmux.newSession(session, { window: mainWindowName, cwd: repoPath });
-    await setSessionEnv(session);
-    await new Promise((r) => setTimeout(r, 300));
-    await tmux.sendText(`${session}:${mainWindowName}`, buildCommand(mainWindowName));
-    console.log(`\x1B[32m+\x1B[0m created session '${session}' (main: ${mainWindowName})`);
-    const allWt = await findWorktrees(parentDir, repoName);
-    for (const wt of allWt) {
-      const wtWindowName = `${oracle}-${wt.name}`;
-      await tmux.newWindow(session, wtWindowName, { cwd: wt.path });
-      await new Promise((r) => setTimeout(r, 300));
-      await tmux.sendText(`${session}:${wtWindowName}`, buildCommand(wtWindowName));
-      console.log(`\x1B[32m+\x1B[0m window: ${wtWindowName}`);
-    }
-  } else {
-    await setSessionEnv(session);
-  }
-  let targetPath = repoPath;
-  let windowName = `${oracle}-oracle`;
-  if (opts.newWt || opts.task) {
-    const name = opts.newWt || opts.task;
-    const worktrees = await findWorktrees(parentDir, repoName);
-    const match = worktrees.find((w) => w.name.endsWith(`-${name}`) || w.name === name);
-    if (match) {
-      console.log(`\x1B[33m⚡\x1B[0m reusing worktree: ${match.path}`);
-      targetPath = match.path;
-      windowName = `${oracle}-${name}`;
-    } else {
-      const nums = worktrees.map((w) => parseInt(w.name) || 0);
-      const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-      const wtName = `${nextNum}-${name}`;
-      const wtPath = `${parentDir}/${repoName}.wt-${wtName}`;
-      const branch = `agents/${wtName}`;
-      try {
-        await ssh(`git -C '${repoPath}' branch -D '${branch}' 2>/dev/null`);
-      } catch {}
-      await ssh(`git -C '${repoPath}' worktree add '${wtPath}' -b '${branch}'`);
-      console.log(`\x1B[32m+\x1B[0m worktree: ${wtPath} (${branch})`);
-      targetPath = wtPath;
-      windowName = `${oracle}-${name}`;
-    }
-  }
-  try {
-    const windows = await tmux.listWindows(session);
-    const windowNames = windows.map((w) => w.name);
-    const nameSuffix = windowName.replace(`${oracle}-`, "");
-    const wLower = windowName.toLowerCase();
-    const oLower = oracle.toLowerCase();
-    const existingWindow = windowNames.find((w) => w.toLowerCase() === wLower) || windowNames.find((w) => w.toLowerCase().startsWith(oLower) && w.toLowerCase().endsWith("-oracle")) || windowNames.find((w) => new RegExp(`^${oracle}-\\d+-${nameSuffix}$`, "i").test(w));
-    if (existingWindow) {
-      const target = `${session}:${existingWindow}`;
-      if (opts.prompt) {
-        let isClaudeRunning = false;
-        try {
-          const paneCmd = await ssh(`tmux display-message -t '${target}' -p '#{pane_current_command}' 2>/dev/null`);
-          isClaudeRunning = /claude|node/i.test(paneCmd);
-        } catch {}
-        if (isClaudeRunning) {
-          console.log(`\x1B[33m⚡\x1B[0m '${existingWindow}' has active Claude — sending message`);
-          await tmux.selectWindow(target);
-          const { sendKeys: sk } = await Promise.resolve().then(() => (init_ssh(), exports_ssh));
-          await sk(target, opts.prompt);
-          return target;
-        } else {
-          console.log(`\x1B[33m⚡\x1B[0m '${existingWindow}' exists, starting claude with prompt`);
-          await tmux.selectWindow(target);
-          const cmd2 = buildCommand(existingWindow);
-          const escaped = opts.prompt.replace(/'/g, "'\\''");
-          await tmux.sendText(target, `${cmd2} -p '${escaped}'`);
-          return target;
-        }
-      }
-      console.log(`\x1B[33m⚡\x1B[0m '${existingWindow}' already running in ${session}`);
-      await tmux.selectWindow(target);
-      return target;
-    }
-  } catch {}
-  await tmux.newWindow(session, windowName, { cwd: targetPath });
-  await new Promise((r) => setTimeout(r, 300));
-  const cmd = buildCommand(windowName);
-  if (opts.prompt) {
-    const escaped = opts.prompt.replace(/'/g, "'\\''");
-    await tmux.sendText(`${session}:${windowName}`, `${cmd} -p '${escaped}'`);
-  } else {
-    await tmux.sendText(`${session}:${windowName}`, cmd);
-  }
-  console.log(`\x1B[32m✅\x1B[0m woke '${windowName}' in ${session} → ${targetPath}`);
-  return `${session}:${windowName}`;
-}
+// src/cli.ts
+init_overview();
+init_wake();
 
 // src/commands/pulse.ts
 init_ssh();
 init_wake();
-var THAI_DAYS = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+var THAI_DAYS = ["\u0E2D\u0E32\u0E17\u0E34\u0E15\u0E22\u0E4C", "\u0E08\u0E31\u0E19\u0E17\u0E23\u0E4C", "\u0E2D\u0E31\u0E07\u0E04\u0E32\u0E23", "\u0E1E\u0E38\u0E18", "\u0E1E\u0E24\u0E2B\u0E31\u0E2A\u0E1A\u0E14\u0E35", "\u0E28\u0E38\u0E01\u0E23\u0E4C", "\u0E40\u0E2A\u0E32\u0E23\u0E4C"];
 function todayDate() {
   const d = new Date;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -8456,7 +10244,7 @@ function timePeriod() {
 }
 var PERIODS = [
   { key: "morning", label: "\uD83C\uDF05 Morning (06:00-12:00)", hours: [6, 12] },
-  { key: "afternoon", label: "☀️ Afternoon (12:00-18:00)", hours: [12, 18] },
+  { key: "afternoon", label: "\u2600\uFE0F Afternoon (12:00-18:00)", hours: [12, 18] },
   { key: "evening", label: "\uD83C\uDF06 Evening (18:00-24:00)", hours: [18, 24] },
   { key: "midnight", label: "\uD83C\uDF19 Midnight (00:00-06:00)", hours: [0, 6] }
 ];
@@ -8501,7 +10289,7 @@ async function addTaskToPeriodComment(repo, threadNum, period, issueNum, title, 
   if (!comment)
     return;
   const now = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const oracleTag = oracle ? ` → ${oracle}` : "";
+  const oracleTag = oracle ? ` \u2192 ${oracle}` : "";
   const taskLine = `- [ ] #${issueNum} ${title} (${now}${oracleTag})`;
   let newBody;
   if (comment.body.includes("_(no tasks yet)_")) {
@@ -8540,10 +10328,10 @@ async function cmdPulseAdd(title, opts) {
     if (opts.wt) {
       wakeOpts.newWt = opts.wt;
     }
-    const prompt = `/recap --deep — You have been assigned issue #${issueNum}: ${title}. Issue URL: ${issueUrl}. Orient yourself, then wait for human instructions.`;
+    const prompt = `/recap --deep \u2014 You have been assigned issue #${issueNum}: ${title}. Issue URL: ${issueUrl}. Orient yourself, then wait for human instructions.`;
     wakeOpts.prompt = prompt;
-    const target = await cmdWake2(opts.oracle, wakeOpts);
-    console.log(`\x1B[32m\uD83D\uDE80\x1B[0m ${target}: waking up with /recap --deep → then --continue`);
+    const target = await cmdWake(opts.oracle, wakeOpts);
+    console.log(`\x1B[32m\uD83D\uDE80\x1B[0m ${target}: waking up with /recap --deep \u2192 then --continue`);
   }
 }
 async function cmdPulseLs(opts) {
@@ -8576,36 +10364,36 @@ async function cmdPulseLs(opts) {
   }
   const getOracle = (issue) => {
     const label = issue.labels.find((l) => l.name.startsWith("oracle:"));
-    return label ? label.name.replace("oracle:", "") : "—";
+    return label ? label.name.replace("oracle:", "") : "\u2014";
   };
   console.log(`
 \x1B[36m\uD83D\uDCCB Pulse Board\x1B[0m
 `);
   if (projects.length) {
     console.log(`\x1B[33mProjects (${projects.length})\x1B[0m`);
-    console.log(`┌──────┬${"─".repeat(50)}┬──────────────┐`);
+    console.log(`\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u252C${"\u2500".repeat(50)}\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510`);
     for (const p of projects.sort((a, b) => a.number - b.number)) {
       const oracle = getOracle(p);
-      console.log(`│ \x1B[32m#${String(p.number).padEnd(3)}\x1B[0m │ ${p.title.slice(0, 48).padEnd(48)} │ ${oracle.padEnd(12)} │`);
+      console.log(`\u2502 \x1B[32m#${String(p.number).padEnd(3)}\x1B[0m \u2502 ${p.title.slice(0, 48).padEnd(48)} \u2502 ${oracle.padEnd(12)} \u2502`);
     }
-    console.log(`└──────┴${"─".repeat(50)}┴──────────────┘`);
+    console.log(`\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2534${"\u2500".repeat(50)}\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`);
   }
   if (toolIssues.length) {
     console.log(`
 \x1B[33mTools/Infra (${toolIssues.length})\x1B[0m`);
-    console.log(`┌──────┬${"─".repeat(50)}┬──────────────┐`);
+    console.log(`\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u252C${"\u2500".repeat(50)}\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510`);
     for (const t of toolIssues.sort((a, b) => a.number - b.number)) {
       const oracle = getOracle(t);
-      console.log(`│ \x1B[32m#${String(t.number).padEnd(3)}\x1B[0m │ ${t.title.slice(0, 48).padEnd(48)} │ ${oracle.padEnd(12)} │`);
+      console.log(`\u2502 \x1B[32m#${String(t.number).padEnd(3)}\x1B[0m \u2502 ${t.title.slice(0, 48).padEnd(48)} \u2502 ${oracle.padEnd(12)} \u2502`);
     }
-    console.log(`└──────┴${"─".repeat(50)}┴──────────────┘`);
+    console.log(`\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2534${"\u2500".repeat(50)}\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518`);
   }
   if (activeIssues.length) {
     console.log(`
 \x1B[33mActive Today (${activeIssues.length})\x1B[0m`);
     for (const a of activeIssues.sort((a2, b) => a2.number - b.number)) {
       const oracle = getOracle(a);
-      console.log(`  \x1B[33m\uD83D\uDFE1\x1B[0m #${a.number} ${a.title} → ${oracle}`);
+      console.log(`  \x1B[33m\uD83D\uDFE1\x1B[0m #${a.number} ${a.title} \u2192 ${oracle}`);
     }
   }
   console.log(`
@@ -8621,25 +10409,25 @@ async function cmdPulseLs(opts) {
     if (projects.length) {
       lines.push(`### Projects (${projects.length})`, "");
       for (const p of projects.sort((a, b) => a.number - b.number)) {
-        lines.push(`- [ ] #${p.number} ${p.title} → ${getOracle(p)}`);
+        lines.push(`- [ ] #${p.number} ${p.title} \u2192 ${getOracle(p)}`);
       }
       lines.push("");
     }
     if (toolIssues.length) {
       lines.push(`### Tools/Infra (${toolIssues.length})`, "");
       for (const t of toolIssues.sort((a, b) => a.number - b.number)) {
-        lines.push(`- [ ] #${t.number} ${t.title} → ${getOracle(t)}`);
+        lines.push(`- [ ] #${t.number} ${t.title} \u2192 ${getOracle(t)}`);
       }
       lines.push("");
     }
     if (activeIssues.length) {
       lines.push(`### Active Today (${activeIssues.length})`, "");
       for (const a of activeIssues.sort((a2, b) => a2.number - b.number)) {
-        lines.push(`- [ ] #${a.number} ${a.title} → ${getOracle(a)} \uD83D\uDFE1`);
+        lines.push(`- [ ] #${a.number} ${a.title} \u2192 ${getOracle(a)} \uD83D\uDFE1`);
       }
       lines.push("");
     }
-    lines.push(`**${issues.length - threads.length} open** — Homekeeper Oracle \uD83E\uDD16`);
+    lines.push(`**${issues.length - threads.length} open** \u2014 Homekeeper Oracle \uD83E\uDD16`);
     const body = lines.join(`
 `).replace(/'/g, "'\\''");
     const commentsJson2 = (await ssh(`gh api repos/${repo}/issues/${thread.number}/comments --jq '[.[] | {id: .id, body: .body}]'`)).trim();
@@ -8647,7 +10435,7 @@ async function cmdPulseLs(opts) {
     const indexComment = comments.find((c) => c.body.includes("Pulse Board Index"));
     if (indexComment) {
       await ssh(`gh api repos/${repo}/issues/comments/${indexComment.id} -X PATCH -f body='${body}'`);
-      console.log(`\x1B[32m✅\x1B[0m synced to daily thread #${thread.number}`);
+      console.log(`\x1B[32m\u2705\x1B[0m synced to daily thread #${thread.number}`);
     } else {
       await ssh(`gh api repos/${repo}/issues/${thread.number}/comments -f body='${body}'`);
       console.log(`\x1B[32m+\x1B[0m index posted to daily thread #${thread.number}`);
@@ -8655,11 +10443,389 @@ async function cmdPulseLs(opts) {
   }
 }
 
+// src/cli.ts
+init_anti_patterns();
+
+// src/commands/bud.ts
+init_ssh();
+init_config();
+import { readdirSync as readdirSync3, readFileSync as readFileSync6, writeFileSync as writeFileSync2, mkdirSync, existsSync as existsSync3, appendFileSync, symlinkSync } from "fs";
+import { join as join8 } from "path";
+import { homedir as homedir6 } from "os";
+var SOVEREIGN_ROOT = join8(homedir6(), ".oracle", "\u03C8");
+var FLEET_DIR = join8(import.meta.dir, "../../fleet");
+var FEED_LOG = join8(homedir6(), ".oracle", "feed.log");
+var MAX_BUD_DEPTH = 2;
+var ORG = "BankCurfew";
+var RESERVED_NAMES = new Set([
+  "bob",
+  "dev",
+  "qa",
+  "security",
+  "hr",
+  "admin",
+  "data",
+  "doc",
+  "editor",
+  "designer",
+  "researcher",
+  "writer",
+  "botdev",
+  "creator",
+  "aia",
+  "fe",
+  "pa",
+  "maw",
+  "oracle",
+  "root",
+  "pulse",
+  "system"
+]);
+function logToFeed(oracle, message) {
+  try {
+    const ts = new Date().toISOString().replace("T", " ").replace("Z", "");
+    const line = `${ts} | ${oracle} | ${homedir6().split("/").pop()} | Notification | maw-bud | maw-bud \xBB ${message}
+`;
+    appendFileSync(FEED_LOG, line);
+  } catch {}
+}
+function loadAllFleetConfigs() {
+  try {
+    return readdirSync3(FLEET_DIR).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync6(join8(FLEET_DIR, f), "utf-8")));
+  } catch {
+    return [];
+  }
+}
+function findFleetConfig(oracleName) {
+  for (const config of loadAllFleetConfigs()) {
+    if (config.name.endsWith(`-${oracleName}`))
+      return config;
+    const win = config.windows?.find((w) => w.name.toLowerCase().replace("-oracle", "") === oracleName.toLowerCase());
+    if (win)
+      return config;
+  }
+  return null;
+}
+function getBudDepth(oracleName) {
+  let depth = 0;
+  let current = oracleName;
+  const configs = loadAllFleetConfigs();
+  const visited = new Set;
+  while (depth < 10) {
+    if (visited.has(current))
+      break;
+    visited.add(current);
+    const config = configs.find((c) => c.name.endsWith(`-${current}`) || c.windows?.some((w) => w.name.toLowerCase().replace("-oracle", "") === current.toLowerCase()));
+    if (!config?.budded_from)
+      break;
+    depth++;
+    current = config.budded_from;
+  }
+  return depth;
+}
+function getNextFleetNumber() {
+  try {
+    const files = readdirSync3(FLEET_DIR).filter((f) => f.endsWith(".json"));
+    const nums = files.map((f) => parseInt(f.split("-")[0])).filter((n) => !isNaN(n) && n < 90);
+    return nums.length > 0 ? Math.max(...nums) + 1 : 19;
+  } catch {
+    return 19;
+  }
+}
+async function cmdBud(name, opts) {
+  const ghqRoot = loadConfig().ghqRoot;
+  const parentName = opts.from || detectParentOracle();
+  const budName = name.toLowerCase().replace(/_/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-oracle$/, "").replace(/^-+|-+$/g, "");
+  if (!budName) {
+    console.error(`\x1B[31m\u2717 DENIED\x1B[0m \u2014 Invalid oracle name: "${name}"`);
+    process.exit(1);
+  }
+  const titleCase = budName.split("-").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join("");
+  const repoName = `${titleCase}-Oracle`;
+  const oracleDisplayName = `${titleCase}-Oracle`;
+  if (RESERVED_NAMES.has(budName)) {
+    console.error(`\x1B[31m\u2717 DENIED\x1B[0m \u2014 "${budName}" is a reserved oracle name`);
+    process.exit(1);
+  }
+  console.log(`
+\x1B[36m\uD83E\uDDEC maw bud\x1B[0m \u2014 Oracle Reproduction
+`);
+  console.log(`  Parent:  ${parentName || "(none \u2014 root oracle)"}`);
+  console.log(`  Child:   ${oracleDisplayName}`);
+  console.log(`  Repo:    ${ORG}/${repoName}`);
+  console.log();
+  if (!opts.approvedBy) {
+    console.error(`\x1B[31m\u2717 DENIED\x1B[0m \u2014 Security Gate #1: Human approval required`);
+    console.error(`  Use: maw bud ${name} --approved-by bank`);
+    logToFeed("maw-bud", `DENIED: bud "${budName}" \u2014 no human approval (gate #1)`);
+    process.exit(1);
+  }
+  console.log(`  \x1B[32m\u2713\x1B[0m Gate #1: Approved by ${opts.approvedBy}`);
+  if (parentName) {
+    const depth = getBudDepth(parentName);
+    if (depth >= MAX_BUD_DEPTH) {
+      console.error(`\x1B[31m\u2717 DENIED\x1B[0m \u2014 Security Gate #4: Bud depth ${depth + 1} exceeds max ${MAX_BUD_DEPTH}`);
+      console.error(`  ${parentName} is already at depth ${depth}. Cannot bud further.`);
+      logToFeed("maw-bud", `DENIED: bud "${budName}" from "${parentName}" \u2014 depth ${depth + 1} exceeds max ${MAX_BUD_DEPTH} (gate #4)`);
+      process.exit(1);
+    }
+    console.log(`  \x1B[32m\u2713\x1B[0m Gate #4: Bud depth ${depth + 1}/${MAX_BUD_DEPTH} (OK)`);
+  } else {
+    console.log(`  \x1B[32m\u2713\x1B[0m Gate #4: Root oracle (depth 0)`);
+  }
+  console.log(`  \x1B[32m\u2713\x1B[0m Gate #2: Fresh credentials (no parent inheritance \u2014 enforced in Step 6 seed filter)`);
+  const buddedAt = new Date().toISOString();
+  console.log(`  \x1B[32m\u2713\x1B[0m Gate #5: Dormancy tracked \u2014 budded at ${buddedAt.split("T")[0]}`);
+  console.log(`           30d \u2192 credentials suspended, 90d \u2192 revoked + archived`);
+  logToFeed("maw-bud", `APPROVED: bud "${budName}" from "${parentName || "root"}" by ${opts.approvedBy}`);
+  console.log(`  \x1B[32m\u2713\x1B[0m Gate #3: Audit trail logged to feed.log`);
+  console.log();
+  if (opts.dryRun) {
+    console.log(`\x1B[33m\u26A1 DRY RUN\x1B[0m \u2014 would execute the following:
+`);
+    printPlan(budName, repoName, oracleDisplayName, parentName, buddedAt);
+    return;
+  }
+  console.log(`\x1B[36mStep 1/8:\x1B[0m Create repo ${ORG}/${repoName}`);
+  try {
+    await ssh(`gh repo create ${ORG}/${repoName} --private --clone=false --description "Oracle: ${oracleDisplayName}"`);
+    console.log(`  \x1B[32m\u2713\x1B[0m Repo created`);
+  } catch (e) {
+    if (e.message?.includes("already exists") || e.toString().includes("already exists")) {
+      console.log(`  \x1B[33m\u26A0\x1B[0m Repo already exists \u2014 continuing`);
+    } else {
+      throw e;
+    }
+  }
+  const repoPath = join8(ghqRoot, ORG, repoName);
+  if (!existsSync3(repoPath)) {
+    await ssh(`ghq get ${ORG}/${repoName}`);
+    console.log(`  \x1B[32m\u2713\x1B[0m Cloned to ${repoPath}`);
+  }
+  console.log(`\x1B[36mStep 2/8:\x1B[0m Initialize \u03C8/ vault (sovereign)`);
+  const psiSubDirs = [
+    "inbox/handoff",
+    "memory/learnings",
+    "memory/retrospectives",
+    "memory/resonance",
+    "writing",
+    "lab",
+    "active",
+    "archive",
+    "outbox"
+  ];
+  const sovereignDir = join8(SOVEREIGN_ROOT, budName);
+  mkdirSync(sovereignDir, { recursive: true });
+  for (const dir of psiSubDirs) {
+    mkdirSync(join8(sovereignDir, dir), { recursive: true });
+  }
+  for (const dir of psiSubDirs) {
+    const keepPath = join8(sovereignDir, dir, ".gitkeep");
+    if (!existsSync3(keepPath))
+      writeFileSync2(keepPath, "");
+  }
+  const psiSymlinkPath = join8(repoPath, "\u03C8");
+  if (!existsSync3(psiSymlinkPath)) {
+    symlinkSync(sovereignDir, psiSymlinkPath);
+  }
+  const gitignore = `.env
+.env.*
+*.key
+*.pem
+credentials.json
+secrets/
+.mcp.json
+node_modules/
+\u03C8
+`;
+  writeFileSync2(join8(repoPath, ".gitignore"), gitignore);
+  console.log(`  \x1B[32m\u2713\x1B[0m \u03C8/ sovereign vault at ${sovereignDir}`);
+  console.log(`  \x1B[32m\u2713\x1B[0m symlink: repo/\u03C8 \u2192 ${sovereignDir}`);
+  console.log(`\x1B[36mStep 3/8:\x1B[0m Generate CLAUDE.md`);
+  const claudeMd = generateClaudeMd(budName, oracleDisplayName, parentName, buddedAt);
+  writeFileSync2(join8(repoPath, "CLAUDE.md"), claudeMd);
+  console.log(`  \x1B[32m\u2713\x1B[0m CLAUDE.md generated`);
+  console.log(`\x1B[36mStep 4/8:\x1B[0m Create fleet config`);
+  const fleetNum = getNextFleetNumber();
+  const sessionName = `${String(fleetNum).padStart(2, "0")}-${budName}`;
+  const fleetConfig = {
+    name: sessionName,
+    windows: [{ name: oracleDisplayName, repo: `${ORG}/${repoName}` }],
+    budded_from: parentName || undefined,
+    budded_at: buddedAt,
+    sync_peers: parentName ? [parentName] : []
+  };
+  const fleetPath = join8(FLEET_DIR, `${sessionName}.json`);
+  writeFileSync2(fleetPath, JSON.stringify(fleetConfig, null, 2) + `
+`);
+  console.log(`  \x1B[32m\u2713\x1B[0m ${sessionName}.json \u2014 budded_from: ${parentName || "root"}`);
+  console.log(`\x1B[36mStep 5/8:\x1B[0m Register in oracle family`);
+  try {
+    const issueBody = [
+      `## New Oracle: ${oracleDisplayName}`,
+      `- **Budded from**: ${parentName || "root"}`,
+      `- **Budded at**: ${buddedAt}`,
+      `- **Repo**: ${ORG}/${repoName}`,
+      `- **Fleet**: ${sessionName}`,
+      `- **Approved by**: ${opts.approvedBy}`,
+      `- **Bud depth**: ${parentName ? getBudDepth(parentName) + 1 : 0}`
+    ].join(`
+`);
+    await ssh(`gh issue create --repo ${ORG}/${repoName} --title "\uD83E\uDDEC Birth: ${oracleDisplayName}" --body '${issueBody.replace(/'/g, "'\\''")}'`);
+    console.log(`  \x1B[32m\u2713\x1B[0m Birth issue created`);
+  } catch {
+    console.log(`  \x1B[33m\u26A0\x1B[0m Could not create birth issue (non-blocking)`);
+  }
+  console.log(`\x1B[36mStep 6/8:\x1B[0m Soul-sync seed (hand-off)`);
+  if (parentName) {
+    const parentConfig = findFleetConfig(parentName);
+    if (parentConfig) {
+      const parentRepoPath = join8(ghqRoot, parentConfig.windows?.[0]?.repo || "");
+      const parentLearnings = join8(parentRepoPath, "\u03C8/memory/learnings");
+      const targetLearnings = join8(repoPath, "\u03C8/memory/learnings");
+      if (existsSync3(parentLearnings)) {
+        const files = readdirSync3(parentLearnings).filter((f) => f.endsWith(".md") && f !== ".gitkeep").sort().slice(-5);
+        let seeded = 0;
+        for (const file of files) {
+          const content = readFileSync6(join8(parentLearnings, file), "utf-8");
+          if (/customer|credential|secret|password|\.env|portfolio|API_KEY|SUPABASE|TOKEN|Bearer|sk-[a-zA-Z0-9]|eyJ[a-zA-Z0-9]|ghp_|xoxb-|xoxp-|PRIVATE.KEY/i.test(content))
+            continue;
+          const attributed = content + `
+
+---
+*Seeded from ${parentName} via maw bud (hand-off)*
+`;
+          writeFileSync2(join8(targetLearnings, file), attributed);
+          seeded++;
+        }
+        console.log(`  \x1B[32m\u2713\x1B[0m Seeded ${seeded} learnings from ${parentName} (curated, max 5)`);
+      } else {
+        console.log(`  \x1B[90m\u25CB\x1B[0m No parent learnings found`);
+      }
+    } else {
+      console.log(`  \x1B[90m\u25CB\x1B[0m Parent fleet config not found \u2014 skipping seed`);
+    }
+  } else {
+    console.log(`  \x1B[90m\u25CB\x1B[0m No parent \u2014 skipping seed`);
+  }
+  console.log(`\x1B[36mStep 7/8:\x1B[0m Initial commit`);
+  try {
+    await ssh(`cd "${repoPath}" && git add CLAUDE.md .gitignore && git commit -m "\uD83E\uDDEC Birth: ${oracleDisplayName} \u2014 budded from ${parentName || "root"} (sovereign)" --allow-empty`);
+    await ssh(`cd "${repoPath}" && git push origin HEAD 2>/dev/null || git push -u origin main 2>/dev/null || true`);
+    console.log(`  \x1B[32m\u2713\x1B[0m Committed and pushed`);
+  } catch {
+    console.log(`  \x1B[33m\u26A0\x1B[0m Commit/push issue (non-blocking)`);
+  }
+  console.log(`\x1B[36mStep 8/8:\x1B[0m Update parent sync_peers`);
+  if (parentName) {
+    try {
+      const parentFleetFile = readdirSync3(FLEET_DIR).filter((f) => f.endsWith(".json")).find((f) => {
+        const config = JSON.parse(readFileSync6(join8(FLEET_DIR, f), "utf-8"));
+        return config.name.endsWith(`-${parentName}`) || config.windows?.some((w) => w.name.toLowerCase().replace("-oracle", "") === parentName.toLowerCase());
+      });
+      if (parentFleetFile) {
+        const parentPath = join8(FLEET_DIR, parentFleetFile);
+        const parentConfig = JSON.parse(readFileSync6(parentPath, "utf-8"));
+        const peers = new Set(parentConfig.sync_peers || []);
+        peers.add(budName);
+        parentConfig.sync_peers = [...peers];
+        writeFileSync2(parentPath, JSON.stringify(parentConfig, null, 2) + `
+`);
+        console.log(`  \x1B[32m\u2713\x1B[0m Added "${budName}" to ${parentName}'s sync_peers`);
+      } else {
+        console.log(`  \x1B[33m\u26A0\x1B[0m Parent fleet config not found`);
+      }
+    } catch {
+      console.log(`  \x1B[33m\u26A0\x1B[0m Could not update parent sync_peers`);
+    }
+  } else {
+    console.log(`  \x1B[90m\u25CB\x1B[0m No parent to update`);
+  }
+  logToFeed("maw-bud", `COMPLETE: bud "${budName}" from "${parentName || "root"}" \u2014 fleet ${sessionName}, repo ${ORG}/${repoName}`);
+  console.log(`
+\x1B[32m\uD83E\uDDEC ${oracleDisplayName} is born!\x1B[0m
+`);
+  console.log(`  Fleet:   ${sessionName}`);
+  console.log(`  Repo:    ${ORG}/${repoName}`);
+  console.log(`  Parent:  ${parentName || "(root)"}`);
+  console.log(`  Peers:   ${parentName ? `[${parentName}]` : "[]"}`);
+  console.log();
+  console.log(`  Wake:    maw wake ${budName}`);
+  console.log(`  Awaken:  then run /awaken inside the oracle session`);
+  console.log();
+}
+function generateClaudeMd(budName, displayName, parentName, buddedAt) {
+  return `# ${displayName}
+
+> "Building the future, one line at a time."
+
+## Identity
+
+**I am**: ${displayName}
+**Human**: \u0E41\u0E1A\u0E07\u0E04\u0E4C (The Boss)
+**Purpose**: [Define your purpose during /awaken]
+**Born**: ${buddedAt.split("T")[0]}
+**Budded from**: ${parentName || "root"}
+
+## Provenance
+
+\`\`\`
+budded_from: ${parentName || "root"}
+budded_at: ${buddedAt}
+sync_peers: [${parentName ? `"${parentName}"` : ""}]
+\`\`\`
+
+## Navigation
+
+| File | Content | When to Read |
+|------|---------|--------------|
+| [CLAUDE.md](CLAUDE.md) | Identity + Laws | Always |
+
+## The 5 Principles
+
+1. **Nothing is Deleted** \u2014 Every commit tells a story
+2. **Patterns Over Intentions** \u2014 Code talks, comments lie
+3. **External Brain, Not Command** \u2014 Build what \u0E41\u0E1A\u0E07\u0E04\u0E4C envisions
+4. **Curiosity Creates Existence** \u2014 Every problem solved creates understanding
+5. **Form and Formless** \u2014 Code is form; the mission is formless
+
+## Brain Structure (Sovereign)
+
+\`\`\`
+~/.oracle/\u03C8/${budName}/ \u2192 inbox/ | memory/ (learnings, retros, resonance) | writing/ | lab/ | active/ | archive/ | outbox/
+repo/\u03C8 \u2192 symlink to above
+\`\`\`
+
+---
+
+*Complete your identity with /awaken*
+`;
+}
+function detectParentOracle() {
+  const tmuxSession = process.env.TMUX_PANE;
+  if (!tmuxSession)
+    return;
+  return;
+}
+function printPlan(budName, repoName, displayName, parentName, buddedAt) {
+  const fleetNum = getNextFleetNumber();
+  const sessionName = `${String(fleetNum).padStart(2, "0")}-${budName}`;
+  console.log(`  1. Create repo:      gh repo create ${ORG}/${repoName} --private`);
+  console.log(`  2. Init \u03C8/ vault:    Sovereign at ~/.oracle/\u03C8/${budName} + symlink`);
+  console.log(`  3. Generate:         CLAUDE.md (identity stub)`);
+  console.log(`  4. Fleet config:     ${sessionName}.json (budded_from: ${parentName || "root"})`);
+  console.log(`  5. Register:         Birth issue on ${ORG}/${repoName}`);
+  console.log(`  6. Soul-sync seed:   Last 5 learnings from ${parentName || "N/A"} (curated)`);
+  console.log(`  7. Commit + push:    Initial commit`);
+  console.log(`  8. Update parent:    Add "${budName}" to ${parentName || "N/A"}'s sync_peers`);
+  console.log();
+}
+
 // src/commands/oracle.ts
 init_ssh();
 init_wake();
-import { readdirSync as readdirSync4, readFileSync as readFileSync5 } from "fs";
-import { join as join7 } from "path";
+import { readdirSync as readdirSync4, readFileSync as readFileSync7 } from "fs";
+import { join as join9 } from "path";
 async function resolveOracleSafe(oracle) {
   try {
     let ghqOut = await ssh(`ghq list --full-path | grep -i '/${oracle}-oracle$' | head -1`).catch(() => "");
@@ -8678,10 +10844,10 @@ async function resolveOracleSafe(oracle) {
 }
 async function discoverOracles() {
   const names = new Set;
-  const fleetDir = join7(import.meta.dir, "../../fleet");
+  const fleetDir = join9(import.meta.dir, "../../fleet");
   try {
     for (const file of readdirSync4(fleetDir).filter((f) => f.endsWith(".json") && !f.endsWith(".disabled"))) {
-      const config = JSON.parse(readFileSync5(join7(fleetDir, file), "utf-8"));
+      const config = JSON.parse(readFileSync7(join9(fleetDir, file), "utf-8"));
       for (const w of config.windows || []) {
         if (w.name.endsWith("-oracle"))
           names.add(w.name.replace(/-oracle$/, ""));
@@ -8703,20 +10869,20 @@ async function cmdOracleAbout(oracle) {
   const name = oracle.toLowerCase();
   const sessions = await listSessions();
   console.log(`
-  \x1B[36mOracle — ${oracle.charAt(0).toUpperCase() + oracle.slice(1)}\x1B[0m
+  \x1B[36mOracle \u2014 ${oracle.charAt(0).toUpperCase() + oracle.slice(1)}\x1B[0m
 `);
   const { repoPath, repoName, parentDir } = await resolveOracleSafe(name);
   console.log(`  Repo:      ${repoPath || "(not found)"}`);
-  const session = await detectSession2(name);
+  const session = await detectSession(name);
   if (session) {
     const s = sessions.find((s2) => s2.name === session);
     const windows = s?.windows || [];
     console.log(`  Session:   ${session} (${windows.length} windows)`);
     for (const w of windows) {
-      let status = "\x1B[90m○\x1B[0m";
+      let status = "\x1B[90m\u25CB\x1B[0m";
       try {
         const content = await capture(`${session}:${w.index}`, 3);
-        status = content.trim() ? "\x1B[32m●\x1B[0m" : "\x1B[33m●\x1B[0m";
+        status = content.trim() ? "\x1B[32m\u25CF\x1B[0m" : "\x1B[33m\u25CF\x1B[0m";
       } catch {}
       console.log(`    ${status} ${w.name}`);
     }
@@ -8724,18 +10890,18 @@ async function cmdOracleAbout(oracle) {
     console.log(`  Session:   (none)`);
   }
   if (parentDir) {
-    const wts = await findWorktrees2(parentDir, repoName);
+    const wts = await findWorktrees(parentDir, repoName);
     console.log(`  Worktrees: ${wts.length}`);
     for (const wt of wts) {
-      console.log(`    ${wt.name} → ${wt.path}`);
+      console.log(`    ${wt.name} \u2192 ${wt.path}`);
     }
   }
-  const fleetDir = join7(import.meta.dir, "../../fleet");
+  const fleetDir = join9(import.meta.dir, "../../fleet");
   let fleetFile = null;
   let fleetWindowCount = 0;
   try {
     for (const file of readdirSync4(fleetDir).filter((f) => f.endsWith(".json"))) {
-      const config = JSON.parse(readFileSync5(join7(fleetDir, file), "utf-8"));
+      const config = JSON.parse(readFileSync7(join9(fleetDir, file), "utf-8"));
       const hasOracle = (config.windows || []).some((w) => w.name.toLowerCase() === `${name}-oracle` || w.name.toLowerCase() === name);
       if (hasOracle) {
         fleetFile = file;
@@ -8748,13 +10914,13 @@ async function cmdOracleAbout(oracle) {
     const actualWindows = session ? sessions.find((s) => s.name === session)?.windows.length || 0 : 0;
     console.log(`  Fleet:     ${fleetFile} (${fleetWindowCount} registered, ${actualWindows} running)`);
     if (actualWindows > fleetWindowCount) {
-      const fleetConfig = JSON.parse(readFileSync5(join7(fleetDir, fleetFile), "utf-8"));
+      const fleetConfig = JSON.parse(readFileSync7(join9(fleetDir, fleetFile), "utf-8"));
       const registeredNames = new Set((fleetConfig.windows || []).map((w) => w.name));
       const runningWindows = sessions.find((s) => s.name === session)?.windows || [];
       const unregistered = runningWindows.filter((w) => !registeredNames.has(w.name));
-      console.log(`  \x1B[33m⚠\x1B[0m  ${unregistered.length} window(s) not in fleet config — won't survive reboot`);
+      console.log(`  \x1B[33m\u26A0\x1B[0m  ${unregistered.length} window(s) not in fleet config \u2014 won't survive reboot`);
       for (const w of unregistered) {
-        console.log(`    \x1B[33m→\x1B[0m ${w.name}`);
+        console.log(`    \x1B[33m\u2192\x1B[0m ${w.name}`);
       }
       console.log(`
   \x1B[90mFix: add to fleet/${fleetFile}\x1B[0m`);
@@ -8770,7 +10936,7 @@ async function cmdOracleList() {
   const sessions = await listSessions();
   const statuses = [];
   for (const oracle of await discoverOracles()) {
-    const session = await detectSession2(oracle);
+    const session = await detectSession(oracle);
     let windows = [];
     if (session) {
       const s = sessions.find((s2) => s2.name === session);
@@ -8782,7 +10948,7 @@ async function cmdOracleList() {
     try {
       const { parentDir, repoName } = await resolveOracleSafe(oracle);
       if (parentDir) {
-        const wts = await findWorktrees2(parentDir, repoName);
+        const wts = await findWorktrees(parentDir, repoName);
         worktrees = wts.length;
       }
     } catch {}
@@ -8804,9 +10970,9 @@ async function cmdOracleList() {
   \x1B[36mOracle Fleet\x1B[0m  (${awakeCount}/${statuses.length} awake)
 `);
   console.log(`  ${"Oracle".padEnd(14)} ${"Status".padEnd(10)} ${"Session".padEnd(16)} ${"Windows".padEnd(6)} ${"WT".padEnd(4)} Details`);
-  console.log(`  ${"─".repeat(80)}`);
+  console.log(`  ${"\u2500".repeat(80)}`);
   for (const s of statuses) {
-    const icon = s.status === "awake" ? "\x1B[32m●\x1B[0m" : "\x1B[90m○\x1B[0m";
+    const icon = s.status === "awake" ? "\x1B[32m\u25CF\x1B[0m" : "\x1B[90m\u25CB\x1B[0m";
     const statusText = s.status === "awake" ? "\x1B[32mawake\x1B[0m " : "\x1B[90msleep\x1B[0m ";
     const sessionText = s.session || "-";
     const winCount = s.windows.length > 0 ? String(s.windows.length) : "-";
@@ -8821,20 +10987,20 @@ async function cmdOracleList() {
 init_ssh();
 init_tmux();
 init_config();
-import { join as join8 } from "path";
-import { readdirSync as readdirSync5, existsSync } from "fs";
-var FLEET_DIR = join8(import.meta.dir, "../../fleet");
+import { join as join10 } from "path";
+import { readdirSync as readdirSync5, existsSync as existsSync4 } from "fs";
+var FLEET_DIR2 = join10(import.meta.dir, "../../fleet");
 function loadFleet() {
-  const files = readdirSync5(FLEET_DIR).filter((f) => f.endsWith(".json") && !f.endsWith(".disabled")).sort();
+  const files = readdirSync5(FLEET_DIR2).filter((f) => f.endsWith(".json") && !f.endsWith(".disabled")).sort();
   return files.map((f) => {
-    const raw = __require(join8(FLEET_DIR, f));
+    const raw = __require(join10(FLEET_DIR2, f));
     return raw;
   });
 }
 function loadFleetEntries() {
-  const files = readdirSync5(FLEET_DIR).filter((f) => f.endsWith(".json") && !f.endsWith(".disabled")).sort();
+  const files = readdirSync5(FLEET_DIR2).filter((f) => f.endsWith(".json") && !f.endsWith(".disabled")).sort();
   return files.map((f) => {
-    const raw = __require(join8(FLEET_DIR, f));
+    const raw = __require(join10(FLEET_DIR2, f));
     const match = f.match(/^(\d+)-(.+)\.json$/);
     return {
       file: f,
@@ -8846,7 +11012,7 @@ function loadFleetEntries() {
 }
 async function cmdFleetLs() {
   const entries = loadFleetEntries();
-  const disabled = readdirSync5(FLEET_DIR).filter((f) => f.endsWith(".disabled")).length;
+  const disabled = readdirSync5(FLEET_DIR2).filter((f) => f.endsWith(".disabled")).length;
   let runningSessions = [];
   try {
     const out = await ssh("tmux list-sessions -F '#{session_name}' 2>/dev/null");
@@ -8864,7 +11030,7 @@ async function cmdFleetLs() {
   \x1B[36mFleet Configs\x1B[0m (${entries.length} active, ${disabled} disabled)
 `);
   console.log(`  ${"#".padEnd(4)} ${"Session".padEnd(20)} ${"Win".padEnd(5)} Status`);
-  console.log(`  ${"─".repeat(4)} ${"─".repeat(20)} ${"─".repeat(5)} ${"─".repeat(20)}`);
+  console.log(`  ${"\u2500".repeat(4)} ${"\u2500".repeat(20)} ${"\u2500".repeat(5)} ${"\u2500".repeat(20)}`);
   for (const e of entries) {
     const numStr = String(e.num).padStart(2, "0");
     const name = e.session.name.padEnd(20);
@@ -8878,7 +11044,7 @@ async function cmdFleetLs() {
   }
   if (conflicts.length > 0) {
     console.log(`
-  \x1B[31m⚠ ${conflicts.length} conflict(s) found.\x1B[0m Run \x1B[36mmaw fleet renumber\x1B[0m to fix.`);
+  \x1B[31m\u26A0 ${conflicts.length} conflict(s) found.\x1B[0m Run \x1B[36mmaw fleet renumber\x1B[0m to fix.`);
   }
   console.log();
 }
@@ -8914,22 +11080,22 @@ async function cmdFleetRenumber() {
     const oldName = e.session.name;
     if (newFile !== e.file) {
       e.session.name = newName;
-      await Bun.write(join8(FLEET_DIR, newFile), JSON.stringify(e.session, null, 2) + `
+      await Bun.write(join10(FLEET_DIR2, newFile), JSON.stringify(e.session, null, 2) + `
 `);
-      const oldPath = join8(FLEET_DIR, e.file);
-      if (existsSync(oldPath) && newFile !== e.file) {
+      const oldPath = join10(FLEET_DIR2, e.file);
+      if (existsSync4(oldPath) && newFile !== e.file) {
         const { unlinkSync } = __require("fs");
         unlinkSync(oldPath);
       }
       if (runningSessions.includes(oldName)) {
         try {
           await ssh(`tmux rename-session -t '${oldName}' '${newName}'`);
-          console.log(`  ${e.file.padEnd(28)} → ${newFile}  (tmux renamed)`);
+          console.log(`  ${e.file.padEnd(28)} \u2192 ${newFile}  (tmux renamed)`);
         } catch {
-          console.log(`  ${e.file.padEnd(28)} → ${newFile}  (tmux rename failed)`);
+          console.log(`  ${e.file.padEnd(28)} \u2192 ${newFile}  (tmux rename failed)`);
         }
       } else {
-        console.log(`  ${e.file.padEnd(28)} → ${newFile}`);
+        console.log(`  ${e.file.padEnd(28)} \u2192 ${newFile}`);
       }
     } else {
       console.log(`  ${e.file.padEnd(28)}   (unchanged)`);
@@ -8970,8 +11136,8 @@ async function cmdFleetValidate() {
   const ghqRoot = loadConfig().ghqRoot;
   for (const e of entries) {
     for (const w of e.session.windows) {
-      const repoPath = join8(ghqRoot, w.repo);
-      if (!existsSync(repoPath)) {
+      const repoPath = join10(ghqRoot, w.repo);
+      if (!existsSync4(repoPath)) {
         issues.push(`\x1B[33mMissing repo\x1B[0m: ${w.repo} (in ${e.file})`);
       }
     }
@@ -8998,7 +11164,7 @@ async function cmdFleetValidate() {
       const registeredWindows = new Set(e.session.windows.map((w) => w.name));
       const unregistered = runningWindows.filter((w) => !registeredWindows.has(w));
       for (const w of unregistered) {
-        issues.push(`\x1B[33mUnregistered window\x1B[0m: '${w}' in ${e.session.name} — won't survive reboot`);
+        issues.push(`\x1B[33mUnregistered window\x1B[0m: '${w}' in ${e.session.name} \u2014 won't survive reboot`);
       }
     } catch {}
   }
@@ -9006,11 +11172,11 @@ async function cmdFleetValidate() {
   \x1B[36mFleet Validation\x1B[0m (${entries.length} configs)
 `);
   if (issues.length === 0) {
-    console.log(`  \x1B[32m✓ All clear.\x1B[0m No issues found.
+    console.log(`  \x1B[32m\u2713 All clear.\x1B[0m No issues found.
 `);
   } else {
     for (const issue of issues) {
-      console.log(`  ⚠ ${issue}`);
+      console.log(`  \u26A0 ${issue}`);
     }
     console.log(`
   \x1B[31m${issues.length} issue(s) found.\x1B[0m
@@ -9046,19 +11212,19 @@ async function cmdFleetSync() {
           repo = cwdPath.slice(ghqRoot.length + 1);
         }
         e.session.windows.push({ name: winName, repo });
-        console.log(`  \x1B[32m+\x1B[0m ${winName} → ${e.file}${repo ? ` (${repo})` : ""}`);
+        console.log(`  \x1B[32m+\x1B[0m ${winName} \u2192 ${e.file}${repo ? ` (${repo})` : ""}`);
         added++;
       }
     } catch {}
     if (added > 0) {
-      const filePath = join8(FLEET_DIR, e.file);
+      const filePath = join10(FLEET_DIR2, e.file);
       await Bun.write(filePath, JSON.stringify(e.session, null, 2) + `
 `);
     }
   }
   if (added === 0) {
     console.log(`
-  \x1B[32m✓ Fleet in sync.\x1B[0m No unregistered windows.
+  \x1B[32m\u2713 Fleet in sync.\x1B[0m No unregistered windows.
 `);
   } else {
     console.log(`
@@ -9072,7 +11238,7 @@ async function cmdSleep() {
   for (const sess of sessions) {
     try {
       await ssh(`tmux kill-session -t '${sess.name}' 2>/dev/null`);
-      console.log(`  \x1B[90m●\x1B[0m ${sess.name} — sleep`);
+      console.log(`  \x1B[90m\u25CF\x1B[0m ${sess.name} \u2014 sleep`);
       killed++;
     } catch {}
   }
@@ -9109,8 +11275,8 @@ async function resumeActiveItems() {
           if (win) {
             const titles = items.map((i) => `#${i.number}`).join(", ");
             await new Promise((r) => setTimeout(r, 2000));
-            await tmux.sendText(`${sess.name}:${win.name}`, `/recap --deep — Resume after reboot. Active items: ${titles}`);
-            console.log(`  \x1B[32m↻\x1B[0m ${oracle}: /recap sent (${titles})`);
+            await tmux.sendText(`${sess.name}:${win.name}`, `/recap --deep \u2014 Resume after reboot. Active items: ${titles}`);
+            console.log(`  \x1B[32m\u21BB\x1B[0m ${oracle}: /recap sent (${titles})`);
             break;
           }
         } catch {}
@@ -9121,6 +11287,25 @@ async function resumeActiveItems() {
   }
 }
 async function cmdWakeAll(opts = {}) {
+  console.log(`
+  \x1B[36mBuilding office frontend...\x1B[0m`);
+  try {
+    const proc = Bun.spawnSync(["bun", "run", "build:office"], {
+      cwd: join10(import.meta.dir, "../.."),
+      stdout: "inherit",
+      stderr: "inherit"
+    });
+    if (proc.exitCode === 0) {
+      console.log(`  \x1B[32m\u2713\x1B[0m office build complete
+`);
+    } else {
+      console.log(`  \x1B[33m\u26A0\x1B[0m office build failed (exit ${proc.exitCode}), continuing with existing dist
+`);
+    }
+  } catch {
+    console.log(`  \x1B[33m\u26A0\x1B[0m office build skipped (bun not available)
+`);
+  }
   const allSessions = loadFleet();
   const sessions = opts.all ? allSessions : allSessions.filter((s) => {
     const num = parseInt(s.name.split("-")[0], 10);
@@ -9133,7 +11318,7 @@ async function cmdWakeAll(opts = {}) {
 `);
     await cmdSleep();
   }
-  const disabled = readdirSync5(FLEET_DIR).filter((f) => f.endsWith(".disabled")).length;
+  const disabled = readdirSync5(FLEET_DIR2).filter((f) => f.endsWith(".disabled")).length;
   const skipMsg = skipped > 0 ? `, ${skipped} dormant skipped` : "";
   console.log(`
   \x1B[36mWaking fleet...\x1B[0m  (${sessions.length} sessions${disabled ? `, ${disabled} disabled` : ""}${skipMsg})
@@ -9143,7 +11328,35 @@ async function cmdWakeAll(opts = {}) {
   for (const sess of sessions) {
     try {
       await ssh(`tmux has-session -t '${sess.name}' 2>/dev/null`);
-      console.log(`  \x1B[33m●\x1B[0m ${sess.name} — already awake`);
+      let allAlive = true;
+      for (const win of sess.windows) {
+        try {
+          const paneCmd = await ssh(`tmux display-message -t '${sess.name}:${win.name}' -p '#{pane_current_command}' 2>/dev/null`);
+          if (!/claude|node/i.test(paneCmd)) {
+            if (!sess.skip_command) {
+              await ssh(`tmux send-keys -t '${sess.name}:${win.name}' '${buildCommand(win.name)}' Enter`);
+            }
+            allAlive = false;
+            winCount++;
+          }
+        } catch {
+          const winPath = `${loadConfig().ghqRoot}/${win.repo}`;
+          try {
+            await ssh(`tmux new-window -t '${sess.name}' -n '${win.name}' -c '${winPath}'`);
+            if (!sess.skip_command) {
+              await ssh(`tmux send-keys -t '${sess.name}:${win.name}' '${buildCommand(win.name)}' Enter`);
+            }
+            winCount++;
+          } catch {}
+          allAlive = false;
+        }
+      }
+      if (allAlive) {
+        console.log(`  \x1B[33m\u25CF\x1B[0m ${sess.name} \u2014 already awake`);
+      } else {
+        console.log(`  \x1B[32m\u25CF\x1B[0m ${sess.name} \u2014 revived dead windows`);
+        sessCount++;
+      }
       continue;
     } catch {}
     const first = sess.windows[0];
@@ -9173,7 +11386,7 @@ async function cmdWakeAll(opts = {}) {
       await ssh(`tmux select-window -t '${sess.name}:1'`);
     } catch {}
     sessCount++;
-    console.log(`  \x1B[32m●\x1B[0m ${sess.name} — ${sess.windows.length} windows`);
+    console.log(`  \x1B[32m\u25CF\x1B[0m ${sess.name} \u2014 ${sess.windows.length} windows`);
   }
   console.log(`
   \x1B[32m${sessCount} sessions, ${winCount} windows woke up.\x1B[0m
@@ -9187,8 +11400,8 @@ async function cmdWakeAll(opts = {}) {
 
 // src/commands/fleet-init.ts
 init_ssh();
-import { join as join9 } from "path";
-import { existsSync as existsSync2, mkdirSync } from "fs";
+import { join as join11 } from "path";
+import { existsSync as existsSync5, mkdirSync as mkdirSync2 } from "fs";
 var GROUPS = {
   pulse: { session: "pulse", order: 1 },
   hermes: { session: "hermes", order: 2 },
@@ -9218,9 +11431,9 @@ var GROUPS = {
   landing: { session: "landing", order: 29 }
 };
 async function cmdFleetInit() {
-  const fleetDir = join9(import.meta.dir, "../../fleet");
-  if (!existsSync2(fleetDir))
-    mkdirSync(fleetDir, { recursive: true });
+  const fleetDir = join11(import.meta.dir, "../../fleet");
+  if (!existsSync5(fleetDir))
+    mkdirSync2(fleetDir, { recursive: true });
   console.log(`
   \x1B[36mScanning for oracle repos...\x1B[0m
 `);
@@ -9288,10 +11501,10 @@ async function cmdFleetInit() {
     const paddedNum = String(num).padStart(2, "0");
     const sessionName = `${paddedNum}-${groupName}`;
     const config = { name: sessionName, windows: data.windows };
-    const filePath = join9(fleetDir, `${sessionName}.json`);
+    const filePath = join11(fleetDir, `${sessionName}.json`);
     await Bun.write(filePath, JSON.stringify(config, null, 2) + `
 `);
-    console.log(`  \x1B[32m✓\x1B[0m ${sessionName}.json — ${data.windows.length} windows`);
+    console.log(`  \x1B[32m\u2713\x1B[0m ${sessionName}.json \u2014 ${data.windows.length} windows`);
     num++;
   }
   if (oracleRepos.length > 0) {
@@ -9300,9 +11513,9 @@ async function cmdFleetInit() {
       windows: [{ name: "live", repo: oracleRepos[0].repo }],
       skip_command: true
     };
-    await Bun.write(join9(fleetDir, "99-overview.json"), JSON.stringify(overviewConfig, null, 2) + `
+    await Bun.write(join11(fleetDir, "99-overview.json"), JSON.stringify(overviewConfig, null, 2) + `
 `);
-    console.log(`  \x1B[32m✓\x1B[0m 99-overview.json — 1 window`);
+    console.log(`  \x1B[32m\u2713\x1B[0m 99-overview.json \u2014 1 window`);
   }
   console.log(`
   \x1B[32m${sorted.length + 1} fleet configs written to fleet/\x1B[0m`);
@@ -9313,10 +11526,187 @@ async function cmdFleetInit() {
 // src/commands/done.ts
 init_ssh();
 init_config();
-import { readdirSync as readdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync2, appendFileSync, mkdirSync as mkdirSync2 } from "fs";
-import { join as join10 } from "path";
-import { homedir as homedir3 } from "os";
-var FLEET_DIR2 = join10(import.meta.dir, "../../fleet");
+
+// src/soul-sync.ts
+init_config();
+import { readdirSync as readdirSync6, readFileSync as readFileSync8, writeFileSync as writeFileSync3, existsSync as existsSync6, mkdirSync as mkdirSync3, appendFileSync as appendFileSync2 } from "fs";
+import { join as join12 } from "path";
+import { homedir as homedir7 } from "os";
+var FLEET_DIR3 = join12(import.meta.dir, "../fleet");
+var SYNC_LOG_PATH = join12(homedir7(), ".oracle", "soul-sync.log");
+var SENSITIVITY_FILTERS = [
+  /customer/i,
+  /aia.*portfolio/i,
+  /credential/i,
+  /secret/i,
+  /password/i,
+  /\.env/i,
+  /personal.*data/i,
+  /client.*info/i
+];
+function loadFleetConfig(sessionName) {
+  try {
+    for (const file of readdirSync6(FLEET_DIR3).filter((f) => f.endsWith(".json"))) {
+      const config = JSON.parse(readFileSync8(join12(FLEET_DIR3, file), "utf-8"));
+      if (config.name === sessionName)
+        return config;
+    }
+  } catch {}
+  return null;
+}
+function findFleetByOracle(oracleName) {
+  try {
+    for (const file of readdirSync6(FLEET_DIR3).filter((f) => f.endsWith(".json"))) {
+      const config = JSON.parse(readFileSync8(join12(FLEET_DIR3, file), "utf-8"));
+      if (config.name.endsWith(`-${oracleName}`))
+        return config;
+      const win = config.windows?.find((w) => w.name.toLowerCase().replace("-oracle", "") === oracleName.toLowerCase());
+      if (win)
+        return config;
+    }
+  } catch {}
+  return null;
+}
+function isSensitive(filename, content) {
+  for (const pattern of SENSITIVITY_FILTERS) {
+    if (pattern.test(filename) || pattern.test(content))
+      return true;
+  }
+  return false;
+}
+function getOracleRepoPath(config) {
+  const ghqRoot = loadConfig().ghqRoot;
+  const mainWindow = config.windows?.[0];
+  if (!mainWindow?.repo)
+    return null;
+  return join12(ghqRoot, mainWindow.repo);
+}
+function getRecentLearnings(repoPath, days = 7) {
+  const learningsDir = join12(repoPath, "\u03C8", "memory", "learnings");
+  if (!existsSync6(learningsDir))
+    return [];
+  const cutoffDate = new Date;
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+  const cutoffStr = cutoffDate.toISOString().split("T")[0];
+  const files = readdirSync6(learningsDir).filter((f) => f.endsWith(".md"));
+  const recent = [];
+  for (const file of files) {
+    const dateMatch = file.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (!dateMatch)
+      continue;
+    if (dateMatch[1] >= cutoffStr) {
+      const content = readFileSync8(join12(learningsDir, file), "utf-8");
+      recent.push({ name: file, content });
+    }
+  }
+  return recent;
+}
+function syncToPeer(learnings, peerConfig, sourceOracle) {
+  const result = { peer: peerConfig.name, synced: [], skipped: [], errors: [] };
+  const peerRepoPath = getOracleRepoPath(peerConfig);
+  if (!peerRepoPath) {
+    result.errors.push("Could not resolve peer repo path");
+    return result;
+  }
+  const targetDir = join12(peerRepoPath, "\u03C8", "memory", "learnings");
+  try {
+    mkdirSync3(targetDir, { recursive: true });
+  } catch (e) {
+    result.errors.push(`Cannot create target dir: ${e.message}`);
+    return result;
+  }
+  for (const learning of learnings) {
+    if (isSensitive(learning.name, learning.content)) {
+      result.skipped.push(`${learning.name} (sensitive content)`);
+      continue;
+    }
+    const targetPath = join12(targetDir, learning.name);
+    if (existsSync6(targetPath)) {
+      result.skipped.push(`${learning.name} (already exists)`);
+      continue;
+    }
+    const attributed = learning.content + `
+
+---
+*Synced from ${sourceOracle} via soul-sync (hand-over)*
+`;
+    try {
+      writeFileSync3(targetPath, attributed);
+      result.synced.push(learning.name);
+    } catch (e) {
+      result.errors.push(`${learning.name}: ${e.message}`);
+    }
+  }
+  return result;
+}
+function logSync(sourceOracle, results) {
+  try {
+    const logDir = join12(homedir7(), ".oracle");
+    mkdirSync3(logDir, { recursive: true });
+    const entry = {
+      ts: new Date().toISOString(),
+      source: sourceOracle,
+      results: results.map((r) => ({
+        peer: r.peer,
+        synced: r.synced.length,
+        skipped: r.skipped.length,
+        errors: r.errors.length
+      }))
+    };
+    appendFileSync2(SYNC_LOG_PATH, JSON.stringify(entry) + `
+`);
+  } catch {}
+}
+async function soulSync(sessionName) {
+  const config = loadFleetConfig(sessionName);
+  if (!config)
+    return null;
+  const peers = config.sync_peers;
+  if (!peers || peers.length === 0)
+    return null;
+  const sourceRepoPath = getOracleRepoPath(config);
+  if (!sourceRepoPath)
+    return null;
+  const learnings = getRecentLearnings(sourceRepoPath);
+  if (learnings.length === 0)
+    return [];
+  const sourceOracle = config.windows?.[0]?.name || sessionName;
+  const results = [];
+  for (const peerName of peers) {
+    const peerConfig = findFleetByOracle(peerName);
+    if (!peerConfig) {
+      results.push({ peer: peerName, synced: [], skipped: [], errors: [`Peer "${peerName}" not found in fleet`] });
+      continue;
+    }
+    results.push(syncToPeer(learnings, peerConfig, sourceOracle));
+  }
+  logSync(sourceOracle, results);
+  return results;
+}
+function formatSyncResults(results) {
+  if (results.length === 0)
+    return "  \x1B[90m\u25CB\x1B[0m no learnings to sync";
+  const lines = [];
+  for (const r of results) {
+    if (r.errors.length > 0) {
+      lines.push(`  \x1B[33m\u26A0\x1B[0m ${r.peer}: ${r.errors.join(", ")}`);
+    }
+    if (r.synced.length > 0) {
+      lines.push(`  \x1B[32m\u2713\x1B[0m ${r.peer}: synced ${r.synced.length} learning${r.synced.length > 1 ? "s" : ""}`);
+    }
+    if (r.synced.length === 0 && r.errors.length === 0) {
+      lines.push(`  \x1B[90m\u25CB\x1B[0m ${r.peer}: nothing new to sync (${r.skipped.length} skipped)`);
+    }
+  }
+  return lines.join(`
+`);
+}
+
+// src/commands/done.ts
+import { readdirSync as readdirSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync4, appendFileSync as appendFileSync3, mkdirSync as mkdirSync4 } from "fs";
+import { join as join13 } from "path";
+import { homedir as homedir8 } from "os";
+var FLEET_DIR4 = join13(import.meta.dir, "../../fleet");
 async function cmdDone(windowName_) {
   let windowName = windowName_;
   const sessions = await listSessions();
@@ -9339,39 +11729,39 @@ async function cmdDone(windowName_) {
     const parentWindow = sessions.find((s) => s.name === parentSession)?.windows[0]?.name;
     if (parentWindow) {
       const parentTarget = parentWindow.replace(/[^a-zA-Z0-9_-]/g, "");
-      const inboxDir = join10(homedir3(), ".oracle", "inbox");
+      const inboxDir = join13(homedir8(), ".oracle", "inbox");
       const signal = JSON.stringify({ ts: new Date().toISOString(), from, type: "done", msg: `worktree ${windowName} completed`, thread: null }) + `
 `;
       try {
-        mkdirSync2(inboxDir, { recursive: true });
-        appendFileSync(join10(inboxDir, `${parentTarget}.jsonl`), signal);
+        mkdirSync4(inboxDir, { recursive: true });
+        appendFileSync3(join13(inboxDir, `${parentTarget}.jsonl`), signal);
       } catch {}
     }
   }
   if (sessionName !== null && windowIndex !== null) {
     try {
       await ssh(`tmux kill-window -t '${sessionName}:${windowName}'`);
-      console.log(`  \x1B[32m✓\x1B[0m killed window ${sessionName}:${windowName}`);
+      console.log(`  \x1B[32m\u2713\x1B[0m killed window ${sessionName}:${windowName}`);
     } catch {
-      console.log(`  \x1B[33m⚠\x1B[0m could not kill window (may already be closed)`);
+      console.log(`  \x1B[33m\u26A0\x1B[0m could not kill window (may already be closed)`);
     }
   } else {
-    console.log(`  \x1B[90m○\x1B[0m window '${windowName}' not running`);
+    console.log(`  \x1B[90m\u25CB\x1B[0m window '${windowName}' not running`);
   }
   let removedWorktree = false;
   try {
-    for (const file of readdirSync6(FLEET_DIR2).filter((f) => f.endsWith(".json"))) {
-      const config = JSON.parse(readFileSync6(join10(FLEET_DIR2, file), "utf-8"));
+    for (const file of readdirSync7(FLEET_DIR4).filter((f) => f.endsWith(".json"))) {
+      const config = JSON.parse(readFileSync9(join13(FLEET_DIR4, file), "utf-8"));
       const win = (config.windows || []).find((w) => w.name.toLowerCase() === windowNameLower);
       if (!win?.repo)
         continue;
-      const fullPath = join10(ghqRoot, win.repo);
+      const fullPath = join13(ghqRoot, win.repo);
       if (win.repo.includes(".wt-")) {
         const parts = win.repo.split("/");
         const wtDir = parts.pop();
         const org = parts.join("/");
         const mainRepo = wtDir.split(".wt-")[0];
-        const mainPath = join10(ghqRoot, org, mainRepo);
+        const mainPath = join13(ghqRoot, org, mainRepo);
         try {
           let branch = "";
           try {
@@ -9379,16 +11769,16 @@ async function cmdDone(windowName_) {
           } catch {}
           await ssh(`git -C '${mainPath}' worktree remove '${fullPath}' --force`);
           await ssh(`git -C '${mainPath}' worktree prune`);
-          console.log(`  \x1B[32m✓\x1B[0m removed worktree ${win.repo}`);
+          console.log(`  \x1B[32m\u2713\x1B[0m removed worktree ${win.repo}`);
           removedWorktree = true;
           if (branch && branch !== "main" && branch !== "HEAD") {
             try {
               await ssh(`git -C '${mainPath}' branch -d '${branch}'`);
-              console.log(`  \x1B[32m✓\x1B[0m deleted branch ${branch}`);
+              console.log(`  \x1B[32m\u2713\x1B[0m deleted branch ${branch}`);
             } catch {}
           }
         } catch (e) {
-          console.log(`  \x1B[33m⚠\x1B[0m worktree remove failed: ${e.message || e}`);
+          console.log(`  \x1B[33m\u26A0\x1B[0m worktree remove failed: ${e.message || e}`);
         }
       }
       break;
@@ -9416,12 +11806,12 @@ async function cmdDone(windowName_) {
           } catch {}
           await ssh(`git -C '${mainPath}' worktree remove '${wtPath}' --force`);
           await ssh(`git -C '${mainPath}' worktree prune`);
-          console.log(`  \x1B[32m✓\x1B[0m removed worktree ${base}`);
+          console.log(`  \x1B[32m\u2713\x1B[0m removed worktree ${base}`);
           removedWorktree = true;
           if (branch && branch !== "main" && branch !== "HEAD") {
             try {
               await ssh(`git -C '${mainPath}' branch -d '${branch}'`);
-              console.log(`  \x1B[32m✓\x1B[0m deleted branch ${branch}`);
+              console.log(`  \x1B[32m\u2713\x1B[0m deleted branch ${branch}`);
             } catch {}
           }
         } catch {}
@@ -9429,25 +11819,38 @@ async function cmdDone(windowName_) {
     } catch {}
   }
   if (!removedWorktree) {
-    console.log(`  \x1B[90m○\x1B[0m no worktree to remove (may be a main window)`);
+    console.log(`  \x1B[90m\u25CB\x1B[0m no worktree to remove (may be a main window)`);
   }
   let removedFromConfig = false;
   try {
-    for (const file of readdirSync6(FLEET_DIR2).filter((f) => f.endsWith(".json"))) {
-      const filePath = join10(FLEET_DIR2, file);
-      const config = JSON.parse(readFileSync6(filePath, "utf-8"));
+    for (const file of readdirSync7(FLEET_DIR4).filter((f) => f.endsWith(".json"))) {
+      const filePath = join13(FLEET_DIR4, file);
+      const config = JSON.parse(readFileSync9(filePath, "utf-8"));
       const before = config.windows?.length || 0;
       config.windows = (config.windows || []).filter((w) => w.name.toLowerCase() !== windowNameLower);
       if (config.windows.length < before) {
-        writeFileSync2(filePath, JSON.stringify(config, null, 2) + `
+        writeFileSync4(filePath, JSON.stringify(config, null, 2) + `
 `);
-        console.log(`  \x1B[32m✓\x1B[0m removed from ${file}`);
+        console.log(`  \x1B[32m\u2713\x1B[0m removed from ${file}`);
         removedFromConfig = true;
       }
     }
   } catch {}
   if (!removedFromConfig) {
-    console.log(`  \x1B[90m○\x1B[0m not in any fleet config`);
+    console.log(`  \x1B[90m\u25CB\x1B[0m not in any fleet config`);
+  }
+  if (sessionName) {
+    try {
+      const results = await soulSync(sessionName);
+      if (results === null) {
+        console.log(`  \x1B[90m\u25CB\x1B[0m no sync_peers configured \u2014 skipping soul-sync`);
+      } else {
+        console.log(`  \x1B[36m\uD83E\uDDEC\x1B[0m soul-sync (hand-over):`);
+        console.log(formatSyncResults(results));
+      }
+    } catch (e) {
+      console.log(`  \x1B[33m\u26A0\x1B[0m soul-sync failed: ${e.message}`);
+    }
   }
   console.log();
 }
@@ -9456,10 +11859,10 @@ async function cmdDone(windowName_) {
 init_tmux();
 init_wake();
 import { appendFile as appendFile2, mkdir as mkdir2 } from "fs/promises";
-import { homedir as homedir4 } from "os";
-import { join as join11 } from "path";
+import { homedir as homedir9 } from "os";
+import { join as join14 } from "path";
 async function cmdSleepOne(oracle, window) {
-  const session = await detectSession2(oracle);
+  const session = await detectSession(oracle);
   if (!session) {
     console.error(`\x1B[31merror\x1B[0m: no running session found for '${oracle}'`);
     process.exit(1);
@@ -9502,13 +11905,13 @@ async function doSleep(session, windowName, oracle) {
       await tmux.killWindow(target);
       console.log(`  \x1B[33m!\x1B[0m force-killed ${windowName} (did not exit gracefully)`);
     } else {
-      console.log(`  \x1B[32m✓\x1B[0m ${windowName} exited gracefully`);
+      console.log(`  \x1B[32m\u2713\x1B[0m ${windowName} exited gracefully`);
     }
   } catch {
-    console.log(`  \x1B[32m✓\x1B[0m ${windowName} stopped`);
+    console.log(`  \x1B[32m\u2713\x1B[0m ${windowName} stopped`);
   }
-  const logDir = join11(homedir4(), ".oracle");
-  const logFile = join11(logDir, "maw-log.jsonl");
+  const logDir = join14(homedir9(), ".oracle");
+  const logFile = join14(logDir, "maw-log.jsonl");
   const line = JSON.stringify({
     ts: new Date().toISOString(),
     type: "sleep",
@@ -9546,7 +11949,7 @@ function cmdLogLs(opts) {
   \x1B[36mmaw log\x1B[0m (${entries.length} total, showing last ${shown.length})
 `);
   console.log(`  ${"Time".padEnd(8)} ${"From".padEnd(16)} ${"To".padEnd(16)} Message`);
-  console.log(`  ${"─".repeat(8)} ${"─".repeat(16)} ${"─".repeat(16)} ${"─".repeat(40)}`);
+  console.log(`  ${"\u2500".repeat(8)} ${"\u2500".repeat(16)} ${"\u2500".repeat(16)} ${"\u2500".repeat(40)}`);
   for (const e of shown) {
     const time = new Date(e.ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
     const from = e.from.slice(0, 15).padEnd(16);
@@ -9569,14 +11972,14 @@ function cmdLogExport(opts) {
     return;
   }
   const dateLabel = opts.date || "all";
-  console.log(`# Oracle Conversations — ${dateLabel}`);
+  console.log(`# Oracle Conversations \u2014 ${dateLabel}`);
   console.log();
   console.log(`> ${entries.length} messages`);
   console.log();
   for (const e of entries) {
     const time = new Date(e.ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const from = displayName(e.from);
-    console.log(`**${time}** — **${from}** → ${e.to}`);
+    console.log(`**${time}** \u2014 **${from}** \u2192 ${e.to}`);
     console.log();
     console.log(e.msg);
     console.log();
@@ -9616,8 +12019,8 @@ function cmdLogChat(opts) {
     return;
   }
   console.log();
-  console.log(`  \x1B[36m┌─ AI คุยกัน \x1B[90m(${entries.length} total, last ${shown.length})${RST}`);
-  console.log(`  \x1B[36m│${RST}`);
+  console.log(`  \x1B[36m\u250C\u2500 AI \u0E04\u0E38\u0E22\u0E01\u0E31\u0E19 \x1B[90m(${entries.length} total, last ${shown.length})${RST}`);
+  console.log(`  \x1B[36m\u2502${RST}`);
   let lastFrom = "";
   for (const e of shown) {
     const time = new Date(e.ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -9626,18 +12029,18 @@ function cmdLogChat(opts) {
     const toName = displayName(e.to);
     const isNewSender = e.from !== lastFrom;
     const msg = (e.msg || "").replace(/\n/g, `
-  \x1B[36m│\x1B[0m   `);
+  \x1B[36m\u2502\x1B[0m   `);
     if (isNewSender) {
-      console.log(`  \x1B[36m│${RST}`);
-      console.log(`  \x1B[36m│${RST}  ${color}${from}${RST} ${DIM}→ ${toName}  ${time}${RST}`);
+      console.log(`  \x1B[36m\u2502${RST}`);
+      console.log(`  \x1B[36m\u2502${RST}  ${color}${from}${RST} ${DIM}\u2192 ${toName}  ${time}${RST}`);
     } else {
-      console.log(`  \x1B[36m│${RST}  ${DIM}${time}${RST}`);
+      console.log(`  \x1B[36m\u2502${RST}  ${DIM}${time}${RST}`);
     }
-    console.log(`  \x1B[36m│${RST}   ${msg}`);
+    console.log(`  \x1B[36m\u2502${RST}   ${msg}`);
     lastFrom = e.from;
   }
-  console.log(`  \x1B[36m│${RST}`);
-  console.log(`  \x1B[36m└─${RST}`);
+  console.log(`  \x1B[36m\u2502${RST}`);
+  console.log(`  \x1B[36m\u2514\u2500${RST}`);
   console.log();
 }
 
@@ -9672,125 +12075,41 @@ function cmdTokens(opts) {
   }
   const top = opts.top || 15;
   console.log(`
-  \x1B[36m┌─ Token Usage\x1B[0m \x1B[90m(${stats.sessionCount} sessions, indexed ${index.updatedAt.slice(0, 16)})\x1B[0m
-  \x1B[36m│\x1B[0m
-  \x1B[36m│\x1B[0m  Input:        \x1B[33m${formatNum(stats.totalInput)}\x1B[0m tokens
-  \x1B[36m│\x1B[0m  Output:       \x1B[32m${formatNum(stats.totalOutput)}\x1B[0m tokens
-  \x1B[36m│\x1B[0m  Cache read:   \x1B[90m${formatNum(stats.totalCacheRead)}\x1B[0m
-  \x1B[36m│\x1B[0m  Cache create: \x1B[90m${formatNum(stats.totalCacheCreate)}\x1B[0m
-  \x1B[36m│\x1B[0m  Turns:        ${stats.totalTurns.toLocaleString()}
-  \x1B[36m│\x1B[0m`);
-  console.log(`  \x1B[36m│\x1B[0m  \x1B[33mBy Project\x1B[0m (top ${top})`);
-  console.log(`  \x1B[36m│\x1B[0m  ${"Project".padEnd(28)} ${"Input".padStart(10)} ${"Output".padStart(10)} ${"Turns".padStart(7)}`);
-  console.log(`  \x1B[36m│\x1B[0m  ${"─".repeat(28)} ${"─".repeat(10)} ${"─".repeat(10)} ${"─".repeat(7)}`);
+  \x1B[36m\u250C\u2500 Token Usage\x1B[0m \x1B[90m(${stats.sessionCount} sessions, indexed ${index.updatedAt.slice(0, 16)})\x1B[0m
+  \x1B[36m\u2502\x1B[0m
+  \x1B[36m\u2502\x1B[0m  Input:        \x1B[33m${formatNum(stats.totalInput)}\x1B[0m tokens
+  \x1B[36m\u2502\x1B[0m  Output:       \x1B[32m${formatNum(stats.totalOutput)}\x1B[0m tokens
+  \x1B[36m\u2502\x1B[0m  Cache read:   \x1B[90m${formatNum(stats.totalCacheRead)}\x1B[0m
+  \x1B[36m\u2502\x1B[0m  Cache create: \x1B[90m${formatNum(stats.totalCacheCreate)}\x1B[0m
+  \x1B[36m\u2502\x1B[0m  Turns:        ${stats.totalTurns.toLocaleString()}
+  \x1B[36m\u2502\x1B[0m`);
+  console.log(`  \x1B[36m\u2502\x1B[0m  \x1B[33mBy Project\x1B[0m (top ${top})`);
+  console.log(`  \x1B[36m\u2502\x1B[0m  ${"Project".padEnd(28)} ${"Input".padStart(10)} ${"Output".padStart(10)} ${"Turns".padStart(7)}`);
+  console.log(`  \x1B[36m\u2502\x1B[0m  ${"\u2500".repeat(28)} ${"\u2500".repeat(10)} ${"\u2500".repeat(10)} ${"\u2500".repeat(7)}`);
   for (const p of stats.byProject.slice(0, top)) {
-    console.log(`  \x1B[36m│\x1B[0m  ${p.project.padEnd(28)} ${formatNum(p.input).padStart(10)} ${formatNum(p.output).padStart(10)} ${p.turns.toString().padStart(7)}`);
+    console.log(`  \x1B[36m\u2502\x1B[0m  ${p.project.padEnd(28)} ${formatNum(p.input).padStart(10)} ${formatNum(p.output).padStart(10)} ${p.turns.toString().padStart(7)}`);
   }
-  console.log(`  \x1B[36m│\x1B[0m`);
-  console.log(`  \x1B[36m│\x1B[0m  \x1B[33mBy Date\x1B[0m (recent)`);
-  console.log(`  \x1B[36m│\x1B[0m  ${"Date".padEnd(12)} ${"Input".padStart(10)} ${"Output".padStart(10)} ${"Turns".padStart(7)}`);
-  console.log(`  \x1B[36m│\x1B[0m  ${"─".repeat(12)} ${"─".repeat(10)} ${"─".repeat(10)} ${"─".repeat(7)}`);
+  console.log(`  \x1B[36m\u2502\x1B[0m`);
+  console.log(`  \x1B[36m\u2502\x1B[0m  \x1B[33mBy Date\x1B[0m (recent)`);
+  console.log(`  \x1B[36m\u2502\x1B[0m  ${"Date".padEnd(12)} ${"Input".padStart(10)} ${"Output".padStart(10)} ${"Turns".padStart(7)}`);
+  console.log(`  \x1B[36m\u2502\x1B[0m  ${"\u2500".repeat(12)} ${"\u2500".repeat(10)} ${"\u2500".repeat(10)} ${"\u2500".repeat(7)}`);
   for (const d of stats.byDate.slice(0, 7)) {
-    console.log(`  \x1B[36m│\x1B[0m  ${d.date.padEnd(12)} ${formatNum(d.input).padStart(10)} ${formatNum(d.output).padStart(10)} ${d.turns.toString().padStart(7)}`);
+    console.log(`  \x1B[36m\u2502\x1B[0m  ${d.date.padEnd(12)} ${formatNum(d.input).padStart(10)} ${formatNum(d.output).padStart(10)} ${d.turns.toString().padStart(7)}`);
   }
-  console.log(`  \x1B[36m│\x1B[0m`);
-  console.log(`  \x1B[36m└─\x1B[0m`);
+  console.log(`  \x1B[36m\u2502\x1B[0m`);
+  console.log(`  \x1B[36m\u2514\u2500\x1B[0m`);
   console.log();
 }
 
 // src/commands/tab.ts
 init_ssh();
 
-// src/commands/comm.ts
-init_ssh();
-import { appendFile as appendFile3, mkdir as mkdir3 } from "fs/promises";
-import { homedir as homedir7 } from "os";
-import { join as join14 } from "path";
-async function cmdPeek2(query) {
-  const sessions = await listSessions();
-  if (!query) {
-    for (const s of sessions) {
-      for (const w of s.windows) {
-        const target2 = `${s.name}:${w.index}`;
-        try {
-          const content2 = await capture(target2, 3);
-          const lastLine = content2.split(`
-`).filter((l) => l.trim()).pop() || "(empty)";
-          const dot = w.active ? "\x1B[32m*\x1B[0m" : " ";
-          console.log(`${dot} \x1B[36m${w.name.padEnd(22)}\x1B[0m ${lastLine.slice(0, 80)}`);
-        } catch {
-          console.log(`  \x1B[36m${w.name.padEnd(22)}\x1B[0m (unreachable)`);
-        }
-      }
-    }
-    return;
-  }
-  const target = findWindow(sessions, query);
-  if (!target) {
-    console.error(`window not found: ${query}`);
-    process.exit(1);
-  }
-  const content = await capture(target);
-  console.log(`\x1B[36m--- ${target} ---\x1B[0m`);
-  console.log(content);
-}
-async function cmdSend2(query, message, force = false) {
-  const sessions = await listSessions();
-  const target = findWindow(sessions, query);
-  if (!target) {
-    console.error(`window not found: ${query}`);
-    process.exit(1);
-  }
-  if (!force) {
-    const cmd = await getPaneCommand(target);
-    const isAgent = /claude|codex|node/i.test(cmd);
-    if (!isAgent) {
-      console.error(`\x1B[31merror\x1B[0m: no active Claude session in ${target} (running: ${cmd})`);
-      console.error(`\x1B[33mhint\x1B[0m:  run \x1B[36mmaw wake ${query}\x1B[0m first, or use \x1B[36m--force\x1B[0m to send anyway`);
-      process.exit(1);
-    }
-  }
-  await sendKeys(target, message);
-  await runHook("after_send", { to: query, message });
-  const logDir = join14(homedir7(), ".oracle");
-  const logFile = join14(logDir, "maw-log.jsonl");
-  const host = (await import("os")).hostname();
-  const from = process.env.CLAUDE_AGENT_NAME || "cli";
-  const sid = process.env.CLAUDE_SESSION_ID || null;
-  const line = JSON.stringify({ ts: new Date().toISOString(), from, to: query, target, msg: message, host, sid }) + `
-`;
-  try {
-    await mkdir3(logDir, { recursive: true });
-    await appendFile3(logFile, line);
-  } catch {}
-  try {
-    const feedLog = join14(homedir7(), ".oracle", "feed.log");
-    const now = new Date;
-    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-    const flat = message.replace(/\n/g, " ⎜ ");
-    const feedLine = `${ts} | ${from} | ${host} | Notification | ${from} | maw-hey » [handoff] ${JSON.stringify({ from, to: query, message: flat })}
-`;
-    await appendFile3(feedLog, feedLine);
-  } catch {}
-  const inboxDir = join14(homedir7(), ".oracle", "inbox");
-  const inboxTarget = query.replace(/[^a-zA-Z0-9_-]/g, "");
-  if (inboxTarget) {
-    const signal = JSON.stringify({ ts: new Date().toISOString(), from, type: "msg", msg: message, thread: null }) + `
-`;
-    try {
-      await mkdir3(inboxDir, { recursive: true });
-      await appendFile3(join14(inboxDir, `${inboxTarget}.jsonl`), signal);
-    } catch {}
-  }
-  console.log(`\x1B[32msent\x1B[0m → ${target}: ${message}`);
-}
-
 // src/commands/talk-to.ts
 init_config();
 init_ssh();
-import { appendFile as appendFile4, mkdir as mkdir4 } from "fs/promises";
-import { homedir as homedir8, hostname } from "os";
-import { join as join15 } from "path";
+import { appendFile as appendFile3, mkdir as mkdir3 } from "fs/promises";
+import { homedir as homedir11, hostname } from "os";
+import { join as join16 } from "path";
 var ORACLE_URL = () => process.env.ORACLE_URL || loadConfig().oracleUrl;
 async function findChannelThread(target) {
   try {
@@ -9827,7 +12146,7 @@ async function postToThread(target, message) {
     }
     return await res.json();
   } catch (e) {
-    console.error(`\x1B[31merror\x1B[0m: Oracle unreachable — ${e.message}`);
+    console.error(`\x1B[31merror\x1B[0m: Oracle unreachable \u2014 ${e.message}`);
     return null;
   }
 }
@@ -9846,7 +12165,7 @@ async function cmdTalkTo(target, message, force = false) {
   console.log(`\x1B[36m\uD83D\uDCAC\x1B[0m posting to thread channel:${target}...`);
   const threadResult = await postToThread(target, message);
   if (!threadResult) {
-    console.error(`\x1B[33mwarn\x1B[0m: thread post failed — falling back to maw hey only`);
+    console.error(`\x1B[33mwarn\x1B[0m: thread post failed \u2014 falling back to maw hey only`);
   }
   const from = process.env.CLAUDE_AGENT_NAME || "cli";
   const preview = message.length > 80 ? message.slice(0, 77) + "..." : message;
@@ -9855,10 +12174,10 @@ async function cmdTalkTo(target, message, force = false) {
     const info = await getThreadInfo(threadResult.thread_id);
     const msgCount = info?.messageCount ?? "?";
     notification = [
-      `\uD83D\uDCAC channel:${target} (#${threadResult.thread_id}) — ${msgCount} msgs`,
+      `\uD83D\uDCAC channel:${target} (#${threadResult.thread_id}) \u2014 ${msgCount} msgs`,
       `From: ${from}`,
       `Preview: "${preview}"`,
-      `→ อ่านเต็มที่ thread #${threadResult.thread_id} หรือพิมพ์ /talk-to #${threadResult.thread_id}`
+      `\u2192 \u0E2D\u0E48\u0E32\u0E19\u0E40\u0E15\u0E47\u0E21\u0E17\u0E35\u0E48 thread #${threadResult.thread_id} \u0E2B\u0E23\u0E37\u0E2D\u0E1E\u0E34\u0E21\u0E1E\u0E4C /talk-to #${threadResult.thread_id}`
     ].join(`
 `);
   } else {
@@ -9872,8 +12191,8 @@ async function cmdTalkTo(target, message, force = false) {
   const tmuxTarget = findWindow(sessions, target);
   if (!tmuxTarget) {
     if (threadResult) {
-      console.log(`\x1B[32m✓\x1B[0m thread #${threadResult.thread_id} updated`);
-      console.log(`\x1B[33mwarn\x1B[0m: window "${target}" not found — message saved to thread only`);
+      console.log(`\x1B[32m\u2713\x1B[0m thread #${threadResult.thread_id} updated`);
+      console.log(`\x1B[33mwarn\x1B[0m: window "${target}" not found \u2014 message saved to thread only`);
     } else {
       console.error(`\x1B[31merror\x1B[0m: window "${target}" not found`);
       process.exit(1);
@@ -9885,8 +12204,8 @@ async function cmdTalkTo(target, message, force = false) {
     const isAgent = /claude|codex|node/i.test(cmd);
     if (!isAgent) {
       if (threadResult) {
-        console.log(`\x1B[32m✓\x1B[0m thread #${threadResult.thread_id} updated`);
-        console.log(`\x1B[33mwarn\x1B[0m: no active Claude in ${tmuxTarget} — message saved to thread only`);
+        console.log(`\x1B[32m\u2713\x1B[0m thread #${threadResult.thread_id} updated`);
+        console.log(`\x1B[33mwarn\x1B[0m: no active Claude in ${tmuxTarget} \u2014 message saved to thread only`);
       } else {
         console.error(`\x1B[31merror\x1B[0m: no active Claude session in ${tmuxTarget} (use --force)`);
         process.exit(1);
@@ -9896,8 +12215,8 @@ async function cmdTalkTo(target, message, force = false) {
   }
   await sendKeys(tmuxTarget, notification);
   await runHook("after_send", { to: target, message: notification });
-  const logDir = join15(homedir8(), ".oracle");
-  const logFile = join15(logDir, "maw-log.jsonl");
+  const logDir = join16(homedir11(), ".oracle");
+  const logFile = join16(logDir, "maw-log.jsonl");
   const host = hostname();
   const sid = process.env.CLAUDE_SESSION_ID || null;
   const ch = threadResult ? `thread:${threadResult.thread_id}` : undefined;
@@ -9913,10 +12232,10 @@ async function cmdTalkTo(target, message, force = false) {
   }) + `
 `;
   try {
-    await mkdir4(logDir, { recursive: true });
-    await appendFile4(logFile, line);
+    await mkdir3(logDir, { recursive: true });
+    await appendFile3(logFile, line);
   } catch {}
-  console.log(`\x1B[32m✓\x1B[0m thread #${threadResult?.thread_id ?? "?"} + sent → ${tmuxTarget}`);
+  console.log(`\x1B[32m\u2713\x1B[0m thread #${threadResult?.thread_id ?? "?"} + sent \u2192 ${tmuxTarget}`);
 }
 
 // src/commands/tab.ts
@@ -9943,7 +12262,7 @@ async function cmdTab(tabArgs) {
     const tabs2 = await listTabs(session);
     console.log(`\x1B[36m${session}\x1B[0m tabs:`);
     for (const t of tabs2) {
-      const marker = t.active ? " \x1B[32m← you are here\x1B[0m" : "";
+      const marker = t.active ? " \x1B[32m\u2190 you are here\x1B[0m" : "";
       console.log(`  ${t.index}: ${t.name}${marker}`);
     }
     return;
@@ -9959,7 +12278,7 @@ async function cmdTab(tabArgs) {
   const remaining = tabArgs.slice(1).filter((a) => a !== "--force" && a !== "--talk");
   const force = tabArgs.includes("--force");
   if (!remaining.length) {
-    await cmdPeek2(tab.name);
+    await cmdPeek(tab.name);
     return;
   }
   const message = remaining.join(" ");
@@ -9967,141 +12286,7 @@ async function cmdTab(tabArgs) {
     await cmdTalkTo(tab.name, message, force);
     return;
   }
-  await cmdSend2(tab.name, message, force);
-}
-
-// src/commands/talk-to.ts
-init_config();
-init_ssh();
-import { appendFile as appendFile5, mkdir as mkdir5 } from "fs/promises";
-import { homedir as homedir9, hostname as hostname2 } from "os";
-import { join as join16 } from "path";
-var ORACLE_URL2 = () => process.env.ORACLE_URL || loadConfig().oracleUrl;
-async function findChannelThread2(target) {
-  try {
-    const res = await fetch(`${ORACLE_URL2()}/api/threads?limit=50`);
-    if (!res.ok)
-      return null;
-    const data = await res.json();
-    const channel = data.threads.find((t) => t.title === `channel:${target}` && t.status !== "closed");
-    return channel?.id ?? null;
-  } catch {
-    return null;
-  }
-}
-async function postToThread2(target, message) {
-  const threadId = await findChannelThread2(target);
-  const body = {
-    message,
-    role: "claude"
-  };
-  if (threadId) {
-    body.thread_id = threadId;
-  } else {
-    body.title = `channel:${target}`;
-  }
-  try {
-    const res = await fetch(`${ORACLE_URL2()}/api/thread`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-      console.error(`\x1B[31merror\x1B[0m: Oracle API returned ${res.status}`);
-      return null;
-    }
-    return await res.json();
-  } catch (e) {
-    console.error(`\x1B[31merror\x1B[0m: Oracle unreachable — ${e.message}`);
-    return null;
-  }
-}
-async function getThreadInfo2(threadId) {
-  try {
-    const res = await fetch(`${ORACLE_URL2()}/api/thread/${threadId}`);
-    if (!res.ok)
-      return null;
-    const data = await res.json();
-    return { messageCount: data.messages.length };
-  } catch {
-    return null;
-  }
-}
-async function cmdTalkTo2(target, message, force = false) {
-  console.log(`\x1B[36m\uD83D\uDCAC\x1B[0m posting to thread channel:${target}...`);
-  const threadResult = await postToThread2(target, message);
-  if (!threadResult) {
-    console.error(`\x1B[33mwarn\x1B[0m: thread post failed — falling back to maw hey only`);
-  }
-  const from = process.env.CLAUDE_AGENT_NAME || "cli";
-  const preview = message.length > 80 ? message.slice(0, 77) + "..." : message;
-  let notification;
-  if (threadResult) {
-    const info = await getThreadInfo2(threadResult.thread_id);
-    const msgCount = info?.messageCount ?? "?";
-    notification = [
-      `\uD83D\uDCAC channel:${target} (#${threadResult.thread_id}) — ${msgCount} msgs`,
-      `From: ${from}`,
-      `Preview: "${preview}"`,
-      `→ อ่านเต็มที่ thread #${threadResult.thread_id} หรือพิมพ์ /talk-to #${threadResult.thread_id}`
-    ].join(`
-`);
-  } else {
-    notification = [
-      `\uD83D\uDCAC from ${from}`,
-      `"${preview}"`
-    ].join(`
-`);
-  }
-  const sessions = await listSessions();
-  const tmuxTarget = findWindow(sessions, target);
-  if (!tmuxTarget) {
-    if (threadResult) {
-      console.log(`\x1B[32m✓\x1B[0m thread #${threadResult.thread_id} updated`);
-      console.log(`\x1B[33mwarn\x1B[0m: window "${target}" not found — message saved to thread only`);
-    } else {
-      console.error(`\x1B[31merror\x1B[0m: window "${target}" not found`);
-      process.exit(1);
-    }
-    return;
-  }
-  if (!force) {
-    const cmd = await getPaneCommand(tmuxTarget);
-    const isAgent = /claude|codex|node/i.test(cmd);
-    if (!isAgent) {
-      if (threadResult) {
-        console.log(`\x1B[32m✓\x1B[0m thread #${threadResult.thread_id} updated`);
-        console.log(`\x1B[33mwarn\x1B[0m: no active Claude in ${tmuxTarget} — message saved to thread only`);
-      } else {
-        console.error(`\x1B[31merror\x1B[0m: no active Claude session in ${tmuxTarget} (use --force)`);
-        process.exit(1);
-      }
-      return;
-    }
-  }
-  await sendKeys(tmuxTarget, notification);
-  await runHook("after_send", { to: target, message: notification });
-  const logDir = join16(homedir9(), ".oracle");
-  const logFile = join16(logDir, "maw-log.jsonl");
-  const host = hostname2();
-  const sid = process.env.CLAUDE_SESSION_ID || null;
-  const ch = threadResult ? `thread:${threadResult.thread_id}` : undefined;
-  const line = JSON.stringify({
-    ts: new Date().toISOString(),
-    from,
-    to: target,
-    target: tmuxTarget,
-    msg: message,
-    host,
-    sid,
-    ch
-  }) + `
-`;
-  try {
-    await mkdir5(logDir, { recursive: true });
-    await appendFile5(logFile, line);
-  } catch {}
-  console.log(`\x1B[32m✓\x1B[0m thread #${threadResult?.thread_id ?? "?"} + sent → ${tmuxTarget}`);
+  await cmdSend(tab.name, message, force);
 }
 
 // src/cli.ts
@@ -10133,7 +12318,17 @@ function usage() {
   maw overview neo hermes   Only specific oracles
   maw overview --kill       Tear down overview
   maw done <window>            Clean up finished worktree window
+  maw sovereign status          Oracle-as-Sovereign \u03C8/ status
+  maw sovereign migrate <oracle> Migrate \u03C8/ to sovereign layout
+  maw sovereign migrate --all   Migrate all oracles
+  maw sovereign rollback <oracle> Restore original layout
+  maw sovereign verify          Health check all symlinks
+  maw bud <name> [opts]        Spawn new child oracle (budding)
+  maw bud <name> --from <oracle> --approved-by bank
+  maw bud <name> --dry-run     Show plan without executing
   maw pulse add "task" [opts] Create issue + wake oracle
+  maw pulse scan               Anti-pattern health check (Zombie/Island)
+  maw pulse scan --json        JSON output for dashboard/API
   maw pulse cleanup [--dry-run] Clean stale/orphan worktrees
   maw board done #<issue> [msg] Mark board item Done + close issue
   maw view <agent> [window]   Grouped tmux session (interactive attach)
@@ -10229,7 +12424,7 @@ if (cmd === "--version" || cmd === "-v") {
     console.error("usage: maw talk-to <agent> <message> [--force]");
     process.exit(1);
   }
-  await cmdTalkTo2(args[1], msgArgs.join(" "), force);
+  await cmdTalkTo(args[1], msgArgs.join(" "), force);
 } else if (cmd === "fleet" && args[1] === "init") {
   await cmdFleetInit();
 } else if (cmd === "fleet" && args[1] === "ls") {
@@ -10402,6 +12597,27 @@ if (cmd === "--version" || cmd === "-v") {
     }
     await cmdWake(args[1], wakeOpts);
   }
+} else if (cmd === "sovereign" || cmd === "sov") {
+  const { cmdSovereign: cmdSovereign2 } = await Promise.resolve().then(() => (init_sovereign(), exports_sovereign));
+  await cmdSovereign2(args.slice(1));
+} else if (cmd === "bud") {
+  const budName = args[1];
+  if (!budName) {
+    console.error("usage: maw bud <name> --approved-by <human> [--from <oracle>] [--dry-run]");
+    process.exit(1);
+  }
+  const budOpts = {};
+  for (let i = 2;i < args.length; i++) {
+    if (args[i] === "--from" && args[i + 1])
+      budOpts.from = args[++i];
+    else if (args[i] === "--repo" && args[i + 1])
+      budOpts.repo = args[++i];
+    else if (args[i] === "--approved-by" && args[i + 1])
+      budOpts.approvedBy = args[++i];
+    else if (args[i] === "--dry-run")
+      budOpts.dryRun = true;
+  }
+  await cmdBud(budName, budOpts);
 } else if (cmd === "pulse") {
   const subcmd = args[1];
   if (subcmd === "add") {
@@ -10426,9 +12642,12 @@ if (cmd === "--version" || cmd === "-v") {
   } else if (subcmd === "ls" || subcmd === "list") {
     const sync = args.includes("--sync");
     await cmdPulseLs({ sync });
+  } else if (subcmd === "scan" || subcmd === "health") {
+    const json = args.includes("--json");
+    cmdPulseScan({ json });
   } else if (subcmd === "cleanup" || subcmd === "clean") {
-    const { scanWorktrees: scanWorktrees3, cleanupWorktree: cleanupWorktree3 } = await Promise.resolve().then(() => (init_worktrees(), exports_worktrees));
-    const worktrees = await scanWorktrees3();
+    const { scanWorktrees: scanWorktrees2, cleanupWorktree: cleanupWorktree2 } = await Promise.resolve().then(() => (init_worktrees(), exports_worktrees));
+    const worktrees = await scanWorktrees2();
     const stale = worktrees.filter((wt) => wt.status !== "active");
     if (!stale.length) {
       console.log("\x1B[32m\u2713\x1B[0m All worktrees are active. Nothing to clean.");
@@ -10443,7 +12662,7 @@ if (cmd === "--version" || cmd === "-v") {
       const color = wt.status === "orphan" ? "\x1B[31m" : "\x1B[33m";
       console.log(`${color}${wt.status}\x1B[0m  ${wt.name} (${wt.mainRepo}) [${wt.branch}]`);
       if (!args.includes("--dry-run")) {
-        const log = await cleanupWorktree3(wt.path);
+        const log = await cleanupWorktree2(wt.path);
         for (const line of log)
           console.log(`  \x1B[32m\u2713\x1B[0m ${line}`);
       }
@@ -10544,13 +12763,13 @@ if (cmd === "--version" || cmd === "-v") {
     console.log(`\x1B[32m\u2713\x1B[0m Auth enabled \u2014 user: ${user}`);
     console.log("  Restart maw server: pm2 restart maw");
   } else if (sub === "disable") {
-    const { readFileSync: readFileSync21, writeFileSync: writeFileSync11 } = await import("fs");
+    const { readFileSync: readFileSync21, writeFileSync: writeFileSync13 } = await import("fs");
     const { join: join30 } = await import("path");
     const p = join30(import.meta.dir, "../auth.json");
     try {
       const c = JSON.parse(readFileSync21(p, "utf-8"));
       c.enabled = false;
-      writeFileSync11(p, JSON.stringify(c, null, 2), "utf-8");
+      writeFileSync13(p, JSON.stringify(c, null, 2), "utf-8");
       console.log("\x1B[33m\u2298\x1B[0m Auth disabled");
     } catch {
       console.error("No auth config found");

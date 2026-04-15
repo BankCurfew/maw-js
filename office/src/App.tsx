@@ -268,7 +268,7 @@ export function App() {
       <Layout activeView="office" {...layoutProps}>
         <UniverseBg />
         <div className="relative z-10">
-          <RoomGrid sessions={sessions} agents={agents} onSelectAgent={onSelectAgent} />
+          <RoomGrid sessions={sessions} agents={agents} onSelectAgent={onSelectAgent} send={send} />
         </div>
       </Layout>
     );
@@ -399,7 +399,7 @@ export function App() {
     <Layout activeView="office" {...layoutProps}>
       <UniverseBg />
       <div className="relative z-10">
-        <RoomGrid sessions={sessions} agents={agents} onSelectAgent={onSelectAgent} />
+        <RoomGrid sessions={sessions} agents={agents} onSelectAgent={onSelectAgent} send={send} />
       </div>
     </Layout>
   );

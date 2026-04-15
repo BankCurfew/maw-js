@@ -11,7 +11,8 @@
  */
 
 import { Hono } from "hono";
-import { randomBytes, randomUUID, createHmac, timingSafeEqual } from "crypto";
+import crypto from "crypto";
+const { randomBytes, randomUUID, createHmac, timingSafeEqual } = crypto;
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { CONFIG_DIR } from "../paths";

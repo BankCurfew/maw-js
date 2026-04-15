@@ -414,7 +414,38 @@ export async function cmdWakeAll(opts: { kill?: boolean; all?: boolean; resume?:
     // Check if session already exists
     try {
       await ssh(`tmux has-session -t '${sess.name}' 2>/dev/null`);
-      console.log(`  \x1b[33m●\x1b[0m ${sess.name} — already awake`);
+      // Session exists — but is Claude actually running in each window?
+      let allAlive = true;
+      for (const win of sess.windows) {
+        try {
+          const paneCmd = await ssh(`tmux display-message -t '${sess.name}:${win.name}' -p '#{pane_current_command}' 2>/dev/null`);
+          if (!/claude|node/i.test(paneCmd)) {
+            // Claude not running in this window — relaunch
+            if (!sess.skip_command) {
+              await ssh(`tmux send-keys -t '${sess.name}:${win.name}' '${buildCommand(win.name)}' Enter`);
+            }
+            allAlive = false;
+            winCount++;
+          }
+        } catch {
+          // Window might not exist — recreate it
+          const winPath = `${loadConfig().ghqRoot}/${win.repo}`;
+          try {
+            await ssh(`tmux new-window -t '${sess.name}' -n '${win.name}' -c '${winPath}'`);
+            if (!sess.skip_command) {
+              await ssh(`tmux send-keys -t '${sess.name}:${win.name}' '${buildCommand(win.name)}' Enter`);
+            }
+            winCount++;
+          } catch { /* ok */ }
+          allAlive = false;
+        }
+      }
+      if (allAlive) {
+        console.log(`  \x1b[33m●\x1b[0m ${sess.name} — already awake`);
+      } else {
+        console.log(`  \x1b[32m●\x1b[0m ${sess.name} — revived dead windows`);
+        sessCount++;
+      }
       continue;
     } catch {
       // Good — doesn't exist yet

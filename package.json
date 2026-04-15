@@ -6,11 +6,11 @@
     "maw": "./src/cli.ts"
   },
   "scripts": {
-    "build:office": "cd office && bunx vite build",
+    "build:office": "cd $HOME/repos/github.com/BankCurfew/office-v2 && bun run build && cp -r dist/* $HOME/maw-js/dist-office/",
     "build:cf": "cd office && bunx vite build --base / --outDir ../dist-cf",
     "deploy:cf": "bun run build:cf && bunx wrangler deploy",
     "dev": "pm2 start ecosystem.config.cjs && echo '→ maw backend (watch src/) on :3456\n→ maw-dev vite HMR on :5173\n→ pm2 logs to follow'",
-    "dev:office": "cd office && bunx vite",
+    "dev:office": "cd $HOME/repos/github.com/BankCurfew/office-v2 && bunx vite",
     "dev:stop": "pm2 delete maw maw-dev 2>/dev/null; echo '→ dev stopped'",
     "deploy": "bun install && bun run build:office && pm2 delete maw-dev 2>/dev/null; pm2 restart maw",
     "build:8bit": "cd office-8bit && bash build.sh",

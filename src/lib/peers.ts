@@ -48,7 +48,11 @@ function isCacheValid(): boolean {
 
 function getNamedPeers(): PeerConfig[] {
   const config = loadConfig() as any;
-  return (config.namedPeers || []) as PeerConfig[];
+  const raw = config.namedPeers;
+  if (!raw) return [];
+  // Support both array form [{name, url}] and object form {"name": "url"}
+  if (Array.isArray(raw)) return raw as PeerConfig[];
+  return Object.entries(raw).map(([name, url]) => ({ name, url: url as string }));
 }
 
 // ── Health Check ─────────────────────────────────────────
@@ -168,8 +172,8 @@ export async function crossNodeSend(
   const remoteTarget = target.slice(colonIdx + 1);
   const config = loadConfig() as any;
 
-  // Find peer URL
-  const peers: PeerConfig[] = config.namedPeers || [];
+  // Find peer URL (supports both array and object form)
+  const peers = getNamedPeers();
   const peer = peers.find((p) => p.name === nodeName);
   if (!peer) return { ok: false, error: `unknown peer: ${nodeName}` };
 
