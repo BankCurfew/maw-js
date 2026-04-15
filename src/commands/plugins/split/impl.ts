@@ -1,5 +1,6 @@
 import { listSessions, hostExec, withPaneLock } from "../../../sdk";
 import { resolveSessionTarget } from "../../../core/matcher/resolve-target";
+import { normalizeTarget } from "../../../core/matcher/normalize-target";
 
 export interface SplitOpts {
   /** Split percentage (1-99). Default: 50. */
@@ -32,6 +33,9 @@ export interface SplitOpts {
  * the tmux shell-out.
  */
 export async function cmdSplit(target: string, opts: SplitOpts = {}) {
+  // Canonicalize first — drop trailing `/`, `/.git`, `/.git/` tab-completion artifacts.
+  // Safe for "session:window" form: nothing to strip unless the user adds a literal slash.
+  target = normalizeTarget(target);
   if (!process.env.TMUX) {
     console.error("  \x1b[31m✗\x1b[0m maw split requires an active tmux session");
     process.exit(1);

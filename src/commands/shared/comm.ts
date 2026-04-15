@@ -6,6 +6,7 @@ import {
 } from "../../sdk";
 import { loadConfig, cfgLimit } from "../../config";
 import { resolveFleetSession } from "./wake";
+import { normalizeTarget } from "../../core/matcher/normalize-target";
 import { appendFile, mkdir } from "fs/promises";
 import { homedir, hostname } from "os";
 import { join } from "path";
@@ -106,6 +107,9 @@ export async function cmdList() {
 }
 
 export async function cmdPeek(query?: string) {
+  // Canonicalize first — strip trailing `/`, `/.git`, `/.git/` tab-completion artifacts.
+  // Preserve undefined (no-arg case prints the fleet overview).
+  if (query !== undefined) query = normalizeTarget(query);
   const config = loadConfig();
 
   // Node prefix: "white:neo-maw-js" → peek remote agent via federation

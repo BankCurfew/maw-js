@@ -8,6 +8,7 @@ import { FLEET_DIR } from "../../../sdk";
 import { cmdReunion } from "../reunion/impl";
 import { cmdSoulSync } from "../soul-sync/impl";
 import { takeSnapshot } from "../../../sdk";
+import { normalizeTarget } from "../../../core/matcher/normalize-target";
 
 export interface DoneOpts {
   force?: boolean;
@@ -24,7 +25,8 @@ export interface DoneOpts {
  * 3. Remove from fleet config JSON
  */
 export async function cmdDone(windowName_: string, opts: DoneOpts = {}) {
-  let windowName = windowName_;
+  // Canonicalize first — drop trailing `/`, `/.git`, `/.git/` before any session match.
+  let windowName = normalizeTarget(windowName_);
   const sessions = await listSessions();
   const ghqRoot = loadConfig().ghqRoot;
 

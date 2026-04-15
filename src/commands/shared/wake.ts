@@ -1,6 +1,7 @@
 import { hostExec, tmux, restoreTabOrder, takeSnapshot } from "../../sdk";
 import { buildCommand, buildCommandInDir, cfgTimeout, loadConfig, saveConfig } from "../../config";
 import { resolveWorktreeTarget } from "../../core/matcher/resolve-target";
+import { normalizeTarget } from "../../core/matcher/normalize-target";
 import { execSync } from "child_process";
 
 /** Attach to tmux session — switch-client if inside tmux, attach if fresh shell */
@@ -66,6 +67,9 @@ export async function ensureSessionRunning(session: string, excludeNames?: Set<s
 }
 
 export async function cmdWake(oracle: string, opts: { task?: string; newWt?: string; prompt?: string; incubate?: string; fresh?: boolean; attach?: boolean; listWt?: boolean; split?: boolean }): Promise<string> {
+  // Canonicalize the bare name before any lookup — strips trailing `/`, `/.git`, `/.git/`
+  // so `maw wake token-oracle/` (tab-completion artifact) resolves the same as `token-oracle`.
+  oracle = normalizeTarget(oracle);
   let resolved: { repoPath: string; repoName: string; parentDir: string };
 
   if (opts.incubate) {

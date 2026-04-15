@@ -4,6 +4,7 @@ import { loadFleetEntries } from "../../shared/fleet-load";
 import { cmdSoulSync } from "../soul-sync/impl";
 import { cmdWake } from "../../shared/wake";
 import { parseWakeTarget, ensureCloned } from "../../shared/wake-target";
+import { normalizeTarget } from "../../../core/matcher/normalize-target";
 import { FLEET_DIR } from "../../../sdk";
 import { join } from "path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
@@ -63,6 +64,8 @@ export interface TinyBudOpts {
  *   7. Update parent's sync_peers
  */
 export async function cmdBud(name: string, opts: BudOpts = {}) {
+  // Canonicalize first — drop trailing `/`, `/.git`, `/.git/` from tab-completion/paste.
+  name = normalizeTarget(name);
   // Oracle names: alphanumeric + hyphens only, must start with a letter
   if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) {
     console.error(`  \x1b[31m✗\x1b[0m invalid oracle name: "${name}"`);
