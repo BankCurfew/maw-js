@@ -11,6 +11,23 @@
  *   entry: string → TS plugin (full maw-js internals access)
  */
 
+/**
+ * Plugin compile target. Phase A ships `"js"` only. `"wasm"` is a reserved
+ * slot for Phase C — parser validates+rejects today so the enum shape can
+ * extend without a manifest migration when WASM compilation lands.
+ */
+export type PluginTarget = "js" | "wasm";
+
+/**
+ * Built-plugin artifact descriptor. Present on compiled plugins written
+ * by `maw plugin build`. `sha256: null` means "unbuilt" — the loader
+ * refuses such plugins with a "run `maw plugin build`" message.
+ */
+export interface PluginArtifact {
+  path: string;             // relative path to built bundle (e.g. "dist/index.js")
+  sha256: string | null;    // sha256 of the bundle, or null if unbuilt
+}
+
 export interface PluginManifest {
   name: string;           // unique id, slug-safe /^[a-z0-9-]+$/
   version: string;        // semver e.g. "1.0.0"
@@ -18,6 +35,9 @@ export interface PluginManifest {
   wasm?: string;          // relative path to .wasm (WASM plugin)
   entry?: string;         // relative path to .ts/.js (TS plugin)
   sdk: string;            // semver range e.g. "^1.0.0"
+  target?: PluginTarget;  // compile target (Phase A: "js" only)
+  capabilities?: string[];// declared capability strings "namespace:verb" (advisory in Phase A)
+  artifact?: PluginArtifact; // built-plugin artifact descriptor
   cli?: {
     command: string;
     aliases?: string[];                    // alternate command names

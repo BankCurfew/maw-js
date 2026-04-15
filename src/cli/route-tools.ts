@@ -9,8 +9,26 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
   }
   if (cmd === "plugin") {
     const sub = args[1]?.toLowerCase();
-    // "maw plugin ls/info/install/remove" → forward to plugins (plural) handler
-    if (sub && ["ls", "list", "info", "install", "remove", "uninstall", "rm", "lean", "nuke", "enable", "disable"].includes(sub)) {
+    // "maw plugin init|build|install" → forward to the plugin-lifecycle
+    // plugin (tasks #2 + #3 both landed).
+    if (sub === "init" || sub === "build" || sub === "install") {
+      const { loadManifestFromDir } = await import("../plugin/manifest");
+      const { invokePlugin } = await import("../plugin/registry");
+      const { resolve } = await import("path");
+      const pluginDir = resolve(import.meta.dir, "..", "commands", "plugins", "plugin");
+      const loaded = loadManifestFromDir(pluginDir);
+      if (loaded) {
+        const result = await invokePlugin(loaded, { source: "cli", args: args.slice(1) });
+        if (result.ok && result.output) console.log(result.output);
+        if (!result.ok && result.error) console.error(result.error);
+        if (!result.ok) process.exit(1);
+        return true;
+      }
+    }
+    // "maw plugin ls/info/remove" → forward to plugins (plural) legacy handler.
+    // `install` is NOT in this list anymore — it's handled above by the new
+    // install-impl.ts via the plugin dispatcher.
+    if (sub && ["ls", "list", "info", "remove", "uninstall", "rm", "lean", "nuke", "enable", "disable"].includes(sub)) {
       const { cmdPlugins } = await import("../commands/shared/plugins");
       const { parseFlags } = await import("./parse-args");
       const flags = parseFlags(args, { "--json": Boolean, "--force": Boolean }, 2);

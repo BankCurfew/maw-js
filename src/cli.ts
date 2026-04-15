@@ -78,7 +78,8 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
   // Remove first to avoid bun dependency loop (#214)
   try { execSync(`bun remove -g maw`, { stdio: "pipe" }); } catch {}
   execSync(`bun add -g github:${repository}#${ref}`, { stdio: "inherit" });
-  // Link SDK so plugins can `import { maw } from "maw/sdk"`
+  // Link SDK so plugins can `import { maw } from "@maw/sdk"` (workspace package at packages/sdk/)
+  // Legacy plugins using bare `maw/sdk` are still resolved via `bun link maw`.
   try {
     const mawDir = join(execSync(`ghq list --full-path | grep 'Soul-Brews-Studio/maw-js$'`, { encoding: "utf-8" }).trim());
     if (mawDir) {
@@ -91,7 +92,7 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
         writeFile(join(oracleDir, "package.json"), '{"name":"oracle-plugins","private":true}\n');
       }
       execSync(`cd ${oracleDir} && bun link maw`, { stdio: "pipe" });
-      console.log(`  🔗 SDK linked (maw/sdk)`);
+      console.log(`  🔗 SDK linked (@maw/sdk)`);
     }
   } catch { /* ghq not available or link failed — non-fatal */ }
   let after = "";

@@ -1,0 +1,211 @@
+/**
+ * maw plugin build [dir] [--watch]
+ *
+ * Phase A bundler:
+ *   1. Read + validate <dir>/plugin.json (reject target:"wasm" → Phase C).
+ *   2. `bun build src/index.ts --outfile dist/index.js --target=bun --format=esm`
+ *      (SDK bundled into plugin — no external flag, per sdk-foundation's plan).
+ *   3. Regex capability inference over the bundled output. Advisory in Phase A.
+ *   4. sha256 of the bundle, prefixed "sha256:" per architect's schema.
+ *   5. Emit dist/plugin.json — copy of source manifest with capabilities filled
+ *      in and artifact.{path,sha256} rewritten to the built bundle.
+ *   6. Pack <dir>/<name>-<version>.tgz (flat: plugin.json + index.js at root).
+ *
+ * Regex inference blind spots (transitive npm-dep imports) are documented in
+ * the debate plan's Round-4 "no DX cliff" section — Phase B walks the bundle
+ * graph. For now this is advisory and loudly prints the detected set.
+ */
+
+import { existsSync, readFileSync, writeFileSync, mkdirSync, watch } from "fs";
+import { join, resolve, basename } from "path";
+import { spawnSync } from "child_process";
+import { parseFlags } from "../../../cli/parse-args";
+
+// ─── Capability inference ────────────────────────────────────────────────────
+
+/** Phase A regex rules over source. Crude — Phase B walks the bundle graph. */
+export function inferCapabilities(source: string): string[] {
+  const caps = new Set<string>();
+
+  // maw.<verb> — SDK method access
+  for (const m of source.matchAll(/\bmaw\.(\w+)\b/g)) {
+    caps.add(`sdk:${m[1]}`);
+  }
+
+  // node:fs / node:child_process / bun:ffi — known risky imports
+  if (/import\s+[^;]*?['"]node:fs(?:\/\w+)?['"]/.test(source)) caps.add("fs:read");
+  if (/import\s+[^;]*?['"]node:child_process['"]/.test(source)) caps.add("proc:spawn");
+  if (/import\s+[^;]*?['"]bun:ffi['"]/.test(source)) caps.add("ffi:any");
+
+  // global fetch() — not a member access (maw.fetch() is caught by sdk:fetch above)
+  if (/(?:^|[^.\w])fetch\s*\(/.test(source)) caps.add("net:fetch");
+
+  return [...caps].sort();
+}
+
+// ─── Command ─────────────────────────────────────────────────────────────────
+
+interface BuildSummary {
+  name: string;
+  version: string;
+  dir: string;
+  bundlePath: string;
+  sizeBytes: number;
+  elapsedMs: number;
+  capabilities: string[];
+  inferredOnly: string[];  // inferred but not declared
+  declaredOnly: string[];  // declared but not detected
+  sha256: string;
+  tgzPath: string;
+}
+
+export async function cmdPluginBuild(args: string[]): Promise<void> {
+  const flags = parseFlags(args, { "--watch": Boolean }, 0);
+  const dir = resolve(flags._[0] || ".");
+
+  if (flags["--watch"]) {
+    // One initial build, then rebuild on src change. Tolerate failures.
+    await runBuild(dir).catch(() => {});
+    console.log(`\n\x1b[36m⧖\x1b[0m watching ${dir}/src for changes (Ctrl-C to stop)...`);
+    let building = false;
+    const trigger = async () => {
+      if (building) return;
+      building = true;
+      try {
+        await runBuild(dir);
+      } catch (e: any) {
+        console.error(`\x1b[31m✗\x1b[0m rebuild failed: ${e.message}`);
+      } finally {
+        building = false;
+      }
+    };
+    const srcDir = join(dir, "src");
+    if (existsSync(srcDir)) {
+      watch(srcDir, { recursive: true }, () => {
+        void trigger();
+      });
+    }
+    await new Promise(() => { /* keep alive */ });
+    return;
+  }
+
+  await runBuild(dir);
+}
+
+async function runBuild(dir: string): Promise<BuildSummary> {
+  const manifestPath = join(dir, "plugin.json");
+  if (!existsSync(manifestPath)) {
+    console.error(`\x1b[31m✗\x1b[0m no plugin.json in ${dir}`);
+    process.exit(1);
+  }
+
+  let manifest: any;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (e: any) {
+    console.error(`\x1b[31m✗\x1b[0m invalid plugin.json: ${e.message}`);
+    process.exit(1);
+  }
+
+  // --- Target gate (Phase A: js only; wasm → Phase C message) ---
+  const target = manifest.target ?? "js";
+  if (target === "wasm") {
+    console.error(
+      `\x1b[31m✗\x1b[0m target "wasm" not yet supported (Phase C). Use target "js" for now.`,
+    );
+    process.exit(1);
+  }
+  if (target !== "js") {
+    console.error(`\x1b[31m✗\x1b[0m unknown target ${JSON.stringify(target)} (expected "js")`);
+    process.exit(1);
+  }
+
+  const name = manifest.name;
+  const version = manifest.version;
+  const entry = manifest.entry || "./src/index.ts";
+  const srcPath = join(dir, entry);
+  if (!existsSync(srcPath)) {
+    console.error(`\x1b[31m✗\x1b[0m entry not found: ${srcPath}`);
+    process.exit(1);
+  }
+
+  const distDir = join(dir, "dist");
+  mkdirSync(distDir, { recursive: true });
+  const outFile = join(distDir, "index.js");
+
+  // --- Bundle with bun build ---
+  const t0 = Date.now();
+  const build = spawnSync(
+    "bun",
+    ["build", srcPath, "--outfile", outFile, "--target=bun", "--format=esm"],
+    { cwd: dir, encoding: "utf8" },
+  );
+  const elapsedMs = Date.now() - t0;
+  if (build.status !== 0) {
+    console.error(`\x1b[31m✗\x1b[0m bundle failed:\n${build.stderr || build.stdout || "(no output)"}`);
+    process.exit(1);
+  }
+
+  const bundleBytes = readFileSync(outFile);
+  const source = bundleBytes.toString("utf8");
+
+  // --- Capability inference + declared-diff ---
+  const inferred = inferCapabilities(source);
+  const declared = Array.isArray(manifest.capabilities) ? (manifest.capabilities as string[]) : [];
+  const declaredSet = new Set(declared);
+  const inferredSet = new Set(inferred);
+  const inferredOnly = inferred.filter((c) => !declaredSet.has(c));
+  const declaredOnly = declared.filter((c) => !inferredSet.has(c));
+  const merged = [...new Set([...inferred, ...declared])].sort();
+
+  // --- sha256 ---
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(bundleBytes);
+  const sha256 = "sha256:" + hasher.digest("hex");
+
+  // --- dist/plugin.json: copy with updated capabilities + artifact ---
+  const outManifest: Record<string, unknown> = {
+    ...manifest,
+    capabilities: merged,
+    artifact: { path: "./index.js", sha256 },
+    compiledAt: new Date().toISOString(),
+  };
+  // Built plugin loads via artifact; drop entry (source-only field).
+  delete outManifest.entry;
+  writeFileSync(join(distDir, "plugin.json"), JSON.stringify(outManifest, null, 2) + "\n");
+
+  // --- Pack tarball (flat: plugin.json + index.js at root) ---
+  const tgzName = `${name}-${version}.tgz`;
+  const tgzPath = join(dir, tgzName);
+  const tar = spawnSync(
+    "tar",
+    ["-czf", tgzPath, "-C", distDir, "plugin.json", "index.js"],
+    { encoding: "utf8" },
+  );
+  if (tar.status !== 0) {
+    console.error(`\x1b[31m✗\x1b[0m tarball packing failed: ${tar.stderr || tar.stdout}`);
+    process.exit(1);
+  }
+
+  // --- Summary ---
+  const sizeBytes = bundleBytes.byteLength;
+  const sizeKb = (sizeBytes / 1024).toFixed(1);
+  const shaShort = sha256.slice(0, 7 + 12); // "sha256:" + 12 hex chars
+  console.log(`\x1b[36m⚡\x1b[0m ${name}@${version}`);
+  console.log(`  bundle:       ${basename(entry)} → dist/index.js (${sizeKb}kb, ${elapsedMs}ms)`);
+  console.log(`  capabilities: [${merged.join(", ")}]`);
+  if (inferredOnly.length) {
+    console.log(`                \x1b[33m+ inferred (not declared):\x1b[0m ${inferredOnly.join(", ")}`);
+  }
+  if (declaredOnly.length) {
+    console.log(`                \x1b[33m- declared (not detected):\x1b[0m ${declaredOnly.join(", ")}`);
+  }
+  console.log(`  hash:         ${shaShort}…`);
+  console.log(`  packed:       ${tgzName}`);
+  console.log(`\x1b[32m✓\x1b[0m ready. install with: maw plugin install ./${tgzName}`);
+
+  return {
+    name, version, dir, bundlePath: outFile, sizeBytes, elapsedMs,
+    capabilities: merged, inferredOnly, declaredOnly, sha256, tgzPath,
+  };
+}

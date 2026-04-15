@@ -1,15 +1,26 @@
 /**
  * Plugin registry — discover plugin packages and invoke them.
  *
- * Scans two well-known directories for plugin packages (subdirs with plugin.json):
+ * Scans the canonical plugin install directory for packages with a plugin.json:
  *   ~/.maw/plugins/<name>/plugin.json
- *   ~/.oracle/commands/<name>/plugin.json
  *
  * Reuses wasm-bridge.ts infra (buildImportObject, preCacheBridge, readString, textEncoder).
  * Timeout: 5s hard limit matching command-registry.ts:193 pattern.
+ *
+ * ── Phase A gates (enforced at load time, not call-time) ────────────────────
+ *  1. Semver gate — `manifest.sdk` must satisfy the runtime SDK version.
+ *     Mismatch → plugin refused with an actionable error message.
+ *  2. Artifact hash — if `manifest.artifact.sha256` is set on a real (non-symlink)
+ *     install, the on-disk bundle's sha256 must match. Mismatch → refuse.
+ *  3. Dev-mode (symlink) detection — if ~/.maw/plugins/<name>/ is a symlink,
+ *     we treat it as a `linked (dev)` install and skip hash verification
+ *     entirely. This replaces the rejected `sha256: "dev"` sentinel idea
+ *     (sdk-consumer's cleaner label-only approach).
+ *  4. Legacy manifests (no artifact field) still load — warn once, allow.
  */
 
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { createHash } from "crypto";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { loadManifestFromDir } from "./manifest";
@@ -25,22 +36,171 @@ import type { LoadedPlugin, InvokeContext, InvokeResult } from "./types";
 const PLUGIN_INVOKE_TIMEOUT_MS = 5_000;
 const WASM_MEMORY_MAX_PAGES = 256; // 16MB
 
-// Single scan dir — everything lives in ~/.maw/plugins/
-// Core plugins auto-installed on `maw update` or first run.
-const SCAN_DIRS = [
-  join(homedir(), ".maw", "plugins"),
-];
+// Single scan dir — everything lives in ~/.maw/plugins/ (or MAW_PLUGINS_DIR
+// if set). Resolved at call time so tests can override the root.
+function scanDirs(): string[] {
+  return [process.env.MAW_PLUGINS_DIR || join(homedir(), ".maw", "plugins")];
+}
+
+/** Runtime SDK version — read from @maw/sdk package.json. Canonical per the plan. */
+let _runtimeSdkVersion: string | null = null;
+export function runtimeSdkVersion(): string {
+  if (_runtimeSdkVersion) return _runtimeSdkVersion;
+  // packages/sdk/package.json — resolved relative to this file at src/plugin/
+  const pkgPath = join(import.meta.dir, "..", "..", "packages", "sdk", "package.json");
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    if (typeof pkg.version === "string") {
+      _runtimeSdkVersion = pkg.version;
+      return pkg.version;
+    }
+  } catch {
+    // Fall through to maw-js root package.json.
+  }
+  try {
+    const rootPkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf8"));
+    _runtimeSdkVersion = String(rootPkg.version ?? "0.0.0");
+    return _runtimeSdkVersion;
+  } catch {
+    _runtimeSdkVersion = "0.0.0";
+    return _runtimeSdkVersion;
+  }
+}
+
+// ─── Minimal semver satisfies() ──────────────────────────────────────────────
+//
+// Supports the range shapes validated by the manifest parser:
+//   *, N.N.N, ^N.N.N, ~N.N.N, >=N.N.N, <=N.N.N, >N.N.N, <N.N.N
+// We intentionally DON'T implement full npm-style range grammar (compound
+// ranges, hyphen ranges) — the parser rejects those upstream. Keeping this
+// minimal avoids adding a `semver` dep. Pre-release/build metadata is
+// stripped before comparison (Phase A: release-train only).
+const CORE_RE = /^(\d+)\.(\d+)\.(\d+)(?:-[\w.]+)?(?:\+[\w.]+)?$/;
+
+function parseCore(v: string): [number, number, number] | null {
+  const m = CORE_RE.exec(v.trim());
+  if (!m) return null;
+  return [parseInt(m[1]!, 10), parseInt(m[2]!, 10), parseInt(m[3]!, 10)];
+}
+
+function cmp(a: [number, number, number], b: [number, number, number]): number {
+  if (a[0] !== b[0]) return a[0] - b[0];
+  if (a[1] !== b[1]) return a[1] - b[1];
+  return a[2] - b[2];
+}
+
+export function satisfies(version: string, range: string): boolean {
+  const v = parseCore(version);
+  if (!v) return false;
+  const r = range.trim();
+  if (r === "*") return true;
+
+  // Operator-prefixed (^, ~, >=, <=, >, <)
+  const opMatch = /^(\^|~|>=|<=|>|<)(.+)$/.exec(r);
+  const op = opMatch?.[1] ?? null;
+  const rest = opMatch ? opMatch[2]! : r;
+  const target = parseCore(rest);
+  if (!target) return false;
+
+  switch (op) {
+    case "^": {
+      // Same major. For 0.x: same minor. For 0.0.x: exact.
+      if (cmp(v, target) < 0) return false;
+      if (target[0] > 0) return v[0] === target[0];
+      if (target[1] > 0) return v[0] === 0 && v[1] === target[1];
+      return v[0] === 0 && v[1] === 0 && v[2] === target[2];
+    }
+    case "~": {
+      // Same major.minor (or same major if no minor specified — we always have minor).
+      if (cmp(v, target) < 0) return false;
+      return v[0] === target[0] && v[1] === target[1];
+    }
+    case ">=": return cmp(v, target) >= 0;
+    case "<=": return cmp(v, target) <= 0;
+    case ">":  return cmp(v, target) > 0;
+    case "<":  return cmp(v, target) < 0;
+    default:   return cmp(v, target) === 0; // bare "1.2.3" → exact
+  }
+}
+
+// ─── Actionable error formatters ─────────────────────────────────────────────
 
 /**
- * Scan the two canonical plugin package directories and return all valid packages.
- * Each subdirectory is checked for a plugin.json manifest.
- * Silently skips directories with missing or invalid manifests.
+ * Format the plan's canonical SDK-mismatch error.
+ * Used by both the installer (pre-install) and the loader (at startup).
+ */
+export function formatSdkMismatchError(
+  name: string,
+  manifestSdk: string,
+  runtimeVersion: string,
+): string {
+  return [
+    `\x1b[31m✗\x1b[0m plugin '${name}' requires maw SDK ${manifestSdk}`,
+    `  your maw: ${runtimeVersion}  (SDK ${runtimeVersion})`,
+    ``,
+    `  fix:`,
+    `    • maw update                                    (upgrade maw)`,
+    `    • maw plugin install ${name}@<old-version>      (older compat release)`,
+    `    • (manual) edit plugin.json "sdk" to accept this version and rebuild`,
+  ].join("\n");
+}
+
+// ─── Hash verification ───────────────────────────────────────────────────────
+
+/**
+ * Compute sha256 of a file. Returns `sha256:<hex>` to match the manifest format.
+ */
+export function hashFile(path: string): string {
+  const buf = readFileSync(path);
+  const h = createHash("sha256").update(buf).digest("hex");
+  return `sha256:${h}`;
+}
+
+/**
+ * Is the install a symlink (dev mode)? Checked against the plugin's top-level
+ * install dir — the path that lives in ~/.maw/plugins/<name>. Per the plan,
+ * symlinked installs skip hash verification (the `linked (dev)` label mode).
+ */
+export function isDevModeInstall(pluginDir: string): boolean {
+  try {
+    return lstatSync(pluginDir).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+// ─── Legacy-manifest one-shot warning ────────────────────────────────────────
+
+let _warnedLegacy = false;
+function warnLegacyOnce(count: number): void {
+  if (_warnedLegacy) return;
+  _warnedLegacy = true;
+  if (count > 0) {
+    console.warn(
+      `\x1b[90m[maw] ${count} legacy plugin${count === 1 ? "" : "s"} loaded without artifact hash — build them to enforce integrity.\x1b[0m`,
+    );
+  }
+}
+
+/** Test-only: reset cached module state (legacy-warn latch + SDK version cache). */
+export function __resetDiscoverStateForTests(): void {
+  _warnedLegacy = false;
+  _runtimeSdkVersion = null;
+}
+
+/**
+ * Scan the canonical plugin package directory and return valid packages.
+ * Each subdirectory is checked for a plugin.json manifest. Plugins that
+ * fail the Phase A gates (semver / hash) are refused with a loud message
+ * and NOT returned — they do not enter the runtime command surface.
  */
 export function discoverPackages(): LoadedPlugin[] {
   const plugins: LoadedPlugin[] = [];
   const disabled = loadConfig().disabledPlugins ?? [];
+  const runtimeVer = runtimeSdkVersion();
+  let legacyCount = 0;
 
-  for (const baseDir of SCAN_DIRS) {
+  for (const baseDir of scanDirs()) {
     if (!existsSync(baseDir)) continue;
     let entries: string[];
     try {
@@ -52,19 +212,64 @@ export function discoverPackages(): LoadedPlugin[] {
     }
     for (const entry of entries) {
       const pkgDir = join(baseDir, entry);
+      let loaded: LoadedPlugin | null;
       try {
-        const loaded = loadManifestFromDir(pkgDir);
-        if (loaded) {
-          if (disabled.includes(loaded.manifest.name)) {
-            loaded.disabled = true;
-          }
-          plugins.push(loaded);
-        }
+        loaded = loadManifestFromDir(pkgDir);
       } catch {
-        // invalid manifest — skip silently
+        // Invalid manifest — skip silently (noisy dirs in ~/.maw/plugins
+        // that aren't plugins shouldn't spam users).
+        continue;
       }
+      if (!loaded) continue;
+
+      const m = loaded.manifest;
+
+      // Gate 1: SDK semver. Mismatch → refuse with actionable error.
+      if (!satisfies(runtimeVer, m.sdk)) {
+        console.warn(formatSdkMismatchError(m.name, m.sdk, runtimeVer));
+        continue;
+      }
+
+      // Gate 2: artifact hash (real installs only — dev-mode skips).
+      const devMode = isDevModeInstall(pkgDir);
+      if (m.artifact && !devMode) {
+        if (m.artifact.sha256 === null) {
+          console.warn(
+            `\x1b[33m⚠\x1b[0m plugin '${m.name}' is unbuilt — run \`maw plugin build\` in ${pkgDir}`,
+          );
+          continue;
+        }
+        // Resolve artifact path against the plugin dir.
+        const artifactPath = join(pkgDir, m.artifact.path);
+        if (!existsSync(artifactPath)) {
+          console.warn(
+            `\x1b[31m✗\x1b[0m plugin '${m.name}' artifact missing: ${m.artifact.path}`,
+          );
+          continue;
+        }
+        const observed = hashFile(artifactPath);
+        if (observed !== m.artifact.sha256) {
+          console.warn(
+            `\x1b[31m✗\x1b[0m plugin '${m.name}' artifact hash mismatch — refusing to load.\n` +
+            `  expected: ${m.artifact.sha256}\n` +
+            `  actual:   ${observed}\n` +
+            `  fix: re-install from a trusted source or re-run \`maw plugin build\``,
+          );
+          continue;
+        }
+      } else if (!m.artifact) {
+        // Legacy plugin (no artifact field). Allow — but count for the one-shot warning.
+        legacyCount++;
+      }
+
+      if (disabled.includes(m.name)) {
+        loaded.disabled = true;
+      }
+      plugins.push(loaded);
     }
   }
+
+  warnLegacyOnce(legacyCount);
 
   // Sort by weight (lower = first, default 50) — like Drupal module weight
   plugins.sort((a, b) => (a.manifest.weight ?? 50) - (b.manifest.weight ?? 50));
@@ -125,13 +330,14 @@ export async function invokePlugin(
     }
   }
 
-  // TS plugins — import and call handler directly (full access)
+  // TS plugins — import and call handler directly (full access).
+  //
+  // NOTE: we deliberately do NOT monkey-patch process.exit anymore. The old
+  // `process.exit → throw Error("exit")` patch swallowed real error stacks
+  // and made plugin crashes opaque (sdk-consumer's Round 1 complaint). If a
+  // plugin calls process.exit() it's now fatal to the host — which is the
+  // honest behavior for Phase A (no sandbox).
   if (plugin.kind === "ts" && plugin.entryPath) {
-    // Guard process.exit — cmd* functions call it on error. Convert to throw
-    // so the handler's try/catch can capture the output and return it.
-    const origExit = process.exit;
-    process.exit = ((code?: number) => { throw Object.assign(new Error("exit"), { exitCode: code ?? 0 }); }) as any;
-
     try {
       const mod = await import(plugin.entryPath);
       const handler = mod.default || mod.handler;
@@ -141,9 +347,8 @@ export async function invokePlugin(
       if (result && typeof result === "object" && "ok" in result) return result;
       return { ok: true };
     } catch (err: any) {
-      return { ok: false, error: err.message };
-    } finally {
-      process.exit = origExit;
+      // Preserve stack so Bun's source maps can resolve plugin frames.
+      return { ok: false, error: err.stack || err.message };
     }
   }
 

@@ -114,7 +114,7 @@ export interface PluginConfig {
  * the shape, provides autocomplete, zero runtime overhead.
  *
  * ```ts
- * import { definePlugin } from "maw/sdk";
+ * import { definePlugin } from "@maw/sdk";
  *
  * export default definePlugin({
  *   name: "my-plugin",

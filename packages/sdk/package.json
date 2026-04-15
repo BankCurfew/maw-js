@@ -1,0 +1,26 @@
+{
+  "name": "@maw/sdk",
+  "version": "1.0.0",
+  "description": "maw-js plugin SDK — stable typed API for plugin authors.",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.ts"
+    },
+    "./plugin": {
+      "types": "./plugin.d.ts",
+      "default": "./plugin.ts"
+    }
+  },
+  "files": [
+    "index.ts",
+    "index.d.ts",
+    "plugin.ts",
+    "plugin.d.ts",
+    "README.md"
+  ]
+}

@@ -2,10 +2,16 @@
  * Plugin manifest — parse, validate, and load plugin.json descriptors.
  *
  * Validation rules:
- *   name    — /^[a-z0-9-]+$/
- *   version — semver (N.N.N with optional pre-release/build)
- *   sdk     — semver range: *, N.N.N, ^N.N.N, ~N.N.N, >=N.N.N, etc.
- *   wasm    — relative path; file must exist on disk relative to manifest dir
+ *   name         — /^[a-z0-9-]+$/
+ *   version      — semver (N.N.N with optional pre-release/build)
+ *   sdk          — semver range: *, N.N.N, ^N.N.N, ~N.N.N, >=N.N.N, etc.
+ *   wasm         — relative path; file must exist on disk relative to manifest dir
+ *   target       — optional: "js" (Phase A); "wasm" reserved for Phase C
+ *   capabilities — optional: string[] of "namespace:verb"; unknown ns = warning
+ *   artifact     — optional: { path, sha256 } descriptor for built plugins
+ *
+ * Back-compat: legacy manifests without target/capabilities/artifact still
+ * parse — the loader treats them as target "js", capabilities [], artifact null.
  */
 
 import { existsSync, readFileSync } from "fs";
@@ -13,6 +19,19 @@ import { join, resolve } from "path";
 import type { PluginManifest, LoadedPlugin } from "./types";
 
 const NAME_RE = /^[a-z0-9-]+$/;
+
+/**
+ * Capability namespaces seeded in Phase A. Unknown namespaces emit a
+ * validation warning (not a hard fail). New namespaces need an ADR.
+ */
+export const KNOWN_CAPABILITY_NAMESPACES = new Set([
+  "net",    // network (fetch, sockets)
+  "fs",     // filesystem
+  "peer",   // federation peers (hey, send)
+  "sdk",    // maw SDK calls (identity, federation, …)
+  "proc",   // child processes
+  "ffi",    // native FFI (bun:ffi)
+]);
 
 // Semver: N.N.N with optional pre-release (-alpha.1) and build metadata (+001)
 const SEMVER_CORE = /\d+\.\d+\.\d+(?:-[\w.]+)?(?:\+[\w.]+)?/;
@@ -53,11 +72,14 @@ export function parseManifest(jsonText: string, dir: string): PluginManifest {
       `plugin.json: version must be semver N.N.N (got ${JSON.stringify(r.version)})`,
     );
   }
-  // Must have either wasm or entry (not both required, at least one)
+  // Must have either wasm, entry, or a built artifact (at least one).
   const hasWasm = typeof r.wasm === "string" && r.wasm.length > 0;
   const hasEntry = typeof r.entry === "string" && (r.entry as string).length > 0;
-  if (!hasWasm && !hasEntry) {
-    throw new Error("plugin.json: must have either 'wasm' (WASM plugin) or 'entry' (TS plugin)");
+  const hasArtifact = r.artifact !== undefined;
+  if (!hasWasm && !hasEntry && !hasArtifact) {
+    throw new Error(
+      "plugin.json: must have 'wasm' (WASM plugin), 'entry' (TS plugin), or 'artifact' (built plugin)",
+    );
   }
 
   // Optional weight (execution order: 0=first, 50=default, 99=last)
@@ -210,6 +232,63 @@ export function parseManifest(jsonText: string, dir: string): PluginManifest {
     };
   }
 
+  // --- Optional target (Phase A accepts "js" only; "wasm" reserved for Phase C) ---
+  let target: PluginManifest["target"];
+  if (r.target !== undefined) {
+    if (typeof r.target !== "string") {
+      throw new Error("plugin.json: target must be a string");
+    }
+    if (r.target === "wasm") {
+      throw new Error(
+        'plugin.json: target "wasm" not yet supported (Phase C). Use target "js" for now.',
+      );
+    }
+    if (r.target !== "js") {
+      throw new Error(
+        `plugin.json: unknown target ${JSON.stringify(r.target)} (expected "js")`,
+      );
+    }
+    target = r.target;
+  }
+
+  // --- Optional capabilities (advisory in Phase A; unknown namespace = warning) ---
+  let capabilities: PluginManifest["capabilities"];
+  if (r.capabilities !== undefined) {
+    if (
+      !Array.isArray(r.capabilities) ||
+      r.capabilities.some((c: unknown) => typeof c !== "string")
+    ) {
+      throw new Error("plugin.json: capabilities must be an array of strings");
+    }
+    capabilities = r.capabilities as string[];
+    for (const cap of capabilities) {
+      const idx = cap.indexOf(":");
+      const ns = idx === -1 ? cap : cap.slice(0, idx);
+      if (!KNOWN_CAPABILITY_NAMESPACES.has(ns)) {
+        console.warn(
+          `plugin.json: unknown capability namespace "${ns}" in "${cap}" ` +
+            `(known: ${[...KNOWN_CAPABILITY_NAMESPACES].join(", ")})`,
+        );
+      }
+    }
+  }
+
+  // --- Optional artifact (shape frozen as object so signature/signedBy can extend) ---
+  let artifact: PluginManifest["artifact"];
+  if (r.artifact !== undefined) {
+    if (!r.artifact || typeof r.artifact !== "object" || Array.isArray(r.artifact)) {
+      throw new Error("plugin.json: artifact must be an object");
+    }
+    const a = r.artifact as Record<string, unknown>;
+    if (typeof a.path !== "string" || !a.path) {
+      throw new Error("plugin.json: artifact.path must be a non-empty string");
+    }
+    if (a.sha256 !== null && typeof a.sha256 !== "string") {
+      throw new Error("plugin.json: artifact.sha256 must be a string or null");
+    }
+    artifact = { path: a.path, sha256: (a.sha256 as string | null) ?? null };
+  }
+
   return {
     name: r.name,
     version: r.version,
@@ -225,6 +304,9 @@ export function parseManifest(jsonText: string, dir: string): PluginManifest {
     ...(cron ? { cron } : {}),
     ...(module_ ? { module: module_ } : {}),
     ...(transport ? { transport } : {}),
+    ...(target ? { target } : {}),
+    ...(capabilities ? { capabilities } : {}),
+    ...(artifact ? { artifact } : {}),
   };
 }
 
@@ -238,13 +320,24 @@ export function loadManifestFromDir(dir: string): LoadedPlugin | null {
   if (!existsSync(manifestPath)) return null;
   const jsonText = readFileSync(manifestPath, "utf8");
   const manifest = parseManifest(jsonText, dir);
+
+  // Entry resolution precedence:
+  //   1. manifest.entry (legacy source-tree plugins)
+  //   2. manifest.artifact.path (v1 compiled plugins — maw plugin build output)
+  //   3. manifest.wasm (WASM plugins)
+  // A JS bundle compiled via `maw plugin build` has `target:"js"` + `artifact.path:"./index.js"`
+  // but no `entry`. Without this precedence, such plugins fall through to `kind:"wasm"` and
+  // the loader tries to read the artifact as a WASM module.
   const hasWasm = !!manifest.wasm;
   const hasEntry = !!manifest.entry;
+  const hasArtifactJs = manifest.target !== "wasm" && !!manifest.artifact?.path;
+  const effectiveEntry = manifest.entry ?? (hasArtifactJs ? manifest.artifact!.path : undefined);
+
   return {
     manifest,
     dir,
     wasmPath: hasWasm ? resolve(dir, manifest.wasm!) : "",
-    ...(hasEntry ? { entryPath: resolve(dir, manifest.entry!) } : {}),
-    kind: hasEntry ? "ts" as const : "wasm" as const,
+    ...(effectiveEntry ? { entryPath: resolve(dir, effectiveEntry) } : {}),
+    kind: (hasEntry || hasArtifactJs) ? "ts" as const : "wasm" as const,
   };
 }

@@ -1,0 +1,334 @@
+/**
+ * Phase A installer + loader — cmdPluginInstall, discoverPackages gates,
+ * invokePlugin error surfacing. Uses MAW_PLUGINS_DIR to scope each test.
+ */
+
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import {
+  existsSync, lstatSync, mkdirSync, mkdtempSync,
+  readFileSync, rmSync, symlinkSync, writeFileSync,
+} from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import { createHash } from "crypto";
+import { spawnSync } from "child_process";
+import { cmdPluginInstall } from "../../src/commands/plugins/plugin/install-impl";
+import {
+  discoverPackages, invokePlugin, runtimeSdkVersion,
+  satisfies, formatSdkMismatchError, __resetDiscoverStateForTests,
+} from "../../src/plugin/registry";
+
+// ─── Harness ─────────────────────────────────────────────────────────────────
+
+const created: string[] = [];
+let origPluginsDir: string | undefined;
+
+function tmpDir(prefix = "maw-install-test-"): string {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  created.push(d);
+  return d;
+}
+function pluginsDir(): string { return process.env.MAW_PLUGINS_DIR!; }
+
+beforeEach(() => {
+  origPluginsDir = process.env.MAW_PLUGINS_DIR;
+  // MAW_PLUGINS_DIR overrides ~/.maw/plugins/ in installRoot()+scanDirs().
+  process.env.MAW_PLUGINS_DIR = join(tmpDir("maw-home-"), "plugins");
+  __resetDiscoverStateForTests();
+});
+
+afterEach(() => {
+  if (origPluginsDir !== undefined) process.env.MAW_PLUGINS_DIR = origPluginsDir;
+  else delete process.env.MAW_PLUGINS_DIR;
+  for (const d of created.splice(0)) {
+    if (existsSync(d)) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+/** Run fn with process.exit + console captured. */
+async function capture(fn: () => Promise<unknown>): Promise<{
+  exitCode: number | undefined; stdout: string; stderr: string;
+}> {
+  const o = { exit: process.exit, log: console.log, err: console.error, warn: console.warn };
+  const outs: string[] = [], errs: string[] = [];
+  let exitCode: number | undefined;
+  console.log = (...a: any[]) => outs.push(a.map(String).join(" "));
+  console.error = (...a: any[]) => errs.push(a.map(String).join(" "));
+  console.warn = (...a: any[]) => errs.push(a.map(String).join(" "));
+  (process as any).exit = (c?: number) => { exitCode = c ?? 0; throw new Error("__exit__:" + exitCode); };
+  try { await fn(); }
+  catch (e: any) { if (!String(e?.message ?? "").startsWith("__exit__")) throw e; }
+  finally {
+    (process as any).exit = o.exit; console.log = o.log;
+    console.error = o.err; console.warn = o.warn;
+  }
+  return { exitCode, stdout: outs.join("\n"), stderr: errs.join("\n") };
+}
+
+/** Build a fake "built" plugin dir + packed tarball. */
+function buildFixture(opts: {
+  name?: string; version?: string; sdk?: string;
+  overrideSha256?: string | null;
+} = {}): { dir: string; bundle: string; sha256: string; tarball: string } {
+  const name = opts.name ?? "hello";
+  const version = opts.version ?? "0.1.0";
+  const sdk = opts.sdk ?? "^1.0.0";
+  const src = "export default () => ({ ok: true });\n";
+  const dir = tmpDir("maw-fixture-");
+  const bundle = join(dir, "index.js");
+  writeFileSync(bundle, src);
+  const sha = "sha256:" + createHash("sha256").update(src).digest("hex");
+  const manifest: Record<string, unknown> = {
+    name, version, sdk, target: "js", capabilities: [],
+    artifact: {
+      path: "./index.js",
+      sha256: opts.overrideSha256 === undefined ? sha : opts.overrideSha256,
+    },
+  };
+  writeFileSync(join(dir, "plugin.json"), JSON.stringify(manifest, null, 2) + "\n");
+  const tarball = join(dir, `${name}-${version}.tgz`);
+  const tar = spawnSync("tar", ["-czf", tarball, "-C", dir, "plugin.json", "index.js"]);
+  if (tar.status !== 0) throw new Error("tar failed");
+  return { dir, bundle, sha256: sha, tarball };
+}
+
+/** Plant a plugin directly under pluginsDir()/<name>/ (real dir). */
+function plant(name: string, manifest: Record<string, unknown>, bundle: string): string {
+  const dest = join(pluginsDir(), name);
+  mkdirSync(dest, { recursive: true });
+  writeFileSync(join(dest, "plugin.json"), JSON.stringify(manifest, null, 2));
+  writeFileSync(join(dest, "index.js"), bundle);
+  return dest;
+}
+
+// ─── unit: semver + mismatch error ───────────────────────────────────────────
+
+describe("satisfies + formatSdkMismatchError", () => {
+  test("satisfies core ranges", () => {
+    expect(satisfies("1.0.0", "*")).toBe(true);
+    expect(satisfies("1.2.3", "^1.0.0")).toBe(true);
+    expect(satisfies("2.0.0", "^1.0.0")).toBe(false);
+    expect(satisfies("1.2.5", "~1.2.0")).toBe(true);
+    expect(satisfies("1.3.0", "~1.2.0")).toBe(false);
+    expect(satisfies("1.0.0", ">=0.9.0")).toBe(true);
+    expect(satisfies("1.0.1", "1.0.0")).toBe(false);
+  });
+  test("formatSdkMismatchError — plan-canonical shape", () => {
+    const m = formatSdkMismatchError("hello", "^2.0.0", "1.0.0");
+    expect(m).toContain("plugin 'hello'");
+    expect(m).toContain("^2.0.0");
+    expect(m).toContain("maw update");
+    expect(m).toContain("maw plugin install hello@");
+    expect(m).toContain("edit plugin.json");
+  });
+});
+
+// ─── cmdPluginInstall — dir ──────────────────────────────────────────────────
+
+describe("cmdPluginInstall — dir source", () => {
+  test("symlinks + prints 'linked (dev)' label", async () => {
+    const fx = buildFixture();
+    const { exitCode, stdout } = await capture(() => cmdPluginInstall([fx.dir]));
+    expect(exitCode).toBeUndefined();
+    expect(lstatSync(join(pluginsDir(), "hello")).isSymbolicLink()).toBe(true);
+    expect(stdout).toContain("hello@0.1.0 installed");
+    expect(stdout).toContain("linked (dev)");
+    expect(stdout).toContain("try: maw hello");
+  });
+
+  test("replaces an existing install", async () => {
+    await capture(() => cmdPluginInstall([buildFixture({ version: "0.1.0" }).dir]));
+    await capture(() => cmdPluginInstall([buildFixture({ version: "0.2.0" }).dir]));
+    const m = JSON.parse(readFileSync(join(pluginsDir(), "hello", "plugin.json"), "utf8"));
+    expect(m.version).toBe("0.2.0");
+  });
+
+  test("semver mismatch → exits 1 with canonical error, nothing installed", async () => {
+    const major = parseInt(runtimeSdkVersion().split(".")[0]!, 10);
+    const fx = buildFixture({ sdk: `^${major + 99}.0.0` });
+    const { exitCode, stderr } = await capture(() => cmdPluginInstall([fx.dir]));
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("plugin 'hello'");
+    expect(stderr).toContain(`requires maw SDK ^${major + 99}.0.0`);
+    expect(stderr).toContain("maw update");
+    expect(existsSync(join(pluginsDir(), "hello"))).toBe(false);
+  });
+
+  test("missing source → exits 1", async () => {
+    const { exitCode, stderr } = await capture(() => cmdPluginInstall(["/nonexistent/path"]));
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("source not found");
+  });
+
+  test("usage → exits 1 when no args", async () => {
+    const { exitCode, stderr } = await capture(() => cmdPluginInstall([]));
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("usage:");
+  });
+});
+
+// ─── cmdPluginInstall — tarball ──────────────────────────────────────────────
+
+describe("cmdPluginInstall — tarball source", () => {
+  test("extracts, verifies hash, prints 'installed (sha256:…)' label", async () => {
+    const fx = buildFixture();
+    const { exitCode, stdout } = await capture(() => cmdPluginInstall([fx.tarball]));
+    expect(exitCode).toBeUndefined();
+    const dest = join(pluginsDir(), "hello");
+    expect(lstatSync(dest).isDirectory()).toBe(true);
+    expect(lstatSync(dest).isSymbolicLink()).toBe(false);
+    expect(existsSync(join(dest, "index.js"))).toBe(true);
+    expect(stdout).toContain("installed (sha256:");
+  });
+
+  test("hash mismatch → refuses, nothing installed", async () => {
+    // Build then tamper the bundle; re-pack with the original (lying) manifest.
+    const fx = buildFixture();
+    writeFileSync(fx.bundle, "export default () => ({ tampered: true });\n");
+    const tampered = join(fx.dir, "tampered.tgz");
+    const tar = spawnSync("tar", ["-czf", tampered, "-C", fx.dir, "plugin.json", "index.js"]);
+    expect(tar.status).toBe(0);
+    const { exitCode, stderr } = await capture(() => cmdPluginInstall([tampered]));
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("hash mismatch");
+    expect(existsSync(join(pluginsDir(), "hello"))).toBe(false);
+  });
+
+  test("unbuilt tarball (sha256:null) → refused", async () => {
+    const fx = buildFixture({ overrideSha256: null });
+    const { exitCode, stderr } = await capture(() => cmdPluginInstall([fx.tarball]));
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("sha256=null");
+  });
+});
+
+// ─── cmdPluginInstall — URL (mocked fetch) ───────────────────────────────────
+
+describe("cmdPluginInstall — URL source (mocked fetch)", () => {
+  test("downloads, runs tarball flow, verifies hash", async () => {
+    const fx = buildFixture();
+    const bytes = readFileSync(fx.tarball);
+    const origFetch = globalThis.fetch;
+    (globalThis as any).fetch = async () =>
+      new Response(bytes, { status: 200, headers: { "content-type": "application/gzip" } });
+    try {
+      const { exitCode, stdout } = await capture(() =>
+        cmdPluginInstall(["https://example.com/hello-0.1.0.tgz"]));
+      expect(exitCode).toBeUndefined();
+      expect(stdout).toContain("installed (sha256:");
+      expect(existsSync(join(pluginsDir(), "hello"))).toBe(true);
+    } finally { (globalThis as any).fetch = origFetch; }
+  });
+
+  test("rejects non-gzip content-type", async () => {
+    const origFetch = globalThis.fetch;
+    (globalThis as any).fetch = async () =>
+      new Response("<html>", { status: 200, headers: { "content-type": "text/html" } });
+    try {
+      const { exitCode, stderr } = await capture(() =>
+        cmdPluginInstall(["https://evil.example/plugin.html"]));
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain("content-type");
+    } finally { (globalThis as any).fetch = origFetch; }
+  });
+});
+
+// ─── loader gates ────────────────────────────────────────────────────────────
+
+describe("discoverPackages — gates", () => {
+  test("legacy plugin (no artifact) loads with warn-once message", async () => {
+    plant("legacy-plugin",
+      { name: "legacy-plugin", version: "1.0.0", sdk: "*", entry: "./index.js" },
+      "export default () => ({ ok: true });\n");
+    const { stderr } = await capture(async () => {
+      const plugins = discoverPackages();
+      expect(plugins.map(p => p.manifest.name)).toContain("legacy-plugin");
+    });
+    expect(stderr).toContain("legacy plugin");
+  });
+
+  test("semver-mismatched plugin is refused at load", async () => {
+    const major = parseInt(runtimeSdkVersion().split(".")[0]!, 10);
+    const src = "export default () => ({ ok: true });\n";
+    const sha = "sha256:" + createHash("sha256").update(src).digest("hex");
+    plant("future-plugin", {
+      name: "future-plugin", version: "1.0.0", sdk: `^${major + 42}.0.0`,
+      target: "js", capabilities: [], artifact: { path: "./index.js", sha256: sha },
+    }, src);
+    const { stderr } = await capture(async () => {
+      const plugins = discoverPackages();
+      expect(plugins.map(p => p.manifest.name)).not.toContain("future-plugin");
+    });
+    expect(stderr).toContain("future-plugin");
+    expect(stderr).toContain("requires maw SDK");
+  });
+
+  test("tampered plugin (hash mismatch) is refused at load", async () => {
+    const sha = "sha256:" + createHash("sha256")
+      .update("export default () => ({ ok: true });\n").digest("hex");
+    plant("tampered-plugin", {
+      name: "tampered-plugin", version: "1.0.0", sdk: "*",
+      target: "js", capabilities: [], artifact: { path: "./index.js", sha256: sha },
+    }, "export default () => ({ tampered: true });\n"); // different content
+    const { stderr } = await capture(async () => {
+      const plugins = discoverPackages();
+      expect(plugins.map(p => p.manifest.name)).not.toContain("tampered-plugin");
+    });
+    expect(stderr).toContain("hash mismatch");
+  });
+
+  test("symlink (dev-mode) install skips hash verification", async () => {
+    // Manifest claims a fake sha — would be refused if we checked real installs.
+    const sourceDir = tmpDir("maw-symlink-src-");
+    writeFileSync(join(sourceDir, "plugin.json"), JSON.stringify({
+      name: "dev-plugin", version: "1.0.0", sdk: "*",
+      target: "js", capabilities: [],
+      artifact: { path: "./index.js", sha256: "sha256:" + "0".repeat(64) },
+      entry: "./index.js",
+    }));
+    writeFileSync(join(sourceDir, "index.js"), "export default () => ({ ok: true });\n");
+    mkdirSync(pluginsDir(), { recursive: true });
+    symlinkSync(sourceDir, join(pluginsDir(), "dev-plugin"), "dir");
+    const { stderr } = await capture(async () => {
+      const plugins = discoverPackages();
+      expect(plugins.map(p => p.manifest.name)).toContain("dev-plugin");
+    });
+    expect(stderr).not.toContain("hash mismatch");
+  });
+
+  test("unbuilt plugin (artifact.sha256=null) is refused with build hint", async () => {
+    plant("unbuilt-plugin", {
+      name: "unbuilt-plugin", version: "1.0.0", sdk: "*",
+      target: "js", capabilities: [], artifact: { path: "./index.js", sha256: null },
+    }, "export default () => ({});\n");
+    const { stderr } = await capture(async () => {
+      const plugins = discoverPackages();
+      expect(plugins.map(p => p.manifest.name)).not.toContain("unbuilt-plugin");
+    });
+    expect(stderr).toContain("unbuilt");
+    expect(stderr).toContain("maw plugin build");
+  });
+});
+
+// ─── invokePlugin: real errors surface (no more process.exit → "exit") ──────
+
+describe("invokePlugin — error surfacing", () => {
+  test("real plugin errors surface with stack, not generic 'exit' string", async () => {
+    const dir = plant("boom-plugin",
+      { name: "boom-plugin", version: "1.0.0", sdk: "*", entry: "./index.js" },
+      'export default async function handler(_ctx) {\n' +
+      '  throw new Error("boom from plugin");\n}\n');
+    await capture(async () => {
+      const plugins = discoverPackages();
+      const boom = plugins.find(p => p.manifest.name === "boom-plugin");
+      expect(boom).toBeDefined();
+      const result = await invokePlugin(boom!, { source: "cli", args: [] });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("boom from plugin");
+      // Stack should reference the plugin source path (Bun source maps).
+      expect(result.error).toContain(dir);
+      // The old monkey-patch surfaced "exit" — we must NOT see that.
+      expect(result.error).not.toBe("exit");
+    });
+  });
+});

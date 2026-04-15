@@ -20,11 +20,36 @@ import {
 import { join, resolve } from "path";
 import { homedir } from "os";
 
-// Resolved at module load time — maw-js repo root
+// maw-js repo root — used only to locate scaffold templates on this machine.
 const MAW_DIR = resolve(import.meta.dir, "../..");
-const SDK_RUST_ABS = join(MAW_DIR, "src/wasm/maw-plugin-sdk");
 const TEMPLATE_RUST = join(MAW_DIR, "src/wasm/examples/hello-rust");
 const TEMPLATE_AS = join(MAW_DIR, "src/wasm/examples/hello-as");
+
+/**
+ * Portable Rust SDK path for scaffolded Cargo.toml.
+ *
+ * The absolute path we used to bake in (`<MAW_DIR>/src/wasm/maw-plugin-sdk`)
+ * was the scaffolder's own filesystem — plugins stopped building the moment
+ * they left that machine.
+ *
+ * Resolution order:
+ *   1. `MAW_SDK_RUST_PATH` env var (explicit override, dev or CI)
+ *   2. The standard global bun install location (portable across users
+ *      who `bun add -g github:Soul-Brews-Studio/maw-js`)
+ *   3. The local dev-tree path (last resort; scaffolds a plugin that
+ *      only builds on this machine — we warn on stderr in that case).
+ */
+function defaultRustSdkPath(): string {
+  if (process.env.MAW_SDK_RUST_PATH) return process.env.MAW_SDK_RUST_PATH;
+  const bunGlobal = join(
+    homedir(),
+    ".bun", "install", "global", "node_modules",
+    "maw", "src", "wasm", "maw-plugin-sdk",
+  );
+  if (existsSync(bunGlobal)) return bunGlobal;
+  // Fall back to dev-tree path. Not portable — warn the caller.
+  return join(MAW_DIR, "src/wasm/maw-plugin-sdk");
+}
 
 // ─── Validation ─────────────────────────────────────────────────────────────
 
@@ -83,7 +108,7 @@ export function buildManifestJson(name: string, lang: "rust" | "as"): string {
 
 // ─── Rust scaffold ───────────────────────────────────────────────────────────
 
-export function scaffoldRust(name: string, dest: string, templateDir = TEMPLATE_RUST, sdkPath = SDK_RUST_ABS): void {
+export function scaffoldRust(name: string, dest: string, templateDir = TEMPLATE_RUST, sdkPath = defaultRustSdkPath()): void {
   if (!existsSync(templateDir)) {
     throw new Error(`Rust template not found at ${templateDir}`);
   }
