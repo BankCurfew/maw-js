@@ -3,6 +3,8 @@ import { runHook } from "../hooks";
 import { appendFile, mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
+import { resolveTarget } from "../routing";
+import { loadConfig } from "../config";
 
 export async function cmdList() {
   const sessions = await listSessions();
@@ -67,22 +69,27 @@ export async function cmdPeek(query?: string) {
 }
 
 export async function cmdSend(query: string, message: string, force = false) {
-  // Cross-node: route via local HTTP API (which handles federation routing)
-  // 'curfew:echo-oracle' = cross-node, but '01-bob:0' = local tmux pane
-  if (query.includes(":") && !query.match(/^\d+-/)) {
+  const config = loadConfig();
+  const sessions = await listSessions();
+  const resolved = resolveTarget(query, config, sessions);
+
+  // Cross-node: route via local HTTP API (which handles federation + HMAC)
+  if (resolved?.type === "peer") {
     const server = process.env.MAW_SERVER || "http://localhost:3456";
+    // Use node:agent format so /api/send routes to the correct peer
+    const crossTarget = `${resolved.node}:${resolved.target}`;
     try {
       const res = await fetch(`${server}/api/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: query, text: message }),
+        body: JSON.stringify({ target: crossTarget, text: message }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         console.error(`\x1b[31merror\x1b[0m: ${(body as any).error || `HTTP ${res.status}`}`);
         process.exit(1);
       }
-      console.log(`\x1b[32msent\x1b[0m → ${query}: ${message}`);
+      console.log(`\x1b[32msent\x1b[0m → ${crossTarget}: ${message}`);
       return;
     } catch (e: any) {
       console.error(`\x1b[31merror\x1b[0m: server unreachable: ${e.message}`);
@@ -90,8 +97,15 @@ export async function cmdSend(query: string, message: string, force = false) {
     }
   }
 
-  const sessions = await listSessions();
-  const target = findWindow(sessions, query);
+  // Error from resolver
+  if (resolved?.type === "error") {
+    console.error(`\x1b[31merror\x1b[0m: ${resolved.detail}`);
+    if (resolved.hint) console.error(`\x1b[33mhint\x1b[0m:  ${resolved.hint}`);
+    process.exit(1);
+  }
+
+  // Local or self-node
+  const target = resolved?.type === "local" || resolved?.type === "self-node" ? resolved.target : findWindow(sessions, query);
   if (!target) { console.error(`window not found: ${query}`); process.exit(1); }
 
   // Detect active Claude session (#17)

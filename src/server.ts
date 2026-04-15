@@ -10,7 +10,7 @@ import { MawEngine } from "./engine";
 import { LoopEngine } from "./loops";
 import { isAuthenticated, handleLogin, handleLogout, getActiveSessions, LOGIN_PAGE, isAuthEnabled, generateQrToken, getQrTokenStatus, approveQrToken, QR_APPROVE_PAGE } from "./auth";
 import type { WSData } from "./types";
-import { randomBytes } from "crypto";
+// crypto.randomUUID() used below (global, no import needed)
 import { requireHmac, signHeaders } from "./lib/federation-auth";
 import { checkPeerHealth, aggregateAgents, crossNodeSend, aggregateSessions } from "./lib/peers";
 
@@ -193,12 +193,47 @@ app.post("/api/send", async (c) => {
 
 // Inbound cross-node send (HMAC-authenticated from peer)
 app.post("/api/federation/send", requireHmac(), async (c) => {
-  const { target, text } = await c.req.json();
+  const { target, text, from: senderName } = await c.req.json();
   if (!target || !text) return c.json({ error: "target and text required" }, 400);
   // Resolve oracle name (e.g. "echo-oracle") to tmux target (e.g. "echo:0")
   const sessions = await listSessions();
   const resolved = findWindow(sessions, target) || target;
   await sendKeys(resolved, text);
+
+  // Audit trail — mirror cmdSend's feed.log + inbox + maw-log writes
+  try {
+    const { appendFileSync, mkdirSync } = await import("fs");
+    const { join } = await import("path");
+    const { homedir, hostname } = await import("os");
+    const home = homedir();
+    const host = hostname();
+    const from = senderName || "federation";
+    const ts = new Date().toISOString();
+
+    // maw-log.jsonl
+    const logDir = join(home, ".oracle");
+    mkdirSync(logDir, { recursive: true });
+    appendFileSync(join(logDir, "maw-log.jsonl"),
+      JSON.stringify({ ts, from, to: target, target: resolved, msg: text, host, sid: null }) + "\n");
+
+    // feed.log
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const feedTs = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const flat = text.replace(/\n/g, " \u239C ");
+    appendFileSync(join(logDir, "feed.log"),
+      `${feedTs} | ${from} | ${host} | Notification | ${from} | maw-hey \u00bb [handoff] ${JSON.stringify({ from, to: target, message: flat })}\n`);
+
+    // inbox signal
+    const inboxDir = join(logDir, "inbox");
+    const inboxTarget = target.replace(/[^a-zA-Z0-9_-]/g, "");
+    if (inboxTarget) {
+      mkdirSync(inboxDir, { recursive: true });
+      appendFileSync(join(inboxDir, `${inboxTarget}.jsonl`),
+        JSON.stringify({ ts, from, type: "msg", msg: text, thread: null }) + "\n");
+    }
+  } catch {}
+
   return c.json({ ok: true, target: resolved, original: target !== resolved ? target : undefined, text });
 });
 
@@ -209,21 +244,16 @@ app.post("/api/select", async (c) => {
   return c.json({ ok: true, target });
 });
 
-// Serve React app from root (single entry point for all views)
+// Serve React app from root (SPA with hash routing)
 app.get("/", serveStatic({ root: "./dist-office", path: "/index.html" }));
 
-// Legacy redirects — old paths → hash routes in the React app
-app.get("/dashboard", (c) => c.redirect("/#orbital"));
-app.get("/office", (c) => c.redirect("/#office"));
-
-// Serve React app assets
+// Serve React app assets (with long cache for hashed filenames)
 app.get("/assets/*", serveStatic({ root: "./dist-office" }));
 
-// Keep /office/* for backward compat (deep-links, bookmarks)
-app.get("/office/*", serveStatic({
-  root: "./",
-  rewriteRequestPath: (p) => p.replace(/^\/office/, "/dist-office"),
-}));
+// Serve all static files from dist-office (favicon, .html, .mp3, etc.)
+app.get("/favicon.svg", serveStatic({ root: "./dist-office" }));
+app.get("/*.html", serveStatic({ root: "./dist-office" }));
+app.get("/*.mp3", serveStatic({ root: "./dist-office" }));
 
 // Serve 8-bit office (Bevy WASM)
 app.get("/office-8bit", serveStatic({ root: "./dist-8bit-office", path: "/index.html" }));
@@ -748,7 +778,7 @@ app.get("/api/federation/status", async (c) => {
 
 // --- Peer Exec (federation read-only relay for Neo/maw-ui) ---
 
-const PE_SESSION_TOKEN = randomBytes(16).toString("hex");
+const PE_SESSION_TOKEN = crypto.randomUUID().replace(/-/g, "");
 const PE_COOKIE_NAME = "pe_session";
 const PE_COOKIE_MAX_AGE = 60 * 60 * 24;
 

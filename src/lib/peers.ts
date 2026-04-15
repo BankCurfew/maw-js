@@ -188,7 +188,7 @@ export async function crossNodeSend(
         "X-Maw-Timestamp": timestamp,
         "X-Maw-Signature": signature,
       },
-      body: JSON.stringify({ target: remoteTarget, text }),
+      body: JSON.stringify({ target: remoteTarget, text, from: config.node || "unknown" }),
       signal: AbortSignal.timeout(10000),
     });
 
