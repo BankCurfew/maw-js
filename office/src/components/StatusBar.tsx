@@ -55,15 +55,22 @@ function useTokenRate() {
 
 export const StatusBar = memo(function StatusBar({ connected, agentCount, sessionCount, activeView = "office", askCount = 0, onInbox, onJump, muted, onToggleMute, children }: StatusBarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [officeTitle, setOfficeTitle] = useState("Office");
   const { isNarrow } = useDevice();
   const { lastHourRate } = useTokenRate();
+
+  useEffect(() => {
+    fetch(apiUrl("/api/config")).then(r => r.json()).then(d => {
+      if (d.officeTitle) setOfficeTitle(d.officeTitle);
+    }).catch(() => {});
+  }, []);
 
   return (
     <header className="sticky top-0 z-20 mx-2 sm:mx-4 md:mx-6 mt-2 sm:mt-3 px-3 sm:px-4 md:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-black/50 backdrop-blur-xl border border-white/[0.06] shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
       {/* Top row — always visible */}
       <div className="flex items-center gap-2 sm:gap-3">
         <h1 className="text-sm sm:text-base md:text-lg font-bold tracking-[3px] sm:tracking-[4px] md:tracking-[6px] text-cyan-400 uppercase whitespace-nowrap">
-          {activeView === "fleet" ? "Fleet" : activeView === "mission" ? "Mission" : activeView === "overview" ? "Overview" : activeView === "vs" ? "VS" : activeView === "config" ? "Config" : activeView === "terminal" ? "Terminal" : activeView === "board" ? "Board" : activeView === "orbital" ? "Orbital" : activeView === "loops" ? "Loops" : activeView === "jarvis" ? "Jarvis" : activeView === "fame" ? "Fame" : activeView === "chat" ? "Chat" : activeView === "federation" ? "Federation" : "Office"}
+          {activeView === "fleet" ? "Fleet" : activeView === "mission" ? "Mission" : activeView === "overview" ? "Overview" : activeView === "vs" ? "VS" : activeView === "config" ? "Config" : activeView === "terminal" ? "Terminal" : activeView === "board" ? "Board" : activeView === "orbital" ? "Orbital" : activeView === "loops" ? "Loops" : activeView === "jarvis" ? "Jarvis" : activeView === "fame" ? "Fame" : activeView === "chat" ? "Chat" : activeView === "federation" ? "Federation" : officeTitle}
         </h1>
 
         <span className="flex items-center gap-1 text-xs sm:text-sm text-white/70">
@@ -130,7 +137,7 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
           {/* Logout */}
           <button
             onClick={async () => {
-              if (!confirm("Logout from BoB's Office?")) return;
+              if (!confirm(`Logout from ${officeTitle}?`)) return;
               await fetch("/auth/logout", { method: "POST" });
               window.location.href = "/auth/login";
             }}
@@ -191,7 +198,7 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
           {/* Logout in mobile menu */}
           <button
             onClick={async () => {
-              if (!confirm("Logout from BoB's Office?")) return;
+              if (!confirm(`Logout from ${officeTitle}?`)) return;
               await fetch("/auth/logout", { method: "POST" });
               window.location.href = "/auth/login";
             }}

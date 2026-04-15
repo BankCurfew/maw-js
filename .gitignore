@@ -3,6 +3,7 @@ node_modules_root/
 dist-office/
 maw.config.json
 ui-state.json
+rooms.json
 
 # Bun global link artifacts
 ~/

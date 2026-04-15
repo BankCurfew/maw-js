@@ -28,6 +28,7 @@ import { OracleSheet } from "./components/OracleSheet";
 import { unlockAudio, isAudioUnlocked, setSoundMuted } from "./lib/sounds";
 import { useFleetStore } from "./lib/store";
 import { useDevice } from "./hooks/useDevice";
+import { apiUrl } from "./lib/api";
 import type { AgentState } from "./lib/types";
 
 function parseHash(raw: string): { view: string; agentName: string | null } {
@@ -130,6 +131,13 @@ function Layout({ activeView, connected, agentCount, sessionCount, askCount, mut
 
 export function App() {
   useAudioUnlock();
+
+  useEffect(() => {
+    fetch(apiUrl("/api/config")).then(r => r.json()).then(d => {
+      if (d.officeTitle) document.title = d.officeTitle;
+    }).catch(() => {});
+  }, []);
+
   const rawRoute = useHashRoute();
   const { view: route, agentName: hashAgent } = parseHash(rawRoute);
   const [selectedAgent, setSelectedAgent] = useState<AgentState | null>(null);
