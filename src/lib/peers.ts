@@ -164,6 +164,7 @@ export async function aggregateAgents(
 export async function crossNodeSend(
   target: string,
   text: string,
+  senderFrom?: string,
 ): Promise<{ ok: boolean; error?: string; forwarded?: boolean }> {
   const colonIdx = target.indexOf(":");
   if (colonIdx === -1) return { ok: false, error: "not a cross-node target" };
@@ -192,7 +193,7 @@ export async function crossNodeSend(
         "X-Maw-Timestamp": timestamp,
         "X-Maw-Signature": signature,
       },
-      body: JSON.stringify({ target: remoteTarget, text, from: config.node || "unknown" }),
+      body: JSON.stringify({ target: remoteTarget, text, from: senderFrom || config.node || "unknown" }),
       signal: AbortSignal.timeout(10000),
     });
 

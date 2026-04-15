@@ -175,14 +175,12 @@ app.get("/api/mirror", async (c) => {
 });
 
 app.post("/api/send", async (c) => {
-  const { target, text } = await c.req.json();
+  const { target, text, from: senderFrom } = await c.req.json();
   if (!target || !text) return c.json({ error: "target and text required" }, 400);
 
   // Cross-node routing: "curfew:01-bob" → forward to peer
   if (target.includes(":")) {
-    // Inbound from peer (HMAC-signed) → target won't have ":" again, just deliver locally
-    // Outbound (from local UI) → route to peer
-    const result = await crossNodeSend(target, text);
+    const result = await crossNodeSend(target, text, senderFrom);
     if (!result.ok) return c.json({ error: result.error }, 502);
     return c.json({ ok: true, target, text, forwarded: true });
   }
@@ -198,7 +196,10 @@ app.post("/api/federation/send", requireHmac(), async (c) => {
   // Resolve oracle name (e.g. "echo-oracle") to tmux target (e.g. "echo:0")
   const sessions = await listSessions();
   const resolved = findWindow(sessions, target) || target;
-  await sendKeys(resolved, text);
+  // Prepend sender identity so recipient knows who sent the message
+  const from = senderName || "federation";
+  const taggedText = `[from ${from}] ${text}`;
+  await sendKeys(resolved, taggedText);
 
   // Audit trail — mirror cmdSend's feed.log + inbox + maw-log writes
   try {
@@ -207,7 +208,6 @@ app.post("/api/federation/send", requireHmac(), async (c) => {
     const { homedir, hostname } = await import("os");
     const home = homedir();
     const host = hostname();
-    const from = senderName || "federation";
     const ts = new Date().toISOString();
 
     // maw-log.jsonl

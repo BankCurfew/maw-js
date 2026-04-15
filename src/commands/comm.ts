@@ -82,7 +82,7 @@ export async function cmdSend(query: string, message: string, force = false) {
       const res = await fetch(`${server}/api/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target: crossTarget, text: message }),
+        body: JSON.stringify({ target: crossTarget, text: message, from: process.env.CLAUDE_AGENT_NAME || "cli" }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
