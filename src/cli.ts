@@ -70,8 +70,11 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
   }
 
   const before = getVersionString();
-  console.log(`\n  🍺 maw update ${ref}\n`);
-  console.log(`  from: ${before}`);
+  // Strip "maw " prefix so the arrow line stays readable: "v2.0.0-alpha.20 → v2.0.0-alpha.21"
+  const beforeVer = before.replace(/^maw\s+/, "");
+  const arrow = beforeVer === ref ? "\x1b[90m=\x1b[0m" : "\x1b[32m→\x1b[0m";
+  const sameNote = beforeVer === ref ? " \x1b[90m(re-sync)\x1b[0m" : "";
+  console.log(`\n  🍺 maw \x1b[36m${beforeVer}\x1b[0m ${arrow} \x1b[36m${ref}\x1b[0m${sameNote}\n`);
   // Remove first to avoid bun dependency loop (#214)
   try { execSync(`bun remove -g maw`, { stdio: "pipe" }); } catch {}
   execSync(`bun add -g github:${repository}#${ref}`, { stdio: "inherit" });
@@ -117,9 +120,17 @@ if (cmd === "--version" || cmd === "-v" || cmd === "version") {
     }
   } catch {}
 
-  console.log(`\n  ✅ done`);
-  if (after) console.log(`  to:   ${after}\n`);
-  else console.log("");
+  // Arrow confirmation — "before → after" mirrors the header but with the
+  // actual resolved version (in case ref was 'main' or channel shortcut).
+  const afterVer = after.replace(/^maw\s+/, "");
+  if (afterVer) {
+    const sameAfter = beforeVer === afterVer;
+    const doneArrow = sameAfter ? "\x1b[90m=\x1b[0m" : "\x1b[32m→\x1b[0m";
+    const doneNote = sameAfter ? " \x1b[90m(no change — re-sync\'d)\x1b[0m" : "";
+    console.log(`\n  ✅ \x1b[36m${beforeVer}\x1b[0m ${doneArrow} \x1b[36m${afterVer}\x1b[0m${doneNote}\n`);
+  } else {
+    console.log(`\n  ✅ done\n`);
+  }
 } else {
   // Auto-bootstrap: if ~/.maw/plugins/ is empty, symlink bundled + install from pluginSources
   const pluginDir = join(homedir(), ".maw", "plugins");
