@@ -1,0 +1,18 @@
+{
+  "name": "panes",
+  "version": "1.0.0",
+  "entry": "./index.ts",
+  "sdk": "^1.0.0",
+  "description": "List tmux panes with metadata (index, size, command, title).",
+  "cli": {
+    "command": "panes",
+    "help": "maw panes [target] — list panes in current window, or all panes in <target>"
+  },
+  "api": {
+    "path": "/api/panes",
+    "methods": [
+      "POST"
+    ]
+  },
+  "weight": 10
+}
