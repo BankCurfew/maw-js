@@ -3,10 +3,12 @@
  * cleanly, returns configured data, captures commands, and resets between
  * tests without polluting subsequent reads.
  *
- * Filename prefix `zz-` so this runs LAST alphabetically: bun's
- * mock.module() is global and cannot be truly un-installed, so any test
- * file that runs after this one would inherit our tmux/peers shims and
- * break. Running last sidesteps that (nothing runs after zz-).
+ * ISOLATION: This file MUST run in a separate bun test process
+ * (`bun run test:mock-smoke`). bun's mock.module() is process-global AND
+ * retroactive — once installTmuxMock() calls mock.module for the tmux
+ * transport, the real Tmux class is replaced for ALL test files in the
+ * same process, breaking tmux.test.ts and split-lock.test.ts. The main
+ * suite (`bun run test`) excludes this file via --path-ignore-patterns.
  *
  * Kept as a separate file (not in engine.test.ts) so it doesn't fight
  * engine-isolator's work on the MawEngine test runner.

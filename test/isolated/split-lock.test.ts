@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { mockConfigModule } from "../../helpers/mock-config";
+import { mockConfigModule } from "../helpers/mock-config";
 
 // Intercept all tmux commands the transport issues, with a per-test response
 // hook so we can simulate tmux output for the read-after-write round-trip.
@@ -13,10 +13,10 @@ const mockExec = async (cmd: string, _host?: string) => {
   return execResponder(cmd);
 };
 
-mock.module("../../../src/config", () =>
+mock.module("../../src/config", () =>
   mockConfigModule(() => ({ host: "local" })),
 );
-mock.module("../../../src/core/transport/ssh", () => ({
+mock.module("../../src/core/transport/ssh", () => ({
   hostExec: mockExec,
   ssh: mockExec,
   findWindow: () => null,
@@ -35,7 +35,7 @@ const {
   splitWindowLocked,
   tagPane,
   readPaneTags,
-} = await import("../../../src/core/transport/tmux");
+} = await import("../../src/core/transport/tmux");
 
 beforeEach(() => {
   commands = [];

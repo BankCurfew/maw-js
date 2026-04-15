@@ -13,9 +13,11 @@ jobs:
       matrix:
         suite:
           - name: unit
-            path: test/
+            script: test
+          - name: isolated
+            script: test:isolated
           - name: plugin
-            path: src/commands/plugins/
+            script: test:plugin
     name: test-${{ matrix.suite.name }}
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +37,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run ${{ matrix.suite.name }} tests
-        run: bun test ${{ matrix.suite.path }}
+        run: bun run ${{ matrix.suite.script }}
 
   build:
     runs-on: ubuntu-latest
