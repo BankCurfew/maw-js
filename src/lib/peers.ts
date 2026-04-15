@@ -46,7 +46,7 @@ function isCacheValid(): boolean {
 
 // ── Named Peers from config ─────────────────────────────
 
-function getNamedPeers(): PeerConfig[] {
+export function getNamedPeers(): PeerConfig[] {
   const config = loadConfig() as any;
   const raw = config.namedPeers;
   if (!raw) return [];

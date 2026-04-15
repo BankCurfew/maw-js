@@ -12,7 +12,7 @@ import { isAuthenticated, handleLogin, handleLogout, getActiveSessions, LOGIN_PA
 import type { WSData } from "./types";
 // crypto.randomUUID() used below (global, no import needed)
 import { requireHmac, signHeaders } from "./lib/federation-auth";
-import { checkPeerHealth, aggregateAgents, crossNodeSend, aggregateSessions } from "./lib/peers";
+import { checkPeerHealth, aggregateAgents, crossNodeSend, aggregateSessions, getNamedPeers } from "./lib/peers";
 
 const app = new Hono();
 
@@ -629,21 +629,21 @@ app.put("/api/config-file", async (c) => {
 app.get("/api/config", async (c) => {
   if (c.req.query("raw") === "1") return c.json(loadConfig());
 
-  // Federation-compatible: include node, agents map, namedPeers
   const config = loadConfig() as any;
   const display = configForDisplay();
-  const sessions = await listSessions().catch(() => []);
-  const sessionNames = sessions.map((s: any) => typeof s === "string" ? s : s.name || "");
-  const agents = await aggregateAgents(sessionNames);
+
+  // Only expose this node's own agents — never aggregate remote oracles
+  // Prevents federated peers from seeing internal team structure
+  const localAgents: Record<string, string> = config.agents || {};
   const namedPeers: Record<string, string> = {};
-  for (const p of (config.namedPeers || [])) {
+  for (const p of getNamedPeers()) {
     namedPeers[p.name] = p.url;
   }
 
   return c.json({
     ...display,
     node: config.node || "local",
-    agents,
+    agents: localAgents,
     namedPeers,
     rooms: config.rooms || {},
     // Mask federation token
