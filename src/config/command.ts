@@ -1,4 +1,4 @@
-import { loadConfig } from "./config-load";
+import { loadConfig } from "./load";
 
 /** Simple glob match: supports * at start/end (e.g., "*-oracle", "codex-*") */
 function matchGlob(pattern: string, name: string): boolean {

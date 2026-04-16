@@ -1,4 +1,4 @@
-import type { MawConfig } from "./config-types";
+import type { MawConfig } from "./types";
 
 /** @internal Validates basic scalar/map fields: host, port, ghqRoot, oracleUrl, env, commands, sessions, tmuxSocket */
 export function validateBasicFields(

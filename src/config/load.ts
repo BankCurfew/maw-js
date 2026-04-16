@@ -1,12 +1,12 @@
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
-import { CONFIG_FILE } from "./core/paths";
-import { refreshContext } from "./lib/context";
-import { verbose, info } from "./cli/verbosity";
-import type { MawConfig } from "./config-types";
-import { D } from "./config-types";
-import { validateConfig } from "./config-validate-ext";
+import { CONFIG_FILE } from "../core/paths";
+import { refreshContext } from "../lib/context";
+import { verbose, info } from "../cli/verbosity";
+import type { MawConfig } from "./types";
+import { D } from "./types";
+import { validateConfig } from "./validate-ext";
 
 function detectGhqRoot(): string {
   try {

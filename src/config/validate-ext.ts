@@ -1,5 +1,5 @@
-import type { MawConfig } from "./config-types";
-import { validateBasicFields } from "./config-validate";
+import type { MawConfig } from "./types";
+import { validateBasicFields } from "./validate";
 
 /** @internal Validates extended fields: triggers, federation, plugins, peers, node, etc. */
 function validateExtFields(
