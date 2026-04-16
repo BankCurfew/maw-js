@@ -192,6 +192,43 @@ All thread endpoints require HMAC authentication (same as federation/send).
 
 **Consolidation plan**: See [repo-consolidation.md](./repo-consolidation.md).
 
+## Branch Strategy (Strategy C — Stable Branch)
+
+> Adopted 2026-04-16 after the P0 security sprint. Approved by แบงค์.
+
+The mesh uses **two long-lived branches** so spoke nodes aren't exposed to the hub's bleeding-edge commits.
+
+| Branch | Purpose | Who tracks | Stability |
+|--------|---------|------------|-----------|
+| `main` | Bleeding edge. Hub develops and tests here. | vuttiserver (hub dev only) | Expect breakage |
+| `stable` | Production branch. Spokes pull from this. | curfew, dreams, any new spoke | Verified before merge |
+
+### Why
+
+Before Strategy C, every spoke `git pull origin main` could pick up half-finished refactors, WIP commits, or regressions that only vuttiserver had been validating. The P0 security sprint surfaced the worst case: a spoke could pull a momentarily-broken auth path and lose ability to federate.
+
+With Strategy C:
+- Hub breakage stays on `main` until someone promotes.
+- Spokes pull a branch that is — by definition — the last known-good state.
+- Rollback is a `git revert` on `stable` (or a reset to the previous promotion), not a scramble across three machines.
+
+### Promotion flow (main → stable)
+
+```
+┌──────────────┐   verify    ┌──────────────┐   merge --no-ff   ┌────────────┐
+│  main HEAD   │────────────▶│  main (green)│──────────────────▶│   stable   │
+│  (WIP ok)    │  checks+    │  passes      │  explicit commit  │  (spokes)  │
+└──────────────┘  sec audit  └──────────────┘                   └────────────┘
+```
+
+Spokes **never** fetch `main`. They only ever `git pull origin stable`. Full promotion protocol — when to promote, what to verify, how to roll back — is documented in [branch-promotion.md](./branch-promotion.md).
+
+### What this changes in practice
+
+- `new-node-setup.md` instructs spokes to clone + track `stable` (not `main`)
+- Hub (BoB on vuttiserver) continues pushing daily work to `main` without worrying about downstream breakage
+- Promotion is deliberate: security-reviewed, build-verified, tagged with the commit hash span
+
 ## Related Docs
 
 - [new-node-setup.md](./new-node-setup.md) — Step-by-step onboarding for new spoke nodes (by Echo)
