@@ -49,6 +49,21 @@ pm2 start ecosystem.config.cjs    # backend on :3456
 open http://localhost:3456         # serves ui/office/
 ```
 
+## Setup
+
+Idempotent installers for per-host config. Safe to re-run; `maw fleet init`
+invokes them automatically.
+
+```bash
+maw setup hooks [path]          # generate .claude/settings.json (double-nested schema)
+maw setup tmux                  # install scroll-fix block in ~/.tmux.conf
+maw setup tmux --dry-run        # preview — no writes
+```
+
+The tmux block is delimited by managed markers so your existing
+`~/.tmux.conf` is preserved verbatim outside the block. After writing,
+`tmux source-file` is best-effort invoked (no-op if tmux is missing).
+
 ## CLI
 
 ```bash
