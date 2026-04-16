@@ -41,8 +41,8 @@ configApi.get("/config-file", ({ query, set}) => {
       return { content: JSON.stringify(data, null, 2) };
     }
     return { content };
-  } catch (e: any) {
-    set.status = 500; return { error: e.message };
+  } catch (e: unknown) {
+    set.status = 500; return { error: e instanceof Error ? e.message : String(e) };
   }
 }, {
   query: t.Object({ path: t.Optional(t.String()) }),
@@ -74,8 +74,8 @@ configApi.post("/config-file", async ({ query, body, set}) => {
       writeFileSync(fullPath, content + "\n", "utf-8");
     }
     return { ok: true };
-  } catch (e: any) {
-    set.status = 400; return { error: e.message };
+  } catch (e: unknown) {
+    set.status = 400; return { error: e instanceof Error ? e.message : String(e) };
   }
 }, {
   query: t.Object({ path: t.Optional(t.String()) }),
@@ -132,7 +132,7 @@ configApi.get("/pin-info", () => {
 configApi.post("/pin-set", async ({ body }) => {
   const { pin } = body;
   const newPin = typeof pin === "string" ? pin.replace(/\D/g, "") : "";
-  saveConfig({ pin: newPin } as any);
+  saveConfig({ pin: newPin });
   return { ok: true, length: newPin.length, enabled: newPin.length > 0 };
 }, {
   body: t.Object({ pin: t.Optional(t.String()) }),
@@ -175,7 +175,7 @@ configApi.get("/config", ({ query }) => {
 
 configApi.post("/config", async ({ body, set}) => {
   try {
-    const data = body as any;
+    const data = body as Partial<MawConfig>;
     // If env has masked values (bullet chars), keep originals for those keys
     if (data.env && typeof data.env === "object") {
       const current = loadConfig();
@@ -187,8 +187,8 @@ configApi.post("/config", async ({ body, set}) => {
     }
     saveConfig(data);
     return { ok: true };
-  } catch (e: any) {
-    set.status = 400; return { error: e.message };
+  } catch (e: unknown) {
+    set.status = 400; return { error: e instanceof Error ? e.message : String(e) };
   }
 }, {
   body: t.Unknown(),

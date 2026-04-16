@@ -1,6 +1,10 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
 import { cmdRestart } from "./impl";
 
+/** Dual-dispatcher ctx: old plugin/registry.ts passes InvokeContext;
+ *  new cli/command-registry.ts passes positional args as string[]. */
+type DualCtx = InvokeContext | string[];
+
 export const command = {
   name: "restart",
   description: "Restart the maw server with optional update.",
@@ -27,14 +31,15 @@ const HELP_TEXT = [
  *   NEW (cli/command-registry.ts): handler(positional: string[], flags: object)
  * Both dispatchers are live; we must support both until unified.
  */
-function extractArgs(ctx: any): string[] {
+function extractArgs(ctx: DualCtx): string[] {
   if (Array.isArray(ctx)) return ctx;                        // NEW dispatcher
   if (ctx?.source === "cli" && Array.isArray(ctx.args)) return ctx.args; // OLD
   return [];
 }
 
-export default async function handler(ctx: any, _flags?: any): Promise<InvokeResult | void> {
+export default async function handler(ctx: DualCtx, _flags?: Record<string, unknown>): Promise<InvokeResult | void> {
   const args = extractArgs(ctx);
+  const writer = !Array.isArray(ctx) ? ctx.writer : undefined;
 
   // #349 — --help MUST short-circuit BEFORE any side effects. This plugin
   // performs destructive fleet operations; silent flag-fallthrough on --help
@@ -47,12 +52,12 @@ export default async function handler(ctx: any, _flags?: any): Promise<InvokeRes
   const logs: string[] = [];
   const origLog = console.log;
   const origError = console.error;
-  console.log = (...a: any[]) => {
-    if (ctx.writer) ctx.writer(...a);
+  console.log = (...a: unknown[]) => {
+    if (writer) writer(...a);
     else logs.push(a.map(String).join(" "));
   };
-  console.error = (...a: any[]) => {
-    if (ctx.writer) ctx.writer(...a);
+  console.error = (...a: unknown[]) => {
+    if (writer) writer(...a);
     else logs.push(a.map(String).join(" "));
   };
   try {
@@ -61,8 +66,9 @@ export default async function handler(ctx: any, _flags?: any): Promise<InvokeRes
     const ref = refIdx >= 0 ? args[refIdx + 1] : undefined;
     await cmdRestart({ noUpdate, ref });
     return { ok: true, output: logs.join("\n") || undefined };
-  } catch (e: any) {
-    return { ok: false, error: logs.join("\n") || e.message, output: logs.join("\n") || undefined };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: logs.join("\n") || msg, output: logs.join("\n") || undefined };
   } finally {
     console.log = origLog;
     console.error = origError;

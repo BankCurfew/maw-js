@@ -103,9 +103,10 @@ export async function invokePlugin(
       const result = await handler(ctxWithWriter);
       if (result && typeof result === "object" && "ok" in result) return result;
       return { ok: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Preserve stack so Bun's source maps can resolve plugin frames.
-      return { ok: false, error: err.stack || err.message };
+      const e = err instanceof Error ? err : new Error(String(err));
+      return { ok: false, error: e.stack || e.message };
     }
   }
 
@@ -113,16 +114,16 @@ export async function invokePlugin(
   let wasmBytes: Uint8Array;
   try {
     wasmBytes = readFileSync(plugin.wasmPath);
-  } catch (err: any) {
-    return { ok: false, error: `failed to read wasm: ${err.message}` };
+  } catch (err: unknown) {
+    return { ok: false, error: `failed to read wasm: ${err instanceof Error ? err.message : String(err)}` };
   }
 
   // Compile
   let mod: WebAssembly.Module;
   try {
     mod = new WebAssembly.Module(wasmBytes);
-  } catch (err: any) {
-    return { ok: false, error: `wasm compile error: ${err.message}` };
+  } catch (err: unknown) {
+    return { ok: false, error: `wasm compile error: ${err instanceof Error ? err.message : String(err)}` };
   }
 
   const exportNames = WebAssembly.Module.exports(mod).map(
@@ -145,8 +146,8 @@ export async function invokePlugin(
   let instance: WebAssembly.Instance;
   try {
     instance = new WebAssembly.Instance(mod, bridge);
-  } catch (err: any) {
-    return { ok: false, error: `wasm instantiation failed: ${err.message}` };
+  } catch (err: unknown) {
+    return { ok: false, error: `wasm instantiation failed: ${err instanceof Error ? err.message : String(err)}` };
   }
 
   wasmMemory = instance.exports.memory as WebAssembly.Memory;
@@ -204,7 +205,7 @@ export async function invokePlugin(
 
   try {
     return await Promise.race([exec, timeoutGuard]);
-  } catch (err: any) {
-    return { ok: false, error: err.message };
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

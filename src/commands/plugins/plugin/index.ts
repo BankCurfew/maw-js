@@ -15,11 +15,11 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
   const logs: string[] = [];
   const origLog = console.log;
   const origError = console.error;
-  console.log = (...a: any[]) => {
+  console.log = (...a: unknown[]) => {
     if (ctx.writer) ctx.writer(...a);
     else logs.push(a.map(String).join(" "));
   };
-  console.error = (...a: any[]) => {
+  console.error = (...a: unknown[]) => {
     if (ctx.writer) ctx.writer(...a);
     else logs.push(a.map(String).join(" "));
   };
@@ -41,13 +41,14 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
     } else if (sub === "install") {
       // installer-loader (task #3) provides install-impl.ts
       try {
-        const mod: any = await import("./install-impl");
+        const mod: { cmdPluginInstall?: (args: string[]) => Promise<void> } = await import("./install-impl");
         if (typeof mod.cmdPluginInstall !== "function") {
           return { ok: false, error: "plugin install: install-impl.ts present but missing cmdPluginInstall export" };
         }
         await mod.cmdPluginInstall(args.slice(1));
-      } catch (e: any) {
-        if (/Cannot find module/.test(e.message)) {
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/Cannot find module/.test(msg)) {
           return {
             ok: false,
             error:
@@ -62,10 +63,11 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
     }
 
     return { ok: true, output: logs.join("\n") || undefined };
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
     return {
       ok: false,
-      error: logs.length ? logs.join("\n") : e.message,
+      error: logs.length ? logs.join("\n") : msg,
       output: logs.join("\n") || undefined,
     };
   } finally {
