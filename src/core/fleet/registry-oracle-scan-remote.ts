@@ -19,8 +19,13 @@ export async function scanRemote(orgs?: string[], verbose = false): Promise<Orac
   const seen = new Set<string>();
 
   for (const org of targetOrgs) {
+    const orgStart = Date.now();
     try {
-      if (verbose) console.log(`  \x1b[90m⏳ scanning ${org}...\x1b[0m`);
+      // Per-org progress — always shown so the user sees something during the
+      // multi-second gh API call. Was behind `if (verbose)` until 2026-04-16
+      // (silent dead air for 10-30s confused users — see gist 773655c4).
+      process.stdout.write(`  \x1b[90m⏳ scanning ${org}...\x1b[0m`);
+
       // Use gh CLI for auth-handled pagination
       const out = execSync(
         `gh api "/orgs/${org}/repos?per_page=100&type=all" --paginate --jq '.[] | .full_name + " " + .name'`,
@@ -29,7 +34,8 @@ export async function scanRemote(orgs?: string[], verbose = false): Promise<Orac
 
       const repos = out.trim().split("\n").filter(Boolean);
       const oracleRepos = repos.filter(l => l.split(" ")[1]?.endsWith("-oracle"));
-      if (verbose) console.log(`  \x1b[90m  ${repos.length} repos, ${oracleRepos.length} oracles\x1b[0m`);
+      const orgElapsed = ((Date.now() - orgStart) / 1000).toFixed(1);
+      console.log(` \x1b[32m✓\x1b[0m ${repos.length} repos, ${oracleRepos.length} oracles (${orgElapsed}s)`);
 
       for (const line of oracleRepos) {
         const [fullName, repoName] = line.split(" ");
@@ -64,7 +70,9 @@ export async function scanRemote(orgs?: string[], verbose = false): Promise<Orac
         });
       }
     } catch (err) {
-      console.warn(`[oracle-registry] remote scan failed for ${org}: ${(err as Error).message?.slice(0, 80)}`);
+      // Newline first so error doesn't concatenate with the "scanning..." line above
+      console.log();
+      console.warn(`  \x1b[33m⚠\x1b[0m [oracle-registry] ${org} failed: ${(err as Error).message?.slice(0, 80)}`);
     }
   }
 
