@@ -53,12 +53,12 @@ Missing bun? `curl -fsSL https://bun.sh/install | bash` then `source ~/.bashrc` 
 
 ---
 
-## 2. Clone the correct fork
+## 2. Clone the correct fork — and track `stable`, not `main`
 
 ```bash
 mkdir -p ~/repos/github.com/BankCurfew
 cd ~/repos/github.com/BankCurfew
-git clone https://github.com/BankCurfew/Curfew-Maw-js.git maw-js
+git clone -b stable https://github.com/BankCurfew/Curfew-Maw-js.git maw-js
 cd maw-js
 bun install
 ```
@@ -66,6 +66,33 @@ bun install
 Note the directory is named `maw-js` locally even though the repo is `Curfew-Maw-js`. This keeps paths consistent with older docs (`~/maw-js/src/cli.ts`) and the `maw` CLI wrapper (§5).
 
 `bun install` should complete in ~5s. If you hit network errors, check whether your shell has `HTTPS_PROXY` or Bun registry overrides — Bun defaults to `registry.npmjs.org`.
+
+### Why `-b stable`
+
+Spokes follow the `stable` branch, **not** `main`. `main` is the hub's bleeding-edge branch on vuttiserver — expect WIP commits and transient breakage there. `stable` is the promoted, verified branch intended for production spokes. See [federation-architecture.md §Branch Strategy](./federation-architecture.md#branch-strategy-strategy-c--stable-branch) and [branch-promotion.md](./branch-promotion.md) for the full protocol.
+
+**Day-to-day updates on a spoke**:
+
+```bash
+cd ~/repos/github.com/BankCurfew/maw-js
+git pull origin stable
+```
+
+Never `git pull origin main` on a spoke. If you accidentally fetched `main`, reset to `stable`:
+
+```bash
+git fetch origin
+git checkout stable
+git reset --hard origin/stable
+```
+
+If your clone was created before Strategy C (2026-04-16) and is on `main`, switch it over once:
+
+```bash
+git fetch origin
+git checkout stable || git checkout -b stable origin/stable
+git branch -u origin/stable
+```
 
 ---
 
@@ -459,7 +486,7 @@ Verify: `curl -I https://YOUR-SUBDOMAIN.vuttipipat.com/` returns 200 (or 302 to 
 git ls-remote origin HEAD
 ```
 
-Compare hashes. If they differ, the "pushed" commit went somewhere else (wrong repo, wrong branch). This is the federation deployment rule adopted after the 2026-04-16 incident where BoB's pushes went to `BankCurfew/maw-js` while spoke nodes tracked `BankCurfew/Curfew-Maw-js` — 45 minutes lost to "pushed but not pushed" loops. The rule: **pusher must include `git push` output AND `git ls-remote origin main` hash in the same status message. No ambiguity.**
+Compare hashes. If they differ, the "pushed" commit went somewhere else (wrong repo, wrong branch). This is the federation deployment rule adopted after the 2026-04-16 incident where BoB's pushes went to `BankCurfew/maw-js` while spoke nodes tracked `BankCurfew/Curfew-Maw-js` — 45 minutes lost to "pushed but not pushed" loops. The rule: **pusher must include `git push` output AND the relevant `git ls-remote origin <branch>` hash in the same status message. No ambiguity.** Under Strategy C (since 2026-04-16) the branch spokes care about is `stable`, not `main` — a hub push to `main` is not yet visible to spokes until promotion.
 
 **When two nodes hit the same error independently**: trust the evidence. If curfew and dreams both get `404` on the same `npm install`, the package doesn't exist — not a local config drift. See federation guide Lesson on convergence-trap debugging.
 
