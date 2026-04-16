@@ -87,7 +87,7 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
         </span>
 
         {lastHourRate && lastHourRate.totalTokens > 0 && (
-          <span className="text-[10px] font-mono whitespace-nowrap flex items-center gap-1" title={`Last 60min — ${formatTokens(lastHourRate.inputTokens)} in · ${formatTokens(lastHourRate.outputTokens)} out · ${lastHourRate.turns} turns`}>
+          <span className="text-[10px] font-mono whitespace-nowrap hidden xl:flex items-center gap-1" title={`Last 60min — ${formatTokens(lastHourRate.inputTokens)} in · ${formatTokens(lastHourRate.outputTokens)} out · ${lastHourRate.turns} turns`}>
             <span className="text-amber-400/70">{formatTokens(lastHourRate.totalPerMin)}</span>
             <span className="text-white/15">tok/min</span>
           </span>
@@ -125,7 +125,7 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
           )}
 
           {onInbox && (
-            <button onClick={onInbox} className="relative min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 px-2 sm:px-3 py-1.5 rounded-lg text-xs transition-colors text-white/50 hover:text-white/80 active:scale-95 flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <button onClick={onInbox} className="relative min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 px-2 sm:px-3 py-1.5 rounded-lg text-xs transition-colors text-white/50 hover:text-white/80 active:scale-95 hidden xl:flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
               Inbox
               {askCount > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold text-white bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]">
@@ -142,7 +142,7 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
               await fetch("/auth/logout", { method: "POST" });
               window.location.href = "/auth/login";
             }}
-            className="min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono active:scale-95 transition-all flex items-center justify-center"
+            className="min-w-[36px] min-h-[36px] sm:min-w-0 sm:min-h-0 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono active:scale-95 transition-all hidden xl:flex items-center justify-center"
             style={{ background: "rgba(239,83,80,0.08)", color: "rgba(239,83,80,0.6)", border: "1px solid rgba(239,83,80,0.15)" }}
             title="Logout"
           >
@@ -169,7 +169,7 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
           {/* Hamburger menu — visible below xl */}
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="xl:hidden min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-white/60 hover:text-white/90 active:scale-95 transition-all"
+            className="xl:hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-white/60 hover:text-white/90 active:scale-95 transition-all"
             style={{ background: menuOpen ? "rgba(34,211,238,0.15)" : "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
           >
             {menuOpen ? "✕" : "☰"}
@@ -196,6 +196,20 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
           ))}
           {/* Show children (view controls) in mobile menu too */}
           {children && <div className="w-full flex flex-wrap gap-2 mt-1">{children}</div>}
+          {/* Inbox in mobile menu */}
+          {onInbox && (
+            <button
+              onClick={() => { setMenuOpen(false); onInbox(); }}
+              className="relative px-3 py-2 rounded-lg text-sm font-medium transition-all active:scale-95 bg-white/[0.04] text-white/60 border border-white/[0.06] hover:text-white/80"
+            >
+              Inbox
+              {askCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold text-white bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]">
+                  {askCount}
+                </span>
+              )}
+            </button>
+          )}
           {/* Logout in mobile menu */}
           <button
             onClick={async () => {
