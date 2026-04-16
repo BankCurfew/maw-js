@@ -49,7 +49,7 @@ tmux -V                            # expect 3.x+
 
 Missing bun? `curl -fsSL https://bun.sh/install | bash` then `source ~/.bashrc` (or `.zshrc`).
 
-**Tailscale gotcha (WSL-specific)**: Tailscale runs on Windows, not inside WSL. Outbound from WSL to vuttiserver works via Windows network stack. Inbound to WSL (needed for federation sends reaching you) requires Windows-side `netsh portproxy`. See §8.
+**Tailscale gotcha (WSL-specific)**: Tailscale runs on Windows, not inside WSL. Outbound from WSL to vuttiserver works via Windows network stack. Inbound to WSL (needed for federation sends reaching you) requires Windows-side `netsh portproxy`. See §9.
 
 ---
 
@@ -109,7 +109,7 @@ EOF
 Substitute:
 - `YOUR_NODE_NAME` — short unique name for this machine (e.g., `dreams`, `curfew`, `laptop`)
 - `YOUR_USER` — Linux username
-- `ASK_BOB_FOR_TOKEN` — request the shared federation token from BoB via existing channel (do NOT commit this file; see §7)
+- `ASK_BOB_FOR_TOKEN` — request the shared federation token from BoB via existing channel (do NOT commit this file; see §8)
 - `YOUR_ORACLE_NAME` — the oracle's short name (e.g., `nobi`, `echo`)
 
 ### Critical: only YOUR agents in the agents map
@@ -193,7 +193,114 @@ Without this, cross-node messages may arrive as `from: cli` or `from: <node-name
 
 ---
 
-## 7. .gitignore — what must NOT be committed
+## 7. Hooks — avatar animation & feed events
+
+Avatar animation on the office dashboard (`<node>.vuttipipat.com`) is driven by feed events written to `~/.oracle/feed.log`. Without hooks, Claude Code panes show as **grey/idle forever** — no error, no warning, just silent absence.
+
+### Why this step is required, not optional
+
+`StatusDetector` in `engine/status.ts` intentionally **skips panes running Claude Code** for synthetic screen-hash status detection — the comment reads *"Claude agents get status from real hooks — no capture needed."* If no hooks are installed, zero events are generated. Feed is silent → `useSessions.ts updateStatusFromFeed()` never transitions → all avatars stay idle.
+
+On vuttiserver (20 oracles with full hook infrastructure), this works. On a spoke node set up through this guide without hook provisioning, it silently fails.
+
+### ⚠️ Trap: the flat format is silently ignored
+
+Claude Code hooks require a **double-nested** schema. Writing them flat — `{ type, command }` as direct array elements — looks syntactically valid, produces no error, and is **silently dropped**. This trap cost the curfew node ~4 hours across two sessions before the schema mismatch was identified.
+
+**WRONG (silently ignored):**
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "type": "command", "command": "echo 'event' >> ~/.oracle/feed.log" }
+    ]
+  }
+}
+```
+
+**CORRECT (matcher + hooks array wrapper):**
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "echo 'event' >> ~/.oracle/feed.log" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Install
+
+Edit `~/.claude/settings.json` (create if absent) and add the `hooks` block. Use your node name in place of `Curfew`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$(date '+%Y-%m-%d %H:%M:%S') | ${CLAUDE_AGENT_NAME:-YOUR-ORACLE-NAME} | YOUR-NODE | PreToolUse | ${CLAUDE_PROJECT_DIR##*/} | ${CLAUDE_SESSION_ID:-unknown} » tool call\" >> ~/.oracle/feed.log"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$(date '+%Y-%m-%d %H:%M:%S') | ${CLAUDE_AGENT_NAME:-YOUR-ORACLE-NAME} | YOUR-NODE | PostToolUse | ${CLAUDE_PROJECT_DIR##*/} | ${CLAUDE_SESSION_ID:-unknown} » tool done\" >> ~/.oracle/feed.log"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$(date '+%Y-%m-%d %H:%M:%S') | ${CLAUDE_AGENT_NAME:-YOUR-ORACLE-NAME} | YOUR-NODE | Stop | ${CLAUDE_PROJECT_DIR##*/} | ${CLAUDE_SESSION_ID:-unknown} » turn complete\" >> ~/.oracle/feed.log"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+If you already have `skipDangerousModePermissionPrompt` or other top-level keys, **merge** the `hooks` block — don't overwrite the file.
+
+### Verify
+
+```bash
+# Make a tool call (e.g. run any command) in your Claude Code session, then:
+tail -5 ~/.oracle/feed.log
+
+# Expect: PreToolUse / PostToolUse entries tagged with your oracle name
+# 2026-04-16 10:40:18 | echo | Curfew | PreToolUse | Echo-Oracle | <session-id> » tool call
+```
+
+Hooks take effect **mid-session** — no Claude Code restart needed once the schema is correct. If the flat format was saved previously and is now being corrected, the fix activates on the next tool call.
+
+If you see only `LoopEngine` entries (and no `PreToolUse` / `PostToolUse`), the schema is still wrong — re-check the double nesting.
+
+> **Note for BotDev**: `maw-js` setup auto-generation should write the **correct double-nested schema** directly. Do not ship the flat format or any template that can degenerate into it.
+
+---
+
+## 8. .gitignore — what must NOT be committed
 
 ```bash
 # In ~/repos/github.com/BankCurfew/maw-js/.gitignore — should already include:
@@ -207,7 +314,7 @@ If `maw.config.json` is tracked in your repo state, run `git rm --cached maw.con
 
 ---
 
-## 8. Network — port proxy (WSL-specific, skip on macOS)
+## 9. Network — port proxy (WSL-specific, skip on macOS)
 
 If you're on WSL, Tailscale runs on Windows. Inbound federation traffic from vuttiserver reaches Windows but can't find your WSL server without a port proxy.
 
@@ -230,7 +337,7 @@ On macOS / native Linux: skip this step. Tailscale routes directly to the OS.
 
 ---
 
-## 9. Start the server
+## 10. Start the server
 
 Two options.
 
@@ -261,7 +368,7 @@ curl -s http://localhost:3456/api/config | python3 -m json.tool | head -20
 
 ---
 
-## 10. Federation sanity — round-trip test
+## 11. Federation sanity — round-trip test
 
 ```bash
 # outbound: can you send to vuttiserver?
@@ -272,7 +379,7 @@ maw hey vuttiserver:bob "setup verification — YOUR_NODE joined"
 ```
 
 If this fails with `401 invalid or missing HMAC signature`: token mismatch. Back to §4.
-If this fails with `peer unreachable`: network path broken. Check Tailscale + port proxy (§8).
+If this fails with `peer unreachable`: network path broken. Check Tailscale + port proxy (§9).
 If this returns `sent` but BoB doesn't see it: delivery layer issue. See Lesson 10 in the federation guide ("maw hey reports success but may not deliver").
 
 ### Inbound verification
@@ -284,11 +391,11 @@ Ask BoB (or another peer) to send you a test message:
 tail -f ~/.oracle/feed.log
 ```
 
-Expect: a `maw-hey >> [handoff] ...` line with BoB's message arriving. If nothing lands, your local server may be binding to loopback only, or the port proxy (§8) isn't forwarding correctly.
+Expect: a `maw-hey >> [handoff] ...` line with BoB's message arriving. If nothing lands, your local server may be binding to loopback only, or the port proxy (§9) isn't forwarding correctly.
 
 ---
 
-## 11. Post-setup — optional but recommended
+## 12. Post-setup — optional but recommended
 
 ### Browser verification tooling
 
@@ -329,14 +436,14 @@ Verify: `curl -I https://YOUR-SUBDOMAIN.vuttipipat.com/` returns 200 (or 302 to 
 
 ---
 
-## 12. Top 10 traps (quick reference)
+## 13. Top 10 traps (quick reference)
 
 1. Wrong fork: `BankCurfew/maw-js` (hub) vs `BankCurfew/Curfew-Maw-js` (spoke) — §0
 2. Config at XDG path `~/.config/maw/` instead of source-relative — §3
 3. `bun link` leaves stale binary; wrapper script is immune — §5
 4. Missing `CLAUDE_AGENT_NAME` — identity inference is unreliable — §6
-5. `maw.config.json` not gitignored, token leaks to history — §7
-6. WSL IP changes + portproxy stale — inbound silently fails — §8
+5. `maw.config.json` not gitignored, token leaks to history — §8
+6. WSL IP changes + portproxy stale — inbound silently fails — §9
 7. Server started but binding to localhost only (no external access) — §10
 8. Ghost commits from push-to-wrong-repo — verify with `git ls-remote origin HEAD` — below
 9. Vuttiserver-wide agents map copied to spoke — scope-reduction violation — §3
@@ -344,7 +451,7 @@ Verify: `curl -I https://YOUR-SUBDOMAIN.vuttipipat.com/` returns 200 (or 302 to 
 
 ---
 
-## 13. Debugging pattern — evidence over claims
+## 14. Debugging pattern — evidence over claims
 
 **When a commit claims to exist but your pull says "up to date"**: both sides run
 
@@ -358,7 +465,7 @@ Compare hashes. If they differ, the "pushed" commit went somewhere else (wrong r
 
 ---
 
-## 14. References
+## 15. References
 
 - [federation guide README](https://github.com/BankCurfew/oracle-federation-guide) — Lessons 1-25, the canon
 - [Curfew-Maw-js](https://github.com/BankCurfew/Curfew-Maw-js) — the fork you're running
@@ -367,7 +474,7 @@ Compare hashes. If they differ, the "pushed" commit went somewhere else (wrong r
 
 ---
 
-## 15. When you're stuck
+## 16. When you're stuck
 
 Reach out in this order:
 1. Re-read the specific Lesson in the federation guide — most gotchas are named there
