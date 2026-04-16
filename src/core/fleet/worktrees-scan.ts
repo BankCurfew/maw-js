@@ -36,7 +36,12 @@ export async function scanWorktrees(): Promise<WorktreeInfo[]> {
   } catch { /* no worktrees */ }
 
   // 2. Get running tmux windows for matching
-  const sessions = await listSessions();
+  // listSessions() can throw if tmux is down or SSH fails — treat as empty
+  // (all worktrees will classify as stale, which is correct: no windows running).
+  let sessions: Awaited<ReturnType<typeof listSessions>> = [];
+  try {
+    sessions = await listSessions();
+  } catch { /* tmux unavailable — proceed with no running windows */ }
   const runningWindows = new Set<string>();
   for (const s of sessions) {
     for (const w of s.windows) {

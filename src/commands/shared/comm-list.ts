@@ -67,7 +67,13 @@ export async function cmdList() {
       console.log("");
       console.log(`\x1b[90m  → maw ls --fix       to prune orphans\x1b[0m`);
     }
-  } catch { /* worktree scan failed — non-critical */ }
+  } catch (e: any) {
+    // Don't crash maw ls on scan failure (non-critical) — but surface the error in debug mode
+    // so silent failures have a diagnosable cause.
+    if (process.env.MAW_DEBUG) {
+      console.error(`\x1b[33m⚠ maw ls: scanWorktrees failed (non-fatal): ${e?.message || e}\x1b[0m`);
+    }
+  }
 
   if (sessions.length === 0 && orphans.length === 0) {
     console.log("\x1b[90mNo active sessions.\x1b[0m");

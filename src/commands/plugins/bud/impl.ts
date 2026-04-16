@@ -59,6 +59,18 @@ export async function cmdBud(name: string, opts: BudOpts = {}) {
     process.exit(1);
   }
 
+  // Runtime guard: stem must NOT end with -oracle (the plugin auto-appends it).
+  // This prevents arra-oracle-v3 → arra-oracle-v3-oracle (correct)
+  // from being confused with arra-oracle-v3-oracle → arra-oracle-v3-oracle-oracle (triple).
+  if (name.endsWith("-oracle")) {
+    throw new Error(
+      `\x1b[31m✗\x1b[0m bud stem must NOT end with '-oracle' — got '${name}'\n` +
+      `  The plugin auto-appends '-oracle' to produce the repo name.\n` +
+      `  Try: maw bud ${name.replace(/-oracle$/, "")}\n` +
+      `  This produces repo: ${name.replace(/-oracle$/, "")}-oracle`,
+    );
+  }
+
   const config = loadConfig();
   const ghqRoot = config.ghqRoot;
   const org = opts.org || config.githubOrg || "Soul-Brews-Studio";
