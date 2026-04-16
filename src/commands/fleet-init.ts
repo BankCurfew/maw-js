@@ -1,6 +1,7 @@
 import { join } from "path";
 import { existsSync, mkdirSync } from "fs";
 import { ssh } from "../ssh";
+import { setupHooks } from "./setup-hooks";
 
 interface FleetWindow {
   name: string;
@@ -153,5 +154,21 @@ export async function cmdFleetInit() {
   }
 
   console.log(`\n  \x1b[32m${sorted.length + 1} fleet configs written to fleet/\x1b[0m`);
+
+  // Auto-generate .claude/settings.json for each oracle repo (Echo's finding:
+  // hooks require double-nested schema — flat format is silently ignored).
+  console.log(`\n  \x1b[36mAuto-generating .claude/settings.json for oracles...\x1b[0m\n`);
+  let created = 0, migrated = 0, skipped = 0;
+  for (const oracle of oracleRepos) {
+    try {
+      const r = setupHooks(oracle.path);
+      if (r.action === "created") { created++; console.log(`  \x1b[32m✓\x1b[0m ${oracle.name}: created settings.json (${r.oracleName})`); }
+      else if (r.action === "migrated") { migrated++; console.log(`  \x1b[33m⟳\x1b[0m ${oracle.name}: migrated flat → nested schema`); }
+      else skipped++;
+    } catch (e: any) {
+      console.log(`  \x1b[31m✗\x1b[0m ${oracle.name}: ${e.message}`);
+    }
+  }
+  console.log(`\n  \x1b[32m${created} created, ${migrated} migrated, ${skipped} already nested\x1b[0m`);
   console.log(`  Run \x1b[36mmaw wake all\x1b[0m to start the fleet.\n`);
 }

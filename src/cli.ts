@@ -102,6 +102,9 @@ function usage() {
   maw loop on|off             Enable/disable loop engine
   maw <agent>                 Shorthand for peek
   maw serve [port]            Start web UI (default: 3456)
+  maw setup hooks [path]      Generate .claude/settings.json (double-nested schema)
+  maw setup hooks --force     Overwrite even if already nested
+  maw setup hooks --dry-run   Preview without writing
 
 \x1b[33mWake modes:\x1b[0m
   maw wake neo                Wake main repo
@@ -402,6 +405,16 @@ if (cmd === "--version" || cmd === "-v") {
 } else if (cmd === "loop" || cmd === "loops") {
   const { cmdLoop } = await import("./commands/loop");
   await cmdLoop(args.slice(1));
+} else if (cmd === "setup") {
+  const sub = args[1];
+  if (sub === "hooks") {
+    const { cmdSetupHooks } = await import("./commands/setup-hooks");
+    await cmdSetupHooks(args.slice(2));
+  } else {
+    console.log("usage: maw setup hooks [path] [--oracle NAME] [--force] [--dry-run]");
+    console.log("  Generates .claude/settings.json with correct double-nested hooks schema.");
+    console.log("  Detects and migrates silently-ignored flat-format hooks.");
+  }
 } else if (cmd === "auth") {
   const { setupAuth } = await import("./auth");
   const sub = args[1];
