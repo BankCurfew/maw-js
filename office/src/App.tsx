@@ -25,6 +25,7 @@ import FederationView from "./components/FederationView";
 import { ShortcutOverlay } from "./components/ShortcutOverlay";
 import { JumpOverlay } from "./components/JumpOverlay";
 import { OracleSheet } from "./components/OracleSheet";
+import { HeartbeatsWidget } from "./pages/widgets/HeartbeatsWidget";
 import { unlockAudio, isAudioUnlocked, setSoundMuted } from "./lib/sounds";
 import { useFleetStore } from "./lib/store";
 import { useDevice } from "./hooks/useDevice";
@@ -396,6 +397,16 @@ export function App() {
 
   if (route === "ipad") {
     return <IPadDashboard />;
+  }
+
+  if (route === "heartbeats") {
+    return (
+      <Layout activeView="heartbeats" {...layoutProps}>
+        <div className="mx-2 sm:mx-4 md:mx-6 my-4 max-w-3xl">
+          <HeartbeatsWidget />
+        </div>
+      </Layout>
+    );
   }
 
   if (route === "bob") {
