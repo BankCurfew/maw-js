@@ -2,6 +2,7 @@ import { join } from "path";
 import { existsSync, mkdirSync } from "fs";
 import { ssh } from "../ssh";
 import { setupHooks } from "./setup-hooks";
+import { setupTmux } from "./setup-tmux";
 
 interface FleetWindow {
   name: string;
@@ -170,5 +171,20 @@ export async function cmdFleetInit() {
     }
   }
   console.log(`\n  \x1b[32m${created} created, ${migrated} migrated, ${skipped} already nested\x1b[0m`);
+
+  // Install tmux scroll-fix into ~/.tmux.conf so mouse-wheel scrollback
+  // survives output bursts. Idempotent, marker-delimited, safe to re-run.
+  try {
+    const t = setupTmux();
+    const label =
+      t.action === "created" ? "created"
+      : t.action === "updated" ? "updated"
+      : t.action === "unchanged" ? "unchanged"
+      : t.action;
+    console.log(`  \x1b[32m✓\x1b[0m ~/.tmux.conf scroll-fix: ${label}`);
+  } catch (e: any) {
+    console.log(`  \x1b[31m✗\x1b[0m ~/.tmux.conf scroll-fix: ${e.message}`);
+  }
+
   console.log(`  Run \x1b[36mmaw wake all\x1b[0m to start the fleet.\n`);
 }

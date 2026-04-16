@@ -24,5 +24,7 @@ export async function cmdCompletions(sub: string) {
     console.log("init ls renumber validate sync");
   } else if (sub === "pulse") {
     console.log("add ls list");
+  } else if (sub === "setup") {
+    console.log("hooks\ntmux");
   }
 }

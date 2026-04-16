@@ -410,10 +410,16 @@ if (cmd === "--version" || cmd === "-v") {
   if (sub === "hooks") {
     const { cmdSetupHooks } = await import("./commands/setup-hooks");
     await cmdSetupHooks(args.slice(2));
+  } else if (sub === "tmux") {
+    const { cmdSetupTmux } = await import("./commands/setup-tmux");
+    await cmdSetupTmux(args.slice(2));
   } else {
-    console.log("usage: maw setup hooks [path] [--oracle NAME] [--force] [--dry-run]");
-    console.log("  Generates .claude/settings.json with correct double-nested hooks schema.");
-    console.log("  Detects and migrates silently-ignored flat-format hooks.");
+    console.log("usage: maw setup <hooks|tmux> [opts]");
+    console.log("  hooks [path] [--oracle NAME] [--force] [--dry-run]");
+    console.log("    Generates .claude/settings.json with correct double-nested hooks schema.");
+    console.log("    Detects and migrates silently-ignored flat-format hooks.");
+    console.log("  tmux [--dry-run] [--force]");
+    console.log("    Installs scroll-fix block into ~/.tmux.conf (idempotent, marker-delimited).");
   }
 } else if (cmd === "auth") {
   const { setupAuth } = await import("./auth");
