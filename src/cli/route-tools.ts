@@ -66,6 +66,11 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     await cmdAgents({ json: flags["--json"], all: flags["--all"], node: flags["--node"] });
     return true;
   }
+  if (cmd === "audit") {
+    const { cmdAudit } = await import("../commands/shared/audit");
+    await cmdAudit(args.slice(1));
+    return true;
+  }
   if (cmd === "serve") {
     const portArg = args.find(a => a !== "serve" && /^\d+$/.test(a));
     const { startServer } = await import("../core/server");

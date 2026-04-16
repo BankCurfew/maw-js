@@ -2,6 +2,7 @@ import { listSessions } from "../../../sdk";
 import { Tmux, tmuxCmd, resolveSocket } from "../../../sdk";
 import { loadConfig } from "../../../config";
 import { resolveSessionTarget } from "../../../core/matcher/resolve-target";
+import { logAnomaly } from "../../../core/fleet/audit";
 import { execSync } from "child_process";
 
 export async function cmdView(agent: string, windowHint?: string, clean = false) {
@@ -53,10 +54,18 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
   const isLocal = host === "local" || host === "localhost";
   const socket = resolveSocket();
 
-  // If the resolved session is already a view AND the user didn't explicitly
-  // request a view (agent doesn't end in '-view'), attach directly — skip the
+  // If the resolved session is already a view, attach directly — skip the
   // grouped-session dance that would otherwise create X-view-view.
-  if (sessionName.endsWith("-view") && !agent.endsWith("-view")) {
+  if (sessionName.endsWith("-view")) {
+    // Resolved to an existing view — attach directly (don't create -view-view stutter)
+    if (agent.endsWith("-view")) {
+      // User typed the literal view name (re-attach reflex). Log it.
+      logAnomaly("view-attach-via-view-name", {
+        input: { agent, windowHint, clean },
+        context: { resolvedSession: sessionName, action: "attach-existing-view" },
+      });
+      console.warn(`\x1b[90m  note: '${agent}' is a view session — attaching to existing view (no new session created)\x1b[0m`);
+    }
     if (windowHint) {
       const win = allWindows.find(w =>
         w.session === sessionName && (
