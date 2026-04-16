@@ -7,7 +7,7 @@ import { hostExec } from "../../../sdk";
  */
 export async function cmdWhoami() {
   if (!process.env.TMUX) {
-    throw new Error("maw whoami requires an active tmux session");
+    throw new Error("maw whoami requires an active tmux session — run 'maw wake <oracle>' or attach to tmux first");
   }
   const raw = await hostExec(`tmux display-message -p '#S'`);
   console.log(raw.trim());

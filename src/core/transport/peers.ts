@@ -46,8 +46,21 @@ async function checkPeerReachable(url: string): Promise<{
           const localTime = (beforeId + afterId) / 2; // midpoint compensates for network latency
           clockDeltaMs = peerTime - localTime;
         }
+      } else if (res.ok) {
+        // Peer is reachable (sessions ok) but identity fetch failed — node/agents
+        // will be undefined. Surface so "reachable=true node=undefined" confusion
+        // is diagnosable (#385 site 3). Scoped to res.ok so fully-down peers
+        // don't double-warn (sessions failure already implies identity failure).
+        console.warn(
+          `[peers] checkPeerReachable ${url}/api/identity: status=${id.status}`,
+        );
       }
-    } catch {}
+    } catch (err) {
+      if (res.ok) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[peers] checkPeerReachable ${url}/api/identity: ${msg}`);
+      }
+    }
     return { reachable: res.ok, latency, node, agents, clockDeltaMs };
   } catch {
     return { reachable: false, latency: Date.now() - start };
