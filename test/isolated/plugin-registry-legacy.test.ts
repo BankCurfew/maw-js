@@ -19,7 +19,7 @@ import {
 } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { discoverPackages, __resetDiscoverStateForTests } from "../../src/plugin/registry";
+import { discoverPackages, __resetDiscoverStateForTests, resetDiscoverCache } from "../../src/plugin/registry";
 import { setVerbosityFlags } from "../../src/cli/verbosity";
 
 const created: string[] = [];
@@ -44,6 +44,7 @@ beforeEach(() => {
   process.env.MAW_PLUGINS_DIR = join(tmpDir("maw-home-"), "plugins");
   mkdirSync(pluginsDir(), { recursive: true });
   __resetDiscoverStateForTests();
+  resetDiscoverCache();  // alpha.67 memoization — clear between tests
 });
 
 afterEach(() => {

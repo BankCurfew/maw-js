@@ -45,12 +45,36 @@ export {
 export { invokePlugin } from "./registry-invoke";
 
 /**
+ * In-process memoization of the discovery result. Populated lazily on the
+ * first `discoverPackages()` call within a CLI invocation; reused by all
+ * subsequent calls in the same process. Tests / install-flows that mutate
+ * plugin state during a single invocation can clear it via
+ * `resetDiscoverCache()`.
+ *
+ * Why: profiler agent (loop iter 9, 2026-04-16) measured ~50ms per call,
+ * called 2× on the unknown-cmd path (cli.ts:66 → fuzzy → then again via
+ * hooks-registry). Per-invocation cache kills the redundant rescan
+ * without affecting fresh reads across different CLI invocations (each
+ * bun invocation is a new process, cache starts empty).
+ */
+let _discoverCache: LoadedPlugin[] | null = null;
+
+/** Clear the discovery cache. For install-flow + tests. */
+export function resetDiscoverCache(): void {
+  _discoverCache = null;
+}
+
+/**
  * Scan the canonical plugin package directory and return valid packages.
  * Each subdirectory is checked for a plugin.json manifest. Plugins that
  * fail the Phase A gates (semver / hash) are refused with a loud message
  * and NOT returned — they do not enter the runtime command surface.
+ *
+ * Result is memoized within the current process. Call `resetDiscoverCache()`
+ * after mutating plugin state (install, build) to force a fresh scan.
  */
 export function discoverPackages(): LoadedPlugin[] {
+  if (_discoverCache !== null) return _discoverCache;
   const plugins: LoadedPlugin[] = [];
   const disabled = loadConfig().disabledPlugins ?? [];
   const runtimeVer = runtimeSdkVersion();
@@ -159,5 +183,6 @@ export function discoverPackages(): LoadedPlugin[] {
   // Sort by weight (lower = first, default 50) — like Drupal module weight
   plugins.sort((a, b) => (a.manifest.weight ?? 50) - (b.manifest.weight ?? 50));
 
+  _discoverCache = plugins;
   return plugins;
 }

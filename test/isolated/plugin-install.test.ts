@@ -16,6 +16,7 @@ import { cmdPluginInstall } from "../../src/commands/plugins/plugin/install-impl
 import {
   discoverPackages, invokePlugin, runtimeSdkVersion,
   satisfies, formatSdkMismatchError, __resetDiscoverStateForTests,
+  resetDiscoverCache,
 } from "../../src/plugin/registry";
 
 // ─── Harness ─────────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ beforeEach(() => {
   // MAW_PLUGINS_DIR overrides ~/.maw/plugins/ in installRoot()+scanDirs().
   process.env.MAW_PLUGINS_DIR = join(tmpDir("maw-home-"), "plugins");
   __resetDiscoverStateForTests();
+  resetDiscoverCache();  // alpha.67 memoization — clear between tests
 });
 
 afterEach(() => {

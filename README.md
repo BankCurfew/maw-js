@@ -42,10 +42,6 @@ maw ui status                        # verify installation
 Downloads `dist.tar.gz` from the maw-ui GitHub Release and extracts to
 `~/.maw/ui/dist/`. Restart the maw server to serve the new UI.
 
-> **TODO (maw-ui repo):** A release workflow that builds and publishes
-> `dist.tar.gz` as a release asset is needed in `Soul-Brews-Studio/maw-ui`
-> for `maw ui install` to work end-to-end.
-
 ### Manual install (no `gh`)
 
 ```bash
@@ -148,20 +144,20 @@ Full reference: [`docs/federation.md`](docs/federation.md)
 
 ```
 maw-js (backend + CLI)              maw-ui (frontend)
-├── src/commands/  (48 commands)    ├── src/components/
-├── src/api/       (20 endpoints)   ├── src/hooks/
+├── src/commands/  (57 commands)    ├── src/components/
+├── src/api/       (19 endpoints)   ├── src/hooks/
 ├── src/engine/    (WebSocket)      ├── src/lib/
-├── src/transports/ (HTTP/tmux)     └── 16 HTML entry points
-├── test/          (28 test files)
+├── src/transports/ (HTTP/tmux/hub) └── 16 HTML entry points
+├── test/          (94 test files)
 └── install.sh
 ```
 
 ## Evolution
 
 ```
-Oct 2025   maw.env.sh        30+ shell commands
-Mar 2026   maw.js             Bun/TS rewrite, tmux orchestration
-Mar 2026   maw-js + maw-ui    Backend/frontend split
-Apr 2026   v1.10.1            Federation mesh, 611 commits, 48 commands,
-                               20 API endpoints, 500+ tests, 8 contributors
+Oct 2025   maw.env.sh            30+ shell commands
+Mar 2026   maw.js                 Bun/TS rewrite, tmux orchestration
+Mar 2026   maw-js + maw-ui        Backend/frontend split
+Apr 2026   v2.0.0-alpha.66        Plugin OS, 896 commits, 57 commands,
+                                   19 API endpoints, 1043 tests
 ```
