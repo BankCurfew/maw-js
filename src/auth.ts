@@ -31,21 +31,35 @@ function saveAuthConfig(config: AuthConfig) {
   writeFileSync(AUTH_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
 }
 
-// Simple hash — not bcrypt but good enough for internal dashboard
-function hashPassword(password: string): string {
+// bcrypt hashing via Bun.password (random per-password salt, cost 10)
+async function hashPassword(password: string): Promise<string> {
+  return Bun.password.hash(password, { algorithm: "bcrypt", cost: 10 });
+}
+
+// Legacy FNV+fixed-salt hash (pre-bcrypt). Kept ONLY to verify existing
+// stored hashes during the transition; rehashed to bcrypt on next login.
+function legacyHashPassword(password: string): string {
   const encoder = new TextEncoder();
   const data = encoder.encode(password + "maw-salt-2026");
-  let hash = 0x811c9dc5; // FNV offset basis
+  let hash = 0x811c9dc5;
   for (const byte of data) {
     hash ^= byte;
-    hash = Math.imul(hash, 0x01000193); // FNV prime
+    hash = Math.imul(hash, 0x01000193);
   }
-  // Convert to hex + add length check
   return `maw1$${(hash >>> 0).toString(16)}$${data.length}`;
 }
 
-function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash;
+async function verifyPassword(password: string, hash: string): Promise<{ valid: boolean; needsRehash: boolean }> {
+  if (hash.startsWith("maw1$")) {
+    // Legacy format — verify, signal caller to rehash with bcrypt.
+    return { valid: legacyHashPassword(password) === hash, needsRehash: true };
+  }
+  try {
+    const valid = await Bun.password.verify(password, hash);
+    return { valid, needsRehash: false };
+  } catch {
+    return { valid: false, needsRehash: false };
+  }
 }
 
 function generateSessionId(): string {
@@ -86,15 +100,21 @@ export function isAuthenticated(req: Request): boolean {
   return true;
 }
 
-export function handleLogin(username: string, password: string, userAgent: string, ip?: string): { ok: boolean; sessionId?: string; error?: string } {
+export async function handleLogin(username: string, password: string, userAgent: string, ip?: string): Promise<{ ok: boolean; sessionId?: string; error?: string }> {
   const config = loadAuthConfig();
 
   if (config.username !== username) {
     return { ok: false, error: "Invalid credentials" };
   }
 
-  if (!verifyPassword(password, config.passwordHash)) {
+  const { valid, needsRehash } = await verifyPassword(password, config.passwordHash);
+  if (!valid) {
     return { ok: false, error: "Invalid credentials" };
+  }
+
+  // Compare-then-rehash: upgrade legacy hashes to bcrypt on successful login.
+  if (needsRehash) {
+    config.passwordHash = await hashPassword(password);
   }
 
   // Purge expired sessions before creating new one
@@ -137,11 +157,11 @@ export function handleLogout(req: Request): void {
   saveAuthConfig(config);
 }
 
-export function setupAuth(username: string, password: string): void {
+export async function setupAuth(username: string, password: string): Promise<void> {
   const config = loadAuthConfig();
   config.enabled = true;
   config.username = username;
-  config.passwordHash = hashPassword(password);
+  config.passwordHash = await hashPassword(password);
   config.allowLocal = true;
   saveAuthConfig(config);
 }

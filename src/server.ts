@@ -32,7 +32,7 @@ app.get("/auth/login", (c) => c.html(LOGIN_PAGE));
 app.post("/auth/login", async (c) => {
   const { username, password } = await c.req.json();
   const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "direct";
-  const result = handleLogin(username, password, c.req.header("user-agent") || "", ip);
+  const result = await handleLogin(username, password, c.req.header("user-agent") || "", ip);
   if (result.ok) {
     return c.json({ ok: true }, 200, {
       "Set-Cookie": `maw_session=${result.sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`,
@@ -639,8 +639,6 @@ app.put("/api/config-file", async (c) => {
 
 // --- Config API ---
 app.get("/api/config", async (c) => {
-  if (c.req.query("raw") === "1") return c.json(loadConfig());
-
   const config = loadConfig() as any;
   const display = configForDisplay();
 

@@ -6,6 +6,7 @@
  * Timestamp tolerance: ±60 seconds
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { loadConfig } from "../config";
 
 const MAX_DRIFT_MS = 60_000;
@@ -62,7 +63,15 @@ export function verifyRequest(
   hmac.update(payload);
   const expected = hmac.digest("hex");
 
-  return signature === expected;
+  // Constant-time comparison to prevent timing attacks
+  try {
+    const sigBuf = Buffer.from(signature, "hex");
+    const expBuf = Buffer.from(expected, "hex");
+    if (sigBuf.length !== expBuf.length) return false;
+    return timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
 }
 
 /** Hono middleware: reject unauthenticated cross-node requests. */

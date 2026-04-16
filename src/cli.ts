@@ -409,7 +409,7 @@ if (cmd === "--version" || cmd === "-v") {
     const user = args[2];
     const pass = args[3];
     if (!user || !pass) { console.error("usage: maw auth setup <username> <password>"); process.exit(1); }
-    setupAuth(user, pass);
+    await setupAuth(user, pass);
     console.log(`\x1b[32m✓\x1b[0m Auth enabled — user: ${user}`);
     console.log("  Restart maw server: pm2 restart maw");
   } else if (sub === "disable") {
