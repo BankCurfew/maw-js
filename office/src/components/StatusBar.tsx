@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { href: "#loops", label: "Loops", id: "loops" },
   { href: "#jarvis", label: "Jarvis", id: "jarvis" },
   { href: "#fame", label: "Fame", id: "fame" },
+  { href: "#heartbeats", label: "HB", id: "heartbeats" },
   { href: "#terminal", label: "Terminal", id: "terminal" },
   { href: "#chat", label: "Chat", id: "chat" },
   { href: "#federation", label: "Fed", id: "federation" },
@@ -70,7 +71,7 @@ export const StatusBar = memo(function StatusBar({ connected, agentCount, sessio
       {/* Top row — always visible */}
       <div className="flex items-center gap-2 sm:gap-3">
         <h1 className="text-sm sm:text-base md:text-lg font-bold tracking-[3px] sm:tracking-[4px] md:tracking-[6px] text-cyan-400 uppercase whitespace-nowrap">
-          {activeView === "fleet" ? "Fleet" : activeView === "mission" ? "Mission" : activeView === "overview" ? "Overview" : activeView === "vs" ? "VS" : activeView === "config" ? "Config" : activeView === "terminal" ? "Terminal" : activeView === "board" ? "Board" : activeView === "orbital" ? "Orbital" : activeView === "loops" ? "Loops" : activeView === "jarvis" ? "Jarvis" : activeView === "fame" ? "Fame" : activeView === "chat" ? "Chat" : activeView === "federation" ? "Federation" : officeTitle}
+          {activeView === "fleet" ? "Fleet" : activeView === "mission" ? "Mission" : activeView === "overview" ? "Overview" : activeView === "vs" ? "VS" : activeView === "config" ? "Config" : activeView === "terminal" ? "Terminal" : activeView === "board" ? "Board" : activeView === "orbital" ? "Orbital" : activeView === "loops" ? "Loops" : activeView === "jarvis" ? "Jarvis" : activeView === "fame" ? "Fame" : activeView === "heartbeats" ? "Heartbeats" : activeView === "chat" ? "Chat" : activeView === "federation" ? "Federation" : officeTitle}
         </h1>
 
         <span className="flex items-center gap-1 text-xs sm:text-sm text-white/70">

@@ -768,6 +768,16 @@ app.get("/api/progress/:oracle", (c) => {
   return c.json(progress);
 });
 
+// --- Brain of Bank · HUD ---
+// Ported from oracle-dashboard/src/brain-feed/heartbeats.ts (D3, commit 8cd4414).
+// Feeds HeartbeatsWidget per Golden Rule #9.
+import { getHeartbeats } from "./lib/heartbeat";
+
+app.get("/api/brain/hud", (c) => {
+  const heartbeats = getHeartbeats();
+  return c.json({ heartbeats });
+});
+
 // --- Oracle Feed ---
 const feedTailer = new FeedTailer();
 
