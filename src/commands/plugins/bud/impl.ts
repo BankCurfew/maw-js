@@ -27,21 +27,8 @@ export interface BudOpts {
   seed?: boolean;
 }
 
-export interface TinyBudOpts {
-  parent: string;
-  /** Optional override for parent oracle root dir. Tests pass a tmpdir here
-   *  instead of resolving via ghqRoot/org. Not exposed on the CLI. */
-  parentRoot?: string;
-  /** Optional org override (for parentRoot resolution when parentRoot is not
-   *  passed). Defaults to config.githubOrg → "Soul-Brews-Studio". */
-  org?: string;
-  /** PR β of #209 — optional cron schedule (crontab format, e.g. "0 9 * * *").
-   *  When provided, appends a TriggerConfig cron entry to maw.config.json. */
-  cron?: string;
-  /** Test override: resolves to <configDir>/oracles.json and maw.config.json.
-   *  Defaults to MAW_CONFIG_DIR env var or ~/.config/maw. Not exposed on CLI. */
-  configDir?: string;
-}
+// TinyBudOpts removed — --tiny deprecated, code moved to deprecated/tiny-bud-209/
+// See #209 for history. Full buds with --blank (alpha.38) are now as lightweight.
 
 /**
  * maw bud <name> [--from <parent>] [--org <org>] [--repo org/repo] [--issue N] [--fast] [--dry-run]
@@ -390,100 +377,6 @@ Run \`/awaken\` for the full identity setup ceremony.
   console.log();
 }
 
-/**
- * maw bud <name> --tiny --parent <oracle>
- *
- * PR α of #209 — skeleton only. Creates a nested tiny oracle inside the
- * parent's vault at `<parent-root>/ψ/buds/<name>/`. No federation, no cron,
- * no signaling (those are PR β and γ).
- *
- * Templates live on disk under this plugin's `templates/tiny/` and get
- * rendered with `{{name}}`, `{{parent}}`, `{{budded_at}}` substitution.
- */
-export async function cmdBudTiny(name: string, opts: TinyBudOpts): Promise<void> {
-  if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) {
-    console.error(`  \x1b[31m✗\x1b[0m invalid oracle name: "${name}"`);
-    console.error(`  \x1b[90m  names must start with a letter and contain only letters, numbers, hyphens\x1b[0m`);
-    process.exit(1);
-  }
-  // #358 — reject -view suffix (reserved for ephemeral grouped sessions).
-  try {
-    assertValidOracleName(name);
-  } catch (e: any) {
-    console.error(`  \x1b[31m✗\x1b[0m ${e.message}`);
-    process.exit(1);
-  }
-  if (!opts.parent) {
-    console.error(`  \x1b[31m✗\x1b[0m --tiny requires --parent <oracle>`);
-    process.exit(1);
-  }
-
-  const config = loadConfig();
-  const org = opts.org || config.githubOrg || "Soul-Brews-Studio";
-  const parentRoot = opts.parentRoot || join(config.ghqRoot, org, `${opts.parent}-oracle`);
-
-  if (!existsSync(parentRoot)) {
-    console.error(`  \x1b[31m✗\x1b[0m parent oracle root not found: ${parentRoot}`);
-    console.error(`  \x1b[90m  expected: ${parentRoot} (use --parent <oracle> or override via tests)\x1b[0m`);
-    process.exit(1);
-  }
-
-  const budDir = join(parentRoot, "ψ", "buds", name);
-  if (existsSync(budDir)) {
-    console.error(`  \x1b[31m✗\x1b[0m tiny bud already exists: ${budDir}`);
-    console.error(`  \x1b[90m  refusing to overwrite — remove the dir or pick a new name\x1b[0m`);
-    process.exit(1);
-  }
-
-  mkdirSync(join(budDir, "memory", "logs"), { recursive: true });
-
-  const buddedAt = new Date().toISOString();
-  const vars: Record<string, string> = { name, parent: opts.parent, budded_at: buddedAt };
-  const render = (tpl: string) => Object.entries(vars).reduce(
-    (acc, [k, v]) => acc.replaceAll(`{{${k}}}`, v), tpl,
-  );
-  const tplDir = join(import.meta.dir, "templates", "tiny");
-
-  writeFileSync(join(budDir, "identity.md"), render(readFileSync(join(tplDir, "identity.md"), "utf-8")));
-  writeFileSync(join(budDir, "CLAUDE.md"), render(readFileSync(join(tplDir, "CLAUDE.md"), "utf-8")));
-  writeFileSync(join(budDir, "memory", "logs", ".gitkeep"), "");
-
-  console.log(`  \x1b[32m✓\x1b[0m tiny bud ${name} created at ${budDir}`);
-
-  // PR β of #209 — register leaf in oracle registry + optional cron trigger
-  const { registerTinyLeaf, addCronTrigger } = await import("../../../core/fleet/leaf");
-  const { homedir } = await import("os");
-  const configDir = opts.configDir
-    ?? process.env.MAW_CONFIG_DIR
-    ?? join(homedir(), ".config", "maw");
-  const registryPath = join(configDir, "oracles.json");
-  const configPath = join(configDir, "maw.config.json");
-
-  try {
-    const res = registerTinyLeaf({
-      name,
-      parent: opts.parent,
-      org,
-      parentRepo: `${opts.parent}-oracle`,
-      path: budDir,
-      buddedAt,
-      registryPath,
-    });
-    if (res.parentFound) {
-      console.log(`  \x1b[32m✓\x1b[0m leaf entry added to registry (parent: ${opts.parent})`);
-    } else {
-      console.log(`  \x1b[33m⚠\x1b[0m parent "${opts.parent}" not in registry — leaf added best-effort`);
-    }
-  } catch (e: any) {
-    console.log(`  \x1b[33m⚠\x1b[0m leaf registry write failed: ${e.message || e}`);
-  }
-
-  if (opts.cron) {
-    try {
-      addCronTrigger({ name, schedule: opts.cron, parent: opts.parent, configPath });
-      console.log(`  \x1b[32m✓\x1b[0m cron trigger added: ${opts.cron}`);
-    } catch (e: any) {
-      console.log(`  \x1b[33m⚠\x1b[0m cron trigger write failed: ${e.message || e}`);
-    }
-  }
-}
+// cmdBudTiny removed — --tiny deprecated, code preserved in deprecated/tiny-bud-209/
+// Full buds with --blank default (alpha.38) are now as lightweight.
+// Issue #209 closed. Nothing is Deleted — the code lives in deprecated/.
