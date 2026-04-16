@@ -6,6 +6,7 @@
 import type { Transport, TransportTarget, TransportMessage, TransportPresence } from "../core/transport/transport";
 import type { FeedEvent } from "../lib/feed";
 import { loadConfig } from "../config";
+import { trySilent } from "../core/util/try-silent";
 import type { HubConnection } from "./hub-connection";
 import { openWebSocket, cleanupConnection } from "./hub-connection";
 import { loadWorkspaceConfigs } from "./hub-config";
@@ -98,11 +99,8 @@ export class HubTransport implements Transport {
 
     for (const conn of this.connections.values()) {
       if (!conn.connected || !conn.ws) continue;
-      try {
-        conn.ws.send(payload);
-      } catch {
-        // Best effort — don't break on single workspace failure
-      }
+      // Best effort — don't break on single workspace failure
+      trySilent(() => conn.ws?.send(payload));
     }
   }
 
@@ -111,11 +109,8 @@ export class HubTransport implements Transport {
 
     for (const conn of this.connections.values()) {
       if (!conn.connected || !conn.ws) continue;
-      try {
-        conn.ws.send(payload);
-      } catch {
-        // Best effort
-      }
+      // Best effort
+      trySilent(() => conn.ws?.send(payload));
     }
   }
 

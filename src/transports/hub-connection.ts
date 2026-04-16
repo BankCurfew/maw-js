@@ -6,6 +6,7 @@
 import type { TransportMessage, TransportPresence } from "../core/transport/transport";
 import type { FeedEvent } from "../lib/feed";
 import { sign } from "../lib/federation-auth";
+import { trySilent } from "../core/util/try-silent";
 import { HEARTBEAT_MS, RECONNECT_BASE_MS, RECONNECT_MAX_MS } from "./hub-config";
 import type { WorkspaceConfig } from "./hub-config";
 
@@ -129,7 +130,7 @@ export function scheduleReconnect(conn: HubConnection, doOpen: () => void): void
   conn.reconnectTimer = setTimeout(() => {
     conn.reconnectTimer = null;
     if (conn.ws) {
-      try { conn.ws.close(); } catch {}
+      trySilent(() => conn.ws?.close());
     }
     doOpen();
   }, delay);
@@ -142,7 +143,7 @@ export function cleanupConnection(conn: HubConnection): void {
     conn.reconnectTimer = null;
   }
   if (conn.ws) {
-    try { conn.ws.close(1000, "transport disconnect"); } catch {}
+    trySilent(() => conn.ws?.close(1000, "transport disconnect"));
     conn.ws = null;
   }
   conn.connected = false;

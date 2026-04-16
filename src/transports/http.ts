@@ -10,6 +10,7 @@ import { cfgTimeout } from "../config";
 import { listSessions } from "../core/transport/ssh";
 import { findWindow } from "../core/runtime/find-window";
 import { curlFetch } from "../core/transport/curl-fetch";
+import { trySilentAsync } from "../core/util/try-silent";
 import type { Transport, TransportTarget, TransportMessage, TransportPresence } from "../core/transport/transport";
 import type { FeedEvent } from "../lib/feed";
 
@@ -69,15 +70,13 @@ export class HttpTransport implements Transport {
   async publishFeed(event: FeedEvent): Promise<void> {
     // Post feed event to all peers via curlFetch (bypasses macOS Local Network Privacy)
     await Promise.allSettled(
-      this.config.peers.map(async (url) => {
-        try {
-          await curlFetch(`${url}/api/feed`, {
-            method: "POST",
-            body: JSON.stringify(event),
-            timeout: cfgTimeout("http"),
-          });
-        } catch {}
-      }),
+      this.config.peers.map((url) =>
+        trySilentAsync(() => curlFetch(`${url}/api/feed`, {
+          method: "POST",
+          body: JSON.stringify(event),
+          timeout: cfgTimeout("http"),
+        })),
+      ),
     );
   }
 

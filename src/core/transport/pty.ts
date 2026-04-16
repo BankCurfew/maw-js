@@ -1,6 +1,6 @@
 import { tmux, tmuxCmd } from "./tmux";
 import { loadConfig, cfgTimeout, cfgLimit } from "../../config";
-import type { ServerWebSocket } from "bun";
+import type { MawWS } from "../types";
 
 let nextPtyId = 0;
 
@@ -8,7 +8,7 @@ interface PtySession {
   proc: ReturnType<typeof Bun.spawn>;
   target: string;
   ptySessionName: string;
-  viewers: Set<ServerWebSocket<any>>;
+  viewers: Set<MawWS>;
   cleanupTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -20,13 +20,13 @@ function isLocalHost(): boolean {
   return host === "local" || host === "localhost";
 }
 
-function findSession(ws: ServerWebSocket<any>): PtySession | undefined {
+function findSession(ws: MawWS): PtySession | undefined {
   for (const s of sessions.values()) {
     if (s.viewers.has(ws)) return s;
   }
 }
 
-export function handlePtyMessage(ws: ServerWebSocket<any>, msg: string | Buffer) {
+export function handlePtyMessage(ws: MawWS, msg: string | Buffer) {
   if (typeof msg !== "string") {
     // Binary → keystroke to PTY stdin
     const session = findSession(ws);
@@ -46,11 +46,11 @@ export function handlePtyMessage(ws: ServerWebSocket<any>, msg: string | Buffer)
   } catch { /* expected: malformed WS message */ }
 }
 
-export function handlePtyClose(ws: ServerWebSocket<any>) {
+export function handlePtyClose(ws: MawWS) {
   detach(ws);
 }
 
-async function attach(ws: ServerWebSocket<any>, target: string, cols: number, rows: number) {
+async function attach(ws: MawWS, target: string, cols: number, rows: number) {
   // Sanitize target: only allow safe characters
   const safe = target.replace(/[^a-zA-Z0-9\-_:.]/g, "");
   if (!safe) return;
@@ -146,13 +146,13 @@ async function attach(ws: ServerWebSocket<any>, target: string, cols: number, ro
   })();
 }
 
-function resize(_ws: ServerWebSocket<any>, _cols: number, _rows: number) {
+function resize(_ws: MawWS, _cols: number, _rows: number) {
   // No-op: with grouped sessions, resize-pane would affect the shared pane
   // (shrinking the real terminal). The web terminal works at its initial size.
   // TODO: proper PTY resize via node-pty or ioctl
 }
 
-function detach(ws: ServerWebSocket<any>) {
+function detach(ws: MawWS) {
   for (const [target, session] of sessions) {
     if (!session.viewers.has(ws)) continue;
     session.viewers.delete(ws);
