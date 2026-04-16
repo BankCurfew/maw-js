@@ -14,9 +14,13 @@ module.exports = {
     },
     {
       name: 'maw-boot',
-      script: 'src/cli.ts',
-      args: 'wake all --resume',
-      interpreter: '/home/mbank/.local/bin/bun',
+      // interpreter: 'none' + script: bun-binary pattern bypasses PM2's
+      // ProcessContainerForkBun.js require() wrapper, which crashes on Bun 1.3.11
+      // when entrypoint (src/cli.ts) is top-level ESM. Mirrors oracle-api config.
+      // Ref: Admin-Oracle admin-bot-health 2026-04-16, ruling path (a).
+      script: '/home/mbank/.local/bin/bun',
+      args: 'run src/cli.ts wake all --resume',
+      interpreter: 'none',
       // One-shot: spawn fleet after server starts, don't restart
       autorestart: false,
       // Give maw server time to come up
