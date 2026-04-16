@@ -9,9 +9,9 @@
  * After install, `maw serve` automatically serves the UI alongside the API on
  * port 3456.
  *
- * NOTE: the maw-ui repo must have a release workflow that publishes dist.tar.gz
- *       as a release asset. That workflow lives in Soul-Brews-Studio/maw-ui,
- *       not here.
+ * NOTE: the maw-ui repo's release workflow (build.yml tag trigger) publishes
+ *       maw-ui-dist.tar.gz as a release asset. Asset name must match what this
+ *       file downloads — see buildGhReleaseArgs below.
  */
 
 import { spawnSync } from "child_process";
@@ -26,28 +26,35 @@ const DIST_DIR = join(homedir(), ".maw", "ui", "dist");
  * Pure helper — returns the `gh` CLI args for downloading a release asset.
  * Extracted so tests can verify the command construction without mocking
  * spawnSync or touching the filesystem.
+ *
+ * When `ref` is undefined, the tag argument is omitted so `gh release
+ * download` selects the latest release by default. Passing the literal
+ * string "latest" would cause gh to look for a tag named "latest" — which
+ * doesn't exist — and fail with "release not found".
  */
-export function buildGhReleaseArgs(repo: string, ref: string, dir: string): string[] {
-  return ["release", "download", ref, "-R", repo, "--pattern", "dist.tar.gz", "--dir", dir];
+export function buildGhReleaseArgs(repo: string, ref: string | undefined, dir: string): string[] {
+  const args = ["release", "download"];
+  if (ref) args.push(ref);
+  args.push("-R", repo, "--pattern", "maw-ui-dist.tar.gz", "--dir", dir);
+  return args;
 }
 
 export async function cmdUiInstall(version?: string): Promise<void> {
-  const ref = version ?? "latest";
+  const displayRef = version ?? "latest";
 
-  process.stdout.write(`⚡ downloading maw-ui ${ref} from ${REPO}...\n`);
+  process.stdout.write(`⚡ downloading maw-ui ${displayRef} from ${REPO}...\n`);
 
   const tmpDir = mkdtempSync(join(tmpdir(), "maw-ui-"));
   try {
-    const dl = spawnSync("gh", buildGhReleaseArgs(REPO, ref, tmpDir), { encoding: "utf-8" });
+    const dl = spawnSync("gh", buildGhReleaseArgs(REPO, version, tmpDir), { encoding: "utf-8" });
 
     if (dl.status !== 0) {
       console.error(`✗ gh release download failed:\n${dl.stderr}`);
-      console.error(`  → ensure: gh auth status, and a release with dist.tar.gz asset exists`);
-      console.error(`  → TODO: maw-ui repo needs a release workflow that publishes dist.tar.gz`);
+      console.error(`  → ensure: gh auth status, and a release with maw-ui-dist.tar.gz asset exists`);
       process.exit(1);
     }
 
-    const tarPath = join(tmpDir, "dist.tar.gz");
+    const tarPath = join(tmpDir, "maw-ui-dist.tar.gz");
 
     // Wipe + recreate target so no stale files remain
     rmSync(DIST_DIR, { recursive: true, force: true });
@@ -67,7 +74,7 @@ export async function cmdUiInstall(version?: string): Promise<void> {
       process.exit(1);
     }
 
-    console.log(`✓ maw-ui ${ref} installed → ${DIST_DIR} (${files.length} top-level entries)`);
+    console.log(`✓ maw-ui ${displayRef} installed → ${DIST_DIR} (${files.length} top-level entries)`);
     console.log(`  → restart maw server to serve the new UI: pm2 restart maw OR maw serve`);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });

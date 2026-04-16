@@ -13,11 +13,13 @@ import { parseUiArgs } from "../src/commands/plugins/ui/impl";
 // ---- buildGhReleaseArgs — gh release download command construction --------
 
 describe("buildGhReleaseArgs", () => {
-  test("uses 'latest' when no version given", () => {
-    const args = buildGhReleaseArgs("Soul-Brews-Studio/maw-ui", "latest", "/tmp/maw-ui-xxx");
+  test("omits tag arg when ref is undefined (gh picks latest release by default)", () => {
+    const args = buildGhReleaseArgs("Soul-Brews-Studio/maw-ui", undefined, "/tmp/maw-ui-xxx");
     expect(args[0]).toBe("release");
     expect(args[1]).toBe("download");
-    expect(args[2]).toBe("latest");
+    // Next arg should be -R, not a tag — because 'latest' would be treated
+    // as a literal tag name by gh and fail with "release not found".
+    expect(args[2]).toBe("-R");
   });
 
   test("uses provided version tag", () => {
@@ -32,11 +34,11 @@ describe("buildGhReleaseArgs", () => {
     expect(args[rIdx + 1]).toBe("Soul-Brews-Studio/maw-ui");
   });
 
-  test("includes --pattern dist.tar.gz", () => {
+  test("includes --pattern maw-ui-dist.tar.gz", () => {
     const args = buildGhReleaseArgs("Soul-Brews-Studio/maw-ui", "latest", "/tmp/x");
     const pIdx = args.indexOf("--pattern");
     expect(pIdx).not.toBe(-1);
-    expect(args[pIdx + 1]).toBe("dist.tar.gz");
+    expect(args[pIdx + 1]).toBe("maw-ui-dist.tar.gz");
   });
 
   test("includes --dir pointing at provided tmpDir", () => {
