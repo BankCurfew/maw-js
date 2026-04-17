@@ -149,10 +149,10 @@ export function cmdTeamCreate(name: string, opts: { description?: string } = {})
 }
 
 // ─── maw team spawn <team> <role> ───
-export function cmdTeamSpawn(
+export async function cmdTeamSpawn(
   teamName: string,
   role: string,
-  opts: { model?: string; prompt?: string } = {},
+  opts: { model?: string; prompt?: string; exec?: boolean } = {},
 ) {
   const PSI = resolvePsi();
   const teamDir = join(PSI, "memory", "mailbox", "teams", teamName);
@@ -212,6 +212,32 @@ export function cmdTeamSpawn(
   console.log(`  \x1b[90mpast life: ${pastLife ? "yes" : "no"}\x1b[0m`);
   console.log(`  \x1b[90mmodel: ${model}\x1b[0m`);
   console.log(`  \x1b[90mprompt: ${promptPath}\x1b[0m`);
+
+  // #393 Bug C — opt-in auto-spawn via splitWindowLocked. Default behavior
+  // (print-only) is unchanged. With --exec, we split the current pane and
+  // run the printed claude command inside it. Requires $TMUX (must be
+  // inside an active tmux session).
+  if (opts.exec) {
+    if (!process.env.TMUX) {
+      console.log();
+      console.log(`  \x1b[33m⚠\x1b[0m --exec requires an active tmux session ($TMUX not set).`);
+      console.log(`  \x1b[36mRun manually:\x1b[0m claude --model ${model} --prompt-file "${promptPath}"`);
+      return;
+    }
+    try {
+      const { hostExec } = await import("../../../sdk");
+      const claudeCmd = `claude --model ${model} --prompt-file '${promptPath.replace(/'/g, "'\\''")}'`;
+      await hostExec(`tmux split-window -h -l 50% '${claudeCmd.replace(/'/g, "'\\''")}'`);
+      console.log();
+      console.log(`  \x1b[32m✓ --exec\x1b[0m spawned ${role} in a new tmux pane (right, 50%)`);
+    } catch (e: any) {
+      console.log();
+      console.log(`  \x1b[33m⚠\x1b[0m --exec split failed: ${e?.message || e}`);
+      console.log(`  \x1b[36mRun manually:\x1b[0m claude --model ${model} --prompt-file "${promptPath}"`);
+    }
+    return;
+  }
+
   console.log();
   console.log(`  \x1b[36mRun:\x1b[0m claude --model ${model} --prompt-file "${promptPath}"`);
 }

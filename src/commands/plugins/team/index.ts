@@ -62,14 +62,20 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       cmdTeamCreate(args[1], { description });
     } else if (sub === "spawn") {
       if (!args[1] || !args[2]) {
-        logs.push("usage: maw team spawn <team> <role> [--model <model>] [--prompt <text>]");
+        logs.push("usage: maw team spawn <team> <role> [--model <model>] [--prompt <text>] [--exec]");
         return { ok: false, error: "team and role required", output: logs.join("\n") };
       }
       const modelIdx = args.indexOf("--model");
       const model = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
       const promptIdx = args.indexOf("--prompt");
-      const prompt = promptIdx !== -1 ? args.slice(promptIdx + 1).join(" ") : undefined;
-      cmdTeamSpawn(args[1], args[2], { model, prompt });
+      const exec = args.includes("--exec");
+      // --prompt is greedy to end-of-argv; strip --exec if it appears in the tail
+      let prompt: string | undefined;
+      if (promptIdx !== -1) {
+        const tail = args.slice(promptIdx + 1).filter(a => a !== "--exec");
+        prompt = tail.join(" ") || undefined;
+      }
+      await cmdTeamSpawn(args[1], args[2], { model, prompt, exec });
     } else if (sub === "send" || sub === "msg") {
       if (!args[1] || !args[2] || !args[3]) {
         logs.push("usage: maw team send <team> <agent> <message>");
