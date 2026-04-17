@@ -4,6 +4,7 @@ import { HoverPreviewCard } from "./HoverPreviewCard";
 import { MiniPreview } from "./MiniPreview";
 import { OracleSheet } from "./OracleSheet";
 import { useDevice } from "../hooks/useDevice";
+import { useFederationData } from "../hooks/useFederationData";
 import type { AgentState, Session } from "../lib/types";
 
 const PREVIEW_CARD = { width: 480, maxHeight: 520 };
@@ -47,6 +48,16 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
   const [roomsLoaded, setRoomsLoaded] = useState(false);
   const [configData, setConfigData] = useState<{ node?: string; agents?: Record<string, string>; namedPeers?: Array<{name: string; url: string}> | Record<string, string> } | null>(null);
   const { isNarrow } = useDevice();
+  const { peers } = useFederationData();
+
+  // Check if an agent's node is offline (unreachable peer)
+  const isNodeOffline = useCallback((agent: AgentState) => {
+    if (!agent.source || agent.source === "local") return false;
+    const node = (agent as any).node as string | undefined;
+    if (!node) return false;
+    const peer = peers.find(p => p.name === node);
+    return peer ? !peer.reachable : true;
+  }, [peers]);
 
   useEffect(() => {
     // Load cached rooms first for instant render
@@ -279,11 +290,12 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {rooms.map((room) => {
           const hasBusy = room.agents.some((a) => a.status === "busy");
+          const allOffline = room.agents.length > 0 && room.agents.every(a => isNodeOffline(a));
 
           return (
             <div
               key={room.id}
-              className="rounded-3xl border backdrop-blur-xl transition-all duration-300 hover:scale-[1.01]"
+              className={`rounded-3xl border backdrop-blur-xl transition-all duration-300 hover:scale-[1.01]${allOffline ? " opacity-50" : ""}`}
               style={{
                 background: `${room.floor}88`,
                 borderColor: hasBusy ? `${room.accent}40` : `${room.accent}12`,
@@ -321,6 +333,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 p-3 sm:p-4 md:p-5 min-h-[100px] sm:min-h-[140px]">
                 {room.agents.map((agent) => (
                   <AgentCard key={agent.target} agent={agent} accent={room.accent}
+                    offline={isNodeOffline(agent)}
                     onClick={(e: React.MouseEvent) => onAgentClick(agent, room.accent, room.label, e)}
                     onMouseEnter={(e: React.MouseEvent) => showPreview(agent, room.accent, room.label, e)}
                     onMouseLeave={hidePreview}

@@ -6,23 +6,24 @@ import type { AgentState } from "../lib/types";
 interface AgentCardProps {
   agent: AgentState;
   accent: string;
+  offline?: boolean;
   onClick: (e: React.MouseEvent) => void;
   onMouseEnter?: (e: React.MouseEvent) => void;
   onMouseLeave?: (e: React.MouseEvent) => void;
 }
 
-export const AgentCard = memo(function AgentCard({ agent, accent, onClick, onMouseEnter: onMouseEnterProp, onMouseLeave: onMouseLeaveProp }: AgentCardProps) {
+export const AgentCard = memo(function AgentCard({ agent, accent, offline, onClick, onMouseEnter: onMouseEnterProp, onMouseLeave: onMouseLeaveProp }: AgentCardProps) {
   const { isNarrow } = useDevice();
   const [hovered, setHovered] = useState(false);
   const displayName = agent.name.replace(/-oracle$/, "").replace(/-/g, " ");
   return (
     <div
-      className="relative flex flex-col items-center gap-1 cursor-pointer"
-      onClick={onClick}
+      className={`relative flex flex-col items-center gap-1 ${offline ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}
+      onClick={offline ? undefined : onClick}
       onMouseEnter={(e) => { !isNarrow && setHovered(true); onMouseEnterProp?.(e); }}
       onMouseLeave={(e) => { setHovered(false); onMouseLeaveProp?.(e); }}
     >
-      <svg width={100} height={85} viewBox="-55 -55 110 88" style={{ overflow: "visible" }}>
+      <svg width={100} height={85} viewBox="-55 -55 110 88" style={{ overflow: "visible", filter: offline ? "grayscale(1) brightness(0.5)" : "none" }}>
         <AgentAvatar
           name={agent.name}
           target={agent.target}
@@ -34,7 +35,7 @@ export const AgentCard = memo(function AgentCard({ agent, accent, onClick, onMou
       </svg>
       <span
         className="text-[11px] font-bold tracking-wide truncate max-w-[100px] text-center"
-        style={{ color: accent }}
+        style={{ color: offline ? "rgba(255,255,255,0.3)" : accent }}
       >
         {displayName}
       </span>
@@ -51,7 +52,7 @@ export const AgentCard = memo(function AgentCard({ agent, accent, onClick, onMou
         >
           <div className="text-sm font-bold" style={{ color: accent }}>{displayName}</div>
           <div className="text-xs text-white/70 mt-0.5">
-            {agent.status} · {agent.target}
+            {offline ? `offline · ${(agent as any).node || agent.target}` : `${agent.status} · ${agent.target}`}
           </div>
           {agent.preview && (
             <div className="text-[10px] text-white/50 mt-1 max-w-[250px] truncate">
