@@ -16,7 +16,6 @@ import { InboxOverlay } from "./components/InboxView";
 import { WorktreeView } from "./components/WorktreeView";
 import { BoardView } from "./components/BoardView";
 import { LoopsView } from "./components/LoopsView";
-import { JarvisView } from "./components/JarvisView";
 import { HallOfFameView } from "./components/HallOfFameView";
 import { IPadDashboard } from "./components/iPadDashboard";
 import { ChatView } from "./components/ChatView";
@@ -356,14 +355,6 @@ export function App() {
     return (
       <Layout activeView="loops" {...layoutProps}>
         <LoopsView connected={connected} />
-      </Layout>
-    );
-  }
-
-  if (route === "jarvis") {
-    return (
-      <Layout activeView="jarvis" {...layoutProps}>
-        <JarvisView />
       </Layout>
     );
   }
