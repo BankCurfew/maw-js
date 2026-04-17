@@ -94,6 +94,21 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     await cmdAudit(args.slice(1));
     return true;
   }
+  if (cmd === "setup") {
+    const sub = args[1];
+    if (sub === "hooks") {
+      const { cmdSetupHooks } = await import("../commands/setup-hooks");
+      await cmdSetupHooks(args.slice(2));
+    } else if (sub === "tmux") {
+      const { cmdSetupTmux } = await import("../commands/setup-tmux");
+      await cmdSetupTmux(args.slice(2));
+    } else {
+      console.log("usage: maw setup <hooks|tmux> [opts]");
+      console.log("  hooks [path] [--oracle NAME] [--force] [--dry-run]");
+      console.log("  tmux [--dry-run] [--force]");
+    }
+    return true;
+  }
   if (cmd === "serve") {
     // Reject unknown flags BEFORE starting the server — alpha.72 gate already
     // caught --help (hasHelpFlag). Anything else starting with "-" is a typo.
