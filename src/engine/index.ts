@@ -107,6 +107,13 @@ export class MawEngine {
 
   // --- Public (handlers use these) ---
 
+  /** Broadcast a raw JSON string to all connected WS clients. */
+  broadcast(msg: string) {
+    for (const ws of this.clients) {
+      try { ws.send(msg); } catch { /* client may have disconnected */ }
+    }
+  }
+
   async pushCapture(ws: MawWS) {
     const { pushCapture } = await import("./capture");
     return pushCapture(ws, this.lastContent);

@@ -12,10 +12,12 @@ export interface FederationConfig {
 }
 
 export interface PeerStatus {
-  name: string;
+  name?: string;
+  node?: string;
   url: string;
   reachable: boolean;
-  latencyMs: number | null;
+  latencyMs?: number | null;
+  latency?: number | null;
 }
 
 export interface FederationStatus {
