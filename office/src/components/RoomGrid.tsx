@@ -37,13 +37,15 @@ interface RoomGridProps {
 function matchAgent(agent: AgentState, memberName: string): boolean {
   const a = agent.name.toLowerCase();
   const m = memberName.toLowerCase();
-  return a === m || a === m.replace(/-oracle$/, "") || `${a}-oracle` === m;
+  const aBase = a.replace(/-oracle$/, "");
+  const mBase = m.replace(/-oracle$/, "");
+  return a === m || aBase === m || aBase === mBase || a === mBase || `${a}-oracle` === m;
 }
 
 export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent, send }: RoomGridProps) {
   const [roomsData, setRoomsData] = useState<RoomsData | null>(null);
   const [roomsLoaded, setRoomsLoaded] = useState(false);
-  const [configData, setConfigData] = useState<{ node?: string; agents?: Record<string, string>; namedPeers?: Record<string, string> } | null>(null);
+  const [configData, setConfigData] = useState<{ node?: string; agents?: Record<string, string>; namedPeers?: Array<{name: string; url: string}> | Record<string, string> } | null>(null);
   const { isNarrow } = useDevice();
 
   useEffect(() => {
@@ -74,11 +76,21 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
   // Merge federated agents (no local tmux session) as synthetic entries
   const allAgents = useMemo(() => {
     if (!configData?.agents || !configData?.node) return agents;
-    const localNames = new Set(agents.map((a) => a.name.toLowerCase()));
+    // Build set of known names with -oracle suffix stripped for fuzzy matching
+    const localNames = new Set<string>();
+    for (const a of agents) {
+      const n = a.name.toLowerCase();
+      localNames.add(n);
+      localNames.add(n.replace(/-oracle$/, ""));
+    }
     const synthetic: AgentState[] = [];
     for (const [name, node] of Object.entries(configData.agents)) {
       if (node !== configData.node && !localNames.has(name.toLowerCase())) {
-        const peerUrl = configData.namedPeers?.[node] || node;
+        // namedPeers can be array [{name,url}] or object {name: url}
+        const peers = configData.namedPeers;
+        const peerUrl = Array.isArray(peers)
+          ? peers.find(p => p.name === node)?.url || node
+          : peers?.[node] || node;
         synthetic.push({
           name,
           target: `${node}:${name}`,
@@ -196,7 +208,10 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     });
 
     // Any unassigned agents go to an "Unassigned" room
-    const unassigned = allAgents.filter((a) => !assigned.has(a.target));
+    // Filter out infrastructure sessions and remote peer agents (remote → Federation room only)
+    const INFRA_PATTERNS = /^(page-\d+|claude|shell|overview|0-overview|\d+\.\d+\.\d+)$/i;
+    const remoteSessionNames = new Set(sessions.filter(s => (s as any).source && (s as any).source !== "local").map(s => s.name));
+    const unassigned = allAgents.filter((a) => !assigned.has(a.target) && !INFRA_PATTERNS.test(a.name) && !INFRA_PATTERNS.test(a.session) && !INFRA_PATTERNS.test(a.window || "") && !remoteSessionNames.has(a.session));
     if (unassigned.length > 0) {
       result.push({
         id: "unassigned",
