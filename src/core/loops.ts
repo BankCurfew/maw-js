@@ -5,11 +5,12 @@
 
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 
-// Resolve loops.json: prefer process.cwd() (works in both dev and production)
-const LOOPS_PATH = join(process.cwd(), "loops.json");
-const LOOPS_LOG_PATH = join(process.cwd(), "loops-log.json");
-const FEED_LOG = join(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
+// XDG-style path: ~/.config/maw/loops.json (consistent with v2 config pattern)
+const LOOPS_PATH = join(homedir(), ".config", "maw", "loops.json");
+const LOOPS_LOG_PATH = join(homedir(), ".config", "maw", "loops-log.json");
+const FEED_LOG = join(homedir(), ".oracle", "feed.log");
 const CHECK_INTERVAL = 30_000; // check every 30 seconds
 
 export interface LoopDef {

@@ -7,6 +7,9 @@ import { Elysia, t } from "elysia";
 import { LoopEngine } from "../core/loops";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
+
+const LOOPS_PATH = join(homedir(), ".config", "maw", "loops.json");
 
 export const loopEngine = new LoopEngine();
 
@@ -40,7 +43,7 @@ loopsApi.post("/loops/add", async ({ body, set }) => {
   try {
     const newLoop = body as any;
     if (!newLoop.id || !newLoop.schedule) { set.status = 400; return { error: "id and schedule required" }; }
-    const loopsPath = join(process.cwd(), "loops.json");
+    const loopsPath = LOOPS_PATH;
     const config = JSON.parse(readFileSync(loopsPath, "utf-8"));
     const idx = config.loops.findIndex((l: any) => l.id === newLoop.id);
     if (idx >= 0) {
@@ -58,7 +61,7 @@ loopsApi.post("/loops/add", async ({ body, set }) => {
 loopsApi.delete("/loops", ({ query, set }) => {
   const loopId = query.id;
   if (!loopId) { set.status = 400; return { error: "id required" }; }
-  const loopsPath = join(process.cwd(), "loops.json");
+  const loopsPath = LOOPS_PATH;
   const config = JSON.parse(readFileSync(loopsPath, "utf-8"));
   const before = config.loops.length;
   config.loops = config.loops.filter((l: any) => l.id !== loopId);
