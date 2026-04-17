@@ -7,7 +7,7 @@ import { useFleetStore } from "../lib/store";
 import { activeOracles, describeActivity, type FeedEvent, type FeedEventType } from "../lib/feed";
 import type { AskType } from "../lib/types";
 
-const BUSY_TIMEOUT = 15_000; // 15s without feed → ready
+const BUSY_TIMEOUT = 30_000; // 30s without feed → ready (covers Claude thinking phases)
 const IDLE_TIMEOUT = 60_000; // 60s without feed → idle
 
 export function useSessions() {
@@ -90,13 +90,20 @@ export function useSessions() {
         return { ...prev, [target]: { preview: existing?.preview || "", status: "busy" } };
       });
     } else if (FEED_STOP_EVENTS.has(event.event)) {
-      feedLastSeen.current[target] = 0; // mark stopped
-      setCaptureData(prev => {
-        const existing = prev[target];
-        if (existing?.status === "ready") return prev;
-        if (existing && existing.status !== "ready") addEvent(target, "status", `${existing.status} → ready`);
-        return { ...prev, [target]: { preview: existing?.preview || "", status: "ready" } };
-      });
+      if (event.event === "SessionEnd") {
+        // SessionEnd = oracle exited — go ready immediately
+        feedLastSeen.current[target] = 0;
+        setCaptureData(prev => {
+          const existing = prev[target];
+          if (existing?.status === "ready") return prev;
+          if (existing && existing.status !== "ready") addEvent(target, "status", `${existing.status} → ready`);
+          return { ...prev, [target]: { preview: existing?.preview || "", status: "ready" } };
+        });
+      } else {
+        // Stop/Notification/TaskCompleted — let decay timer handle transition
+        // This prevents flicker when Claude pauses briefly between tasks
+        feedLastSeen.current[target] = Date.now();
+      }
     }
   }, [addEvent, clearSlept, resolveAgentFromFeed]);
 
@@ -113,7 +120,7 @@ export function useSessions() {
 
           // Don't decay busy→ready if agent is in a tool call (PreToolUse without PostToolUse)
           const lastEvt = feedLastEvent.current[agent.target];
-          const inToolCall = lastEvt === "PreToolUse" || lastEvt === "SubagentStart";
+          const inToolCall = lastEvt === "PreToolUse" || lastEvt === "SubagentStart" || lastEvt === "PostToolUse" || lastEvt === "UserPromptSubmit";
           if (existing.status === "busy" && lastSeen > 0 && now - lastSeen > BUSY_TIMEOUT && !inToolCall) {
             if (next === prev) next = { ...prev };
             next[agent.target] = { ...existing, status: "ready" };
