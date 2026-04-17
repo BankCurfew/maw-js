@@ -80,14 +80,10 @@ export function configForDisplay(): MawConfig & { envMasked: Record<string, stri
   if (result.federationToken) {
     result.federationToken = result.federationToken.slice(0, 4) + "\u2022".repeat(12);
   }
-  // Security: only expose locally-hosted agents, not aggregated remote oracles
-  if (result.agents && result.node) {
-    const localAgents: Record<string, string> = {};
-    for (const [agent, node] of Object.entries(result.agents as Record<string, string>)) {
-      if (node === result.node) localAgents[agent] = node;
-    }
-    result.agents = localAgents;
-  }
+  // Ensure node + agents always present — dashboard allAgents guard
+  // requires both to enable federation room assignment (#420)
+  result.node = result.node || "local";
+  result.agents = result.agents || {};
   return result;
 }
 
