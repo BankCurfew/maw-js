@@ -6,8 +6,9 @@
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "fs";
 import { join } from "path";
 
-const LOOPS_PATH = join(import.meta.dir, "../../loops.json");
-const LOOPS_LOG_PATH = join(import.meta.dir, "../../loops-log.json");
+// Resolve loops.json: prefer process.cwd() (works in both dev and production)
+const LOOPS_PATH = join(process.cwd(), "loops.json");
+const LOOPS_LOG_PATH = join(process.cwd(), "loops-log.json");
 const FEED_LOG = join(process.env.HOME || "/home/mbank", ".oracle", "feed.log");
 const CHECK_INTERVAL = 30_000; // check every 30 seconds
 
