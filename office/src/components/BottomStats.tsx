@@ -3,12 +3,17 @@ import type { AgentState } from "../lib/types";
 
 interface BottomStatsProps {
   agents: AgentState[];
+  sessions?: { name: string; source?: string }[];
 }
 
-export const BottomStats = memo(function BottomStats({ agents }: BottomStatsProps) {
-  const busyCount = agents.filter((a) => a.status === "busy").length;
-  const readyCount = agents.filter((a) => a.status === "ready").length;
-  const idleCount = agents.filter((a) => a.status === "idle").length;
+export const BottomStats = memo(function BottomStats({ agents, sessions }: BottomStatsProps) {
+  // Filter to local agents only when sessions data is available
+  const localAgents = sessions
+    ? agents.filter(a => !sessions.some(s => s.source && s.source !== "local" && s.name === a.session))
+    : agents;
+  const busyCount = localAgents.filter((a) => a.status === "busy").length;
+  const readyCount = localAgents.filter((a) => a.status === "ready").length;
+  const idleCount = localAgents.filter((a) => a.status === "idle").length;
 
   return (
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6 px-6 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/[0.04]">
@@ -31,7 +36,7 @@ export const BottomStats = memo(function BottomStats({ agents }: BottomStatsProp
         <div
           className="h-full rounded-full transition-all duration-700"
           style={{
-            width: `${Math.min(100, (busyCount / Math.max(1, agents.length)) * 100)}%`,
+            width: `${Math.min(100, (busyCount / Math.max(1, localAgents.length)) * 100)}%`,
             background: busyCount > 5 ? "#ef5350" : busyCount > 2 ? "#fdd835" : "#4caf50",
           }}
         />

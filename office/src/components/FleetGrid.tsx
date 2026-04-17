@@ -456,7 +456,7 @@ export const FleetGrid = memo(function FleetGrid({
         );
       })()}
 
-      <BottomStats agents={agents} eventLog={eventLog} />
+      <BottomStats agents={agents} sessions={sessions} eventLog={eventLog} />
 
       {/* Hover Preview — compact mini card */}
       {hoverPreview && !pinnedPreview && (

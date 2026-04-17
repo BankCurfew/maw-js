@@ -601,7 +601,7 @@ export const MissionControl = memo(function MissionControl({
       {showSearch && <OracleSearch onClose={() => setShowSearch(false)} />}
 
       {/* Bottom stats + FPS */}
-      <BottomStats agents={agents} />
+      <BottomStats agents={agents} sessions={sessions} />
       <FpsCounter />
     </div>
   );
