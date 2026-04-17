@@ -1,6 +1,7 @@
 import { Elysia, t} from "elysia";
 import { readdirSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync } from "fs";
 import { join, basename } from "path";
+import { timingSafeEqual } from "crypto";
 import { type MawConfig, loadConfig, saveConfig, configForDisplay } from "../config";
 import { FLEET_DIR as fleetDir } from "../core/paths";
 
@@ -153,7 +154,14 @@ configApi.post("/pin-verify", async ({ body, headers, set}) => {
   const config = loadConfig();
   const correct = config.pin || "";
   if (!correct) return { ok: true };
-  const ok = pin === correct;
+  // Timing-safe comparison — prevents side-channel PIN guessing (BankCurfew M3 fix)
+  const pinStr = typeof pin === "string" ? pin : "";
+  let ok: boolean;
+  try {
+    ok = pinStr.length === correct.length && timingSafeEqual(Buffer.from(pinStr), Buffer.from(correct));
+  } catch {
+    ok = false;
+  }
   if (ok) {
     pinAttempts.delete(ip);
     const { createToken } = await import("../lib/auth");
@@ -166,11 +174,9 @@ configApi.post("/pin-verify", async ({ body, headers, set}) => {
 
 // PUBLIC FEDERATION API (v1) — no auth. Shape is load-bearing for lens
 // clients (e.g. maw-ui#8). See docs/federation.md before changing fields.
-configApi.get("/config", ({ query }) => {
-  if (query.raw === "1") return loadConfig();
+// SECURITY: ?raw=1 removed — leaked federation token without auth (BankCurfew H1 fix).
+configApi.get("/config", () => {
   return configForDisplay();
-}, {
-  query: t.Object({ raw: t.Optional(t.String()) }),
 });
 
 configApi.post("/config", async ({ body, set}) => {

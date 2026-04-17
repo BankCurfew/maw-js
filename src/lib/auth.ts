@@ -8,6 +8,7 @@
  */
 
 import { loadConfig } from "../config";
+import { timingSafeEqual } from "crypto";
 
 const JWT_SECRET = process.env.MAW_JWT_SECRET || "maw-" + ((loadConfig() as any).node || "local");
 const TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
@@ -42,7 +43,12 @@ export function verifyToken(token: string): TokenPayload | null {
   const parts = token.split(".");
   if (parts.length !== 2) return null;
   const [data, sig] = parts;
-  if (sig !== hmacSign(data)) return null;
+  const expected = hmacSign(data);
+  try {
+    if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  } catch {
+    return null; // length mismatch
+  }
   try {
     const payload: TokenPayload = JSON.parse(Buffer.from(data, "base64url").toString());
     if (Date.now() > payload.exp) return null;
