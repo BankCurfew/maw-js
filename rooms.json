@@ -10,8 +10,7 @@
       "description": "CEO Office — Boss + Conduct",
       "lead": "BoB-Oracle",
       "members": [
-        "BoB-Oracle",
-        "Doc-Oracle"
+        "BoB-Oracle"
       ],
       "accent": "#6C3BF5",
       "floor": "#1a1428",
@@ -43,7 +42,8 @@
         "HR-Oracle",
         "Writer-Oracle",
         "Researcher-Oracle",
-        "Editor-Oracle"
+        "Editor-Oracle",
+        "Doc-Oracle"
       ],
       "accent": "#F59E0B",
       "floor": "#281e14",
