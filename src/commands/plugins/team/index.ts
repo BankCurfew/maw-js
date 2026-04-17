@@ -1,13 +1,40 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
+import { readdirSync, existsSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 import {
   cmdTeamShutdown, cmdTeamList, cmdTeamCreate, cmdTeamSpawn,
   cmdTeamSend, cmdTeamResume, cmdTeamLives,
 } from "./impl";
+import { parseFlags } from "../../../cli/parse-args";
 
 export const command = {
   name: "team",
   description: "Agent reincarnation engine — create, spawn, send, shutdown, resume, lives.",
 };
+
+/**
+ * Best-effort team detection for task verbs (#393 Bug E).
+ *
+ * 1. If $MAW_TEAM env var is set, use it (explicit override — highest priority).
+ * 2. If exactly ONE team exists in ~/.claude/teams/ with a config.json,
+ *    that's unambiguous — use it.
+ * 3. Otherwise fall back to "default" (preserves legacy behavior).
+ *
+ * Users who want a specific team should pass --team <name> explicitly.
+ */
+function resolveTeamFromContext(): string {
+  const envTeam = process.env.MAW_TEAM;
+  if (envTeam) return envTeam;
+  const teamsDir = join(homedir(), ".claude/teams");
+  try {
+    const live = readdirSync(teamsDir).filter(d =>
+      existsSync(join(teamsDir, d, "config.json"))
+    );
+    if (live.length === 1) return live[0]!;
+  } catch { /* no teams dir */ }
+  return "default";
+}
 
 export default async function handler(ctx: InvokeContext): Promise<InvokeResult> {
   const logs: string[] = [];
@@ -75,39 +102,48 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
     } else if (sub === "list" || sub === "ls" || !sub) {
       await cmdTeamList();
     } else if (sub === "add" || sub === "task") {
-      // maw team add "subject" [--assign agent] [--description text]
+      // maw team add "subject" [--team <name>] [--assign agent] [--description text]
       const { cmdTeamTaskAdd } = await import("./task-ops");
-      const subject = args.slice(1).filter(a => !a.startsWith("--")).join(" ");
-      if (!subject) { logs.push("usage: maw team add <subject>"); return { ok: false, error: "subject required" }; }
-      const assignIdx = args.indexOf("--assign");
-      const assign = assignIdx !== -1 ? args[assignIdx + 1] : undefined;
-      const descIdx = args.indexOf("--description");
-      const desc = descIdx !== -1 ? args.slice(descIdx + 1).join(" ") : undefined;
-      // detect current team from tmux session name or arg
-      const team = "default"; // TODO: detect from context
-      cmdTeamTaskAdd(team, subject, { assign, description: desc });
+      const flags = parseFlags(args, {
+        "--team": String,
+        "--assign": String,
+        "--description": String,
+      }, 1);
+      const subject = flags._.join(" ");
+      if (!subject) { logs.push("usage: maw team add <subject> [--team <name>]"); return { ok: false, error: "subject required" }; }
+      const team = (flags["--team"] as string | undefined) || resolveTeamFromContext();
+      cmdTeamTaskAdd(team, subject, {
+        assign: flags["--assign"] as string | undefined,
+        description: flags["--description"] as string | undefined,
+      });
 
     } else if (sub === "tasks") {
-      // maw team tasks [team-name]
+      // maw team tasks [team-name] [--team <name>]
       const { cmdTeamTaskList } = await import("./task-ops");
-      const team = args[1] || "default";
+      const flags = parseFlags(args, { "--team": String }, 1);
+      // Priority: --team flag > positional arg > context detection
+      const team = (flags["--team"] as string | undefined)
+        || flags._[0]
+        || resolveTeamFromContext();
       cmdTeamTaskList(team);
 
     } else if (sub === "done") {
-      // maw team done <id>
+      // maw team done <id> [--team <name>]
       const { cmdTeamTaskDone } = await import("./task-ops");
-      const id = parseInt(args[1]);
-      if (!id) { return { ok: false, error: "usage: maw team done <task-id>" }; }
-      const team = "default"; // TODO: detect
+      const flags = parseFlags(args, { "--team": String }, 1);
+      const id = parseInt(flags._[0] || "");
+      if (!id) { return { ok: false, error: "usage: maw team done <task-id> [--team <name>]" }; }
+      const team = (flags["--team"] as string | undefined) || resolveTeamFromContext();
       cmdTeamTaskDone(team, id);
 
     } else if (sub === "assign") {
-      // maw team assign <id> <agent>
+      // maw team assign <id> <agent> [--team <name>]
       const { cmdTeamTaskAssign } = await import("./task-ops");
-      const id = parseInt(args[1]);
-      const agent = args[2];
-      if (!id || !agent) { return { ok: false, error: "usage: maw team assign <task-id> <agent>" }; }
-      const team = "default";
+      const flags = parseFlags(args, { "--team": String }, 1);
+      const id = parseInt(flags._[0] || "");
+      const agent = flags._[1];
+      if (!id || !agent) { return { ok: false, error: "usage: maw team assign <task-id> <agent> [--team <name>]" }; }
+      const team = (flags["--team"] as string | undefined) || resolveTeamFromContext();
       cmdTeamTaskAssign(team, id, agent);
 
     } else if (sub === "status") {

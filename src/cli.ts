@@ -64,6 +64,10 @@ async function main(): Promise<void> {
         // so remaining args are computed correctly when an alias fires.
         const { discoverPackages, invokePlugin } = await import("./plugin/registry");
         const plugins = discoverPackages();
+        // #393 Bug H: use lowercased cmdName ONLY for plugin-name matching.
+        // Pass the ORIGINAL-case args to the plugin. Previously remaining was
+        // sliced off the lowercased cmdName, which silently lowercased team
+        // names, subjects, paths, and any case-sensitive arg.
         const cmdName = args.join(" ").toLowerCase();
         let matched = false;
         for (const p of plugins) {
@@ -79,8 +83,11 @@ async function main(): Promise<void> {
           }
           if (matchedName) {
             matched = true;
-            const remaining = cmdName.slice(matchedName.length).trim().split(/\s+/).filter(Boolean);
-            const result = await invokePlugin(p, { source: "cli", args: remaining.length ? remaining : args.slice(1) });
+            // Compute how many whitespace-tokens the matched name consumes,
+            // then slice ORIGINAL args (case-preserved) after that many.
+            const matchedWords = matchedName.split(/\s+/).filter(Boolean).length;
+            const remaining = args.slice(matchedWords);
+            const result = await invokePlugin(p, { source: "cli", args: remaining });
             if (result.ok && result.output) console.log(result.output);
             else if (!result.ok) { console.error(result.error); process.exit(1); }
             process.exit(0);
