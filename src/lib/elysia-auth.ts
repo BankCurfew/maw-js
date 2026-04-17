@@ -11,13 +11,14 @@ import { loadConfig, D } from "../config";
 import { verify, isLoopback } from "./federation-auth";
 import type { Server } from "bun";
 
-const WINDOW_SEC = D.hmacWindowSeconds;
+const WINDOW_MS = D.hmacWindowSeconds * 1000;
 
 /** Protected paths — write/control operations, require auth from non-loopback clients */
 const PROTECTED = new Set([
   "/send",
   "/talk",
   "/transport/send",
+  "/federation/send",
   "/triggers/fire",
   "/worktrees/cleanup",
 ]);
@@ -102,12 +103,13 @@ export const federationAuth = new Elysia({ name: "federation-auth" })
 
     // Verify against the full /api/... path (same as what peers sign)
     if (!verify(token, request.method, url.pathname, timestamp, sig)) {
-      const now = Math.floor(Date.now() / 1000);
+      const now = Date.now();
       const delta = Math.abs(now - timestamp);
-      const reason = delta > WINDOW_SEC ? "timestamp_expired" : "signature_invalid";
-      console.warn(`[auth] rejected ${request.method} ${url.pathname} from ${clientIp}: ${reason} (delta=${delta}s)`);
+      const reason = delta > WINDOW_MS ? "timestamp_expired" : "signature_invalid";
+      const deltaSec = Math.floor(delta / 1000);
+      console.warn(`[auth] rejected ${request.method} ${url.pathname} from ${clientIp}: ${reason} (delta=${deltaSec}s)`);
       set.status = 401;
-      return { error: "federation auth failed", reason, ...(delta > WINDOW_SEC ? { delta } : {}) };
+      return { error: "federation auth failed", reason, ...(delta > WINDOW_MS ? { delta: deltaSec } : {}) };
     }
 
     // Auth passed — continue to handler

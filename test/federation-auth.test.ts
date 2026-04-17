@@ -49,37 +49,37 @@ describe("sign and verify", () => {
   });
 
   test("verify accepts a valid signature", () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const sig = sign(token, "POST", "/api/send", now);
     expect(verify(token, "POST", "/api/send", now, sig)).toBe(true);
   });
 
   test("verify rejects wrong method", () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const sig = sign(token, "POST", "/api/send", now);
     expect(verify(token, "GET", "/api/send", now, sig)).toBe(false);
   });
 
   test("verify rejects wrong path", () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const sig = sign(token, "POST", "/api/send", now);
     expect(verify(token, "POST", "/api/other", now, sig)).toBe(false);
   });
 
   test("verify rejects wrong token", () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const sig = sign(token, "POST", "/api/send", now);
     expect(verify("different-token-also-long-enough", "POST", "/api/send", now, sig)).toBe(false);
   });
 
   test("verify rejects expired timestamp (>5 min)", () => {
-    const old = Math.floor(Date.now() / 1000) - 400; // 6+ minutes ago
+    const old = Date.now() - 400_000; // 6+ minutes ago
     const sig = sign(token, "POST", "/api/send", old);
     expect(verify(token, "POST", "/api/send", old, sig)).toBe(false);
   });
 
   test("verify accepts timestamp within window", () => {
-    const recent = Math.floor(Date.now() / 1000) - 60; // 1 minute ago
+    const recent = Date.now() - 60_000; // 1 minute ago
     const sig = sign(token, "POST", "/api/send", recent);
     expect(verify(token, "POST", "/api/send", recent, sig)).toBe(true);
   });

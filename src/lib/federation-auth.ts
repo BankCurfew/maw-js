@@ -13,7 +13,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import type { MiddlewareHandler } from "hono";
 import { loadConfig } from "../config";
 
-const WINDOW_SEC = 300; // ±5 minutes
+const WINDOW_MS = 300_000; // ±5 minutes (milliseconds — must match v1)
 
 /** Protected paths — write/control operations, require auth from non-loopback clients */
 const PROTECTED = new Set([
@@ -42,9 +42,9 @@ export function sign(token: string, method: string, path: string, timestamp: num
 }
 
 export function verify(token: string, method: string, path: string, timestamp: number, signature: string): boolean {
-  const now = Math.floor(Date.now() / 1000);
+  const now = Date.now();
   const delta = Math.abs(now - timestamp);
-  if (delta > WINDOW_SEC) return false;
+  if (delta > WINDOW_MS) return false;
 
   const expected = sign(token, method, path, timestamp);
   if (expected.length !== signature.length) return false;
@@ -69,7 +69,7 @@ export function isLoopback(address: string | undefined): boolean {
 
 /** Produce auth headers for outgoing federation HTTP calls */
 export function signHeaders(token: string, method: string, path: string): Record<string, string> {
-  const ts = Math.floor(Date.now() / 1000);
+  const ts = Date.now();
   return {
     "X-Maw-Timestamp": String(ts),
     "X-Maw-Signature": sign(token, method, path, ts),
@@ -130,11 +130,12 @@ export function federationAuth(): MiddlewareHandler {
     }
 
     if (!verify(token, c.req.method, path, timestamp, sig)) {
-      const now = Math.floor(Date.now() / 1000);
+      const now = Date.now();
       const delta = Math.abs(now - timestamp);
-      const reason = delta > WINDOW_SEC ? "timestamp_expired" : "signature_invalid";
-      console.warn(`[auth] rejected ${c.req.method} ${path} from ${clientIp}: ${reason} (delta=${delta}s)`);
-      return c.json({ error: "federation auth failed", reason, ...(delta > WINDOW_SEC ? { delta } : {}) }, 401);
+      const reason = delta > WINDOW_MS ? "timestamp_expired" : "signature_invalid";
+      const deltaSec = Math.floor(delta / 1000);
+      console.warn(`[auth] rejected ${c.req.method} ${path} from ${clientIp}: ${reason} (delta=${deltaSec}s)`);
+      return c.json({ error: "federation auth failed", reason, ...(delta > WINDOW_MS ? { delta: deltaSec } : {}) }, 401);
     }
 
     return next();
