@@ -249,6 +249,8 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
       }}
       onMouseDown={(e) => {
         if (pinned && e.target !== inputRef.current) {
+          // Don't block text selection in terminal area
+          if (termRef.current?.contains(e.target as Node)) return;
           e.preventDefault();
           inputRef.current?.focus();
         }
