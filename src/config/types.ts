@@ -97,6 +97,8 @@ export interface MawConfig {
   pluginSources?: string[];
   /** Plugin names to disable (skip during scanning and execution) */
   disabledPlugins?: string[];
+  /** Shell commands to run before waking fleet (e.g. pm2 resurrect, cloudflared) */
+  preWake?: string[];
 }
 
 /** Typed defaults for intervals, timeouts, limits (#172) */

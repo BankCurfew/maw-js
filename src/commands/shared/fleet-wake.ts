@@ -1,4 +1,5 @@
 import { readdirSync } from "fs";
+import { execSync } from "child_process";
 import { tmux, FLEET_DIR, saveTabOrder, restoreTabOrder } from "../../sdk";
 import { loadConfig, buildCommand, getEnvVars } from "../../config";
 import { ensureSessionRunning } from "./wake";
@@ -25,6 +26,22 @@ export async function cmdSleep() {
 }
 
 export async function cmdWakeAll(opts: { kill?: boolean; all?: boolean; resume?: boolean } = {}) {
+  // Run pre-wake infra commands (pm2, cloudflared, etc.) from config
+  const preWake = loadConfig().preWake;
+  if (preWake && preWake.length > 0) {
+    console.log(`\n  \x1b[36mRunning pre-wake commands...\x1b[0m\n`);
+    for (const cmd of preWake) {
+      process.stdout.write(`  \x1b[90m$\x1b[0m ${cmd}...`);
+      try {
+        execSync(cmd, { stdio: "pipe", timeout: 30_000 });
+        console.log(` \x1b[32m✓\x1b[0m`);
+      } catch (e: any) {
+        console.log(` \x1b[31m✗\x1b[0m ${e.message?.split("\n")[0] || "failed"}`);
+      }
+    }
+    console.log();
+  }
+
   const allSessions = loadFleet();
   // Skip dormant (20+) unless --all flag is passed
   const sessions = opts.all
