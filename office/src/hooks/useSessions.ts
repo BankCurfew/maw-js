@@ -120,7 +120,7 @@ export function useSessions() {
 
           // Don't decay busy→ready if agent is in a tool call (PreToolUse without PostToolUse)
           const lastEvt = feedLastEvent.current[agent.target];
-          const inToolCall = lastEvt === "PreToolUse" || lastEvt === "SubagentStart" || lastEvt === "PostToolUse" || lastEvt === "UserPromptSubmit";
+          const inToolCall = lastEvt === "PreToolUse" || lastEvt === "SubagentStart";
           if (existing.status === "busy" && lastSeen > 0 && now - lastSeen > BUSY_TIMEOUT && !inToolCall) {
             if (next === prev) next = { ...prev };
             next[agent.target] = { ...existing, status: "ready" };
