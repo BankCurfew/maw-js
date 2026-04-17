@@ -28,7 +28,9 @@ function resolveCapture(query: string, sessions: { name: string }[]): string {
 }
 
 sessionsApi.get("/sessions", async ({ query }) => {
-  const local = await listSessions();
+  const raw = await listSessions();
+  // Filter out non-oracle sessions (0-overview pages, shell, synthetic entries)
+  const local = raw.filter(s => /^\d{2}-/.test(s.name));
   if (query.local === "true") {
     return local.map(s => ({ ...s, source: "local" }));
   }

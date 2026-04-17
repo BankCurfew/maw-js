@@ -5,6 +5,18 @@ import { homedir } from "os";
 
 const INBOX_DIR = join(homedir(), ".maw", "inbox");
 
+const MIME_MAP: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", svg: "image/svg+xml", pdf: "application/pdf",
+  txt: "text/plain", md: "text/markdown", json: "application/json",
+  csv: "text/csv", html: "text/html", css: "text/css",
+  js: "application/javascript", ts: "text/typescript",
+};
+function guessMime(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  return MIME_MAP[ext] || "application/octet-stream";
+}
+
 /** Ensure inbox dir exists on first use */
 function ensureInbox() {
   if (!existsSync(INBOX_DIR)) mkdirSync(INBOX_DIR, { recursive: true });
@@ -13,30 +25,45 @@ function ensureInbox() {
 
 export const uploadApi = new Elysia();
 
-/** POST /upload — accept a file via multipart form data */
-uploadApi.post("/upload", async ({ body, set }) => {
+/** Shared upload handler — used by both /attach and /upload */
+async function handleUpload(body: any, set: any) {
   try {
     const file = (body as any)?.file;
     if (!file || !(file instanceof Blob)) {
       set.status = 400;
-      return { error: "missing 'file' field — use: curl -F 'file=@image.png' /api/upload" };
+      return { error: "missing 'file' field — use: curl -F 'file=@image.png' /api/attach" };
     }
     const dir = ensureInbox();
-    const name = (file as any).name || `upload-${Date.now()}`;
-    const safeName = basename(name).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const rawName = (file as any).name || `upload-${Date.now()}`;
+    const safeName = basename(rawName).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const dest = join(dir, safeName);
 
-    // Write file to disk
     const buf = Buffer.from(await file.arrayBuffer());
     await Bun.write(dest, buf);
 
-    const kb = (buf.length / 1024).toFixed(1);
-    return { ok: true, path: dest, name: safeName, size: `${kb}KB` };
+    const mimeType = (file as any).type || guessMime(safeName);
+
+    return {
+      ok: true,
+      id,
+      name: safeName,
+      size: buf.length,
+      mimeType,
+      url: `/api/files/${encodeURIComponent(safeName)}`,
+      localUrl: dest,
+    };
   } catch (e: any) {
     set.status = 500;
     return { error: e.message };
   }
-});
+}
+
+/** POST /attach — primary endpoint (frontend uses this) */
+uploadApi.post("/attach", ({ body, set }) => handleUpload(body, set));
+
+/** POST /upload — legacy alias */
+uploadApi.post("/upload", ({ body, set }) => handleUpload(body, set));
 
 /** GET /files — list inbox files */
 uploadApi.get("/files", () => {
