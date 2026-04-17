@@ -28,7 +28,7 @@ describe("maw bud --org — #421 propagation", () => {
     const budRepoSlug = `${org}/${budRepoName}`;
     const budRepoPath = join(tmp, org, budRepoName);
 
-    mock.module("../src/sdk", () => ({
+    mock.module("../../src/sdk", () => ({
       hostExec: async (cmd: string) => {
         ghExec.push(cmd);
         if (cmd.startsWith("gh repo view")) throw new Error("not found");
@@ -38,7 +38,7 @@ describe("maw bud --org — #421 propagation", () => {
       },
     }));
 
-    const { ensureBudRepo } = await import("../src/commands/plugins/bud/bud-repo");
+    const { ensureBudRepo } = await import("../../src/commands/plugins/bud/bud-repo");
     await ensureBudRepo(budRepoSlug, budRepoPath, budRepoName, org);
 
     const gh = ghExec.find(c => c.startsWith("gh repo create")) ?? "";
@@ -50,7 +50,7 @@ describe("maw bud --org — #421 propagation", () => {
   });
 
   test("ensureBudRepo FAILS LOUDLY when ghq lands the clone outside the expected path (stale-org reroute)", async () => {
-    mock.module("../src/sdk", () => ({
+    mock.module("../../src/sdk", () => ({
       hostExec: async (cmd: string) => {
         if (cmd.startsWith("gh repo view")) throw new Error("not found");
         return ""; // ghq "succeeds" but we never create the expected dir
@@ -60,7 +60,7 @@ describe("maw bud --org — #421 propagation", () => {
     const tmp = mkdtempSync(join(tmpdir(), "bud-421-"));
     const budRepoPath = join(tmp, "laris-co", "god-line-oracle"); // never created
 
-    const { ensureBudRepo } = await import("../src/commands/plugins/bud/bud-repo");
+    const { ensureBudRepo } = await import("../../src/commands/plugins/bud/bud-repo");
     await expect(
       ensureBudRepo("laris-co/god-line-oracle", budRepoPath, "god-line-oracle", "laris-co"),
     ).rejects.toThrow(/clone landed outside expected path/);
