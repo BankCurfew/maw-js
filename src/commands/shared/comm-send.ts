@@ -126,7 +126,7 @@ export async function cmdSend(query: string, message: string, force = false) {
 
   // Remote peer → federation HTTP
   if (result?.type === "peer") {
-    const res = await curlFetch(`${result.peerUrl}/api/send`, {
+    const res = await curlFetch(`${result.peerUrl}/api/federation/send`, {
       method: "POST",
       body: JSON.stringify({ target: result.target, text: message }),
     });
@@ -146,7 +146,7 @@ export async function cmdSend(query: string, message: string, force = false) {
   // Fallback: async peer discovery (network scan — slow path)
   const peerUrl = await findPeerForTarget(query, sessions);
   if (peerUrl) {
-    const res = await curlFetch(`${peerUrl}/api/send`, {
+    const res = await curlFetch(`${peerUrl}/api/federation/send`, {
       method: "POST",
       body: JSON.stringify({ target: query, text: message }),
     });
