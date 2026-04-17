@@ -3,14 +3,11 @@ import type { AgentState } from "../lib/types";
 
 interface BottomStatsProps {
   agents: AgentState[];
-  sessions?: { name: string; source?: string }[];
 }
 
-export const BottomStats = memo(function BottomStats({ agents, sessions }: BottomStatsProps) {
-  // Filter to local agents only when sessions data is available
-  const localAgents = sessions
-    ? agents.filter(a => !sessions.some(s => s.source && s.source !== "local" && s.name === a.session))
-    : agents;
+export const BottomStats = memo(function BottomStats({ agents }: BottomStatsProps) {
+  // Filter to local agents only — agents carry source from session
+  const localAgents = agents.filter(a => !a.source || a.source === "local");
   const busyCount = localAgents.filter((a) => a.status === "busy").length;
   const readyCount = localAgents.filter((a) => a.status === "ready").length;
   const idleCount = localAgents.filter((a) => a.status === "idle").length;

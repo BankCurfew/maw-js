@@ -8,6 +8,7 @@ export interface Window {
 export interface Session {
   name: string;
   windows: Window[];
+  source?: string; // "local" or peer URL — from getAggregatedSessions
 }
 
 export type PaneStatus = "ready" | "busy" | "idle";
@@ -22,6 +23,7 @@ export interface AgentState {
   status: PaneStatus;
   project?: string;
   contextPercent?: number;
+  source?: string; // "local" or peer URL — from parent session
 }
 
 export interface AgentEvent {

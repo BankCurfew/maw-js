@@ -242,13 +242,13 @@ export function App() {
     window.location.hash = currentView;
   }, []);
 
-  // Local-only agent count — exclude federation peer sessions
-  const localAgentCount = agents.filter(a => !sessions.some(s => (s as any).source && (s as any).source !== "local" && s.name === a.session)).length;
+  // Local-only counts — agents now carry source from session
+  const localAgents = agents.filter(a => !a.source || a.source === "local");
 
   // Shared props for Layout
   const layoutProps = {
     connected,
-    agentCount: localAgentCount,
+    agentCount: localAgents.length,
     sessionCount: sessions.filter(s => !(s as any).source || (s as any).source === "local").length,
     askCount,
     muted,

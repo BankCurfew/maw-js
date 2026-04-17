@@ -305,6 +305,7 @@ export function useSessions() {
           status: cd?.status || "idle",
           project,
           contextPercent: cd?.contextPercent,
+          source: s.source || "local",
         };
       })
     );

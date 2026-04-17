@@ -101,17 +101,20 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
           context: "",
           node,
           peerUrl,
+          source: "synthetic",
         } as AgentState);
       }
     }
-    // Dedup: prefer local (no node) over remote/synthetic (has node) for same base name (#420)
+    // Dedup: prefer local (source=local) over remote/synthetic for same base name (#420)
     // Prevents circular federation roundtrip duplicates (HQ→Echo→HQ "echo" appears twice)
     const merged = [...agents, ...synthetic];
     const deduped = new Map<string, AgentState>();
     for (const a of merged) {
       const key = a.name.toLowerCase().replace(/-oracle$/, "");
       const existing = deduped.get(key);
-      if (!existing || (!a.node && existing.node)) {
+      const aIsLocal = !a.source || a.source === "local";
+      const existingIsLocal = existing && (!existing.source || existing.source === "local");
+      if (!existing || (aIsLocal && !existingIsLocal)) {
         deduped.set(key, a);
       }
     }
@@ -119,7 +122,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
   }, [agents, configData]);
 
   // Power level counts local agents only — federation agents are informational
-  const localAgents = allAgents.filter((a) => !a.node);
+  const localAgents = allAgents.filter((a) => !a.source || a.source === "local");
   const busyCount = localAgents.filter((a) => a.status === "busy").length;
   const localCount = localAgents.length;
 
@@ -224,8 +227,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     // Any unassigned agents go to an "Unassigned" room
     // Filter out infrastructure sessions and remote peer agents (remote → Federation room only)
     const INFRA_PATTERNS = /^(page-\d+|claude|shell|overview|0-overview|\d+\.\d+\.\d+)$/i;
-    const remoteSessionNames = new Set(sessions.filter(s => (s as any).source && (s as any).source !== "local").map(s => s.name));
-    const unassigned = allAgents.filter((a) => !assigned.has(a.target) && !INFRA_PATTERNS.test(a.name) && !INFRA_PATTERNS.test(a.session) && !INFRA_PATTERNS.test(a.window || "") && !remoteSessionNames.has(a.session));
+    const unassigned = allAgents.filter((a) => !assigned.has(a.target) && !INFRA_PATTERNS.test(a.name) && !INFRA_PATTERNS.test(a.session) && !INFRA_PATTERNS.test(a.window || "") && (!a.source || a.source === "local"));
     if (unassigned.length > 0) {
       result.push({
         id: "unassigned",
