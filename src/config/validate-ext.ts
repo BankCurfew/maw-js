@@ -72,20 +72,27 @@ function validateExtFields(
     }
   }
 
-  // namedPeers: array of {name, url} objects
+  // namedPeers: array of {name, url} objects OR object form {name: url}
   if ("namedPeers" in raw) {
+    let peers: unknown[] | null = null;
     if (Array.isArray(raw.namedPeers)) {
-      const valid = raw.namedPeers.filter((p: any) => {
+      peers = raw.namedPeers;
+    } else if (raw.namedPeers && typeof raw.namedPeers === "object" && !Array.isArray(raw.namedPeers)) {
+      // Convert object form { "echo": "https://..." } → [{ name: "echo", url: "https://..." }]
+      peers = Object.entries(raw.namedPeers as Record<string, unknown>).map(([name, url]) => ({ name, url }));
+    }
+    if (peers) {
+      const valid = peers.filter((p: any) => {
         if (!p || typeof p !== "object") return false;
         if (typeof p.name !== "string" || typeof p.url !== "string") return false;
         try { new URL(p.url); return true; } catch { return false; }
       });
-      if (valid.length !== raw.namedPeers.length) {
-        warn("namedPeers", `has ${raw.namedPeers.length - valid.length} invalid entries`);
+      if (valid.length !== peers.length) {
+        warn("namedPeers", `has ${peers.length - valid.length} invalid entries`);
       }
       result.namedPeers = valid;
     } else {
-      warn("namedPeers", "must be an array of {name, url}");
+      warn("namedPeers", "must be an array of {name, url} or object {name: url}");
     }
   }
 

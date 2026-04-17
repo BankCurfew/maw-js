@@ -43,6 +43,22 @@ federationApi.post("/federation/send", async ({ body, set}) => {
   if (!resolved) { set.status = 404; return { error: `target not found: ${target}` }; }
 
   await sendKeys(resolved, text);
+
+  // Audit trail: log inbound federation message to feed.log + maw-log.jsonl
+  try {
+    const config = loadConfig();
+    const node = config.node ?? "local";
+    const ts = new Date().toISOString();
+    const sender = senderName || "unknown";
+    // feed.log entry
+    const feedLine = `${ts.replace("T", " ").slice(0, 19)} | ${node} | ${require("os").hostname()} | Notification | federation | maw-hey » received from ${sender}: ${text.slice(0, 100)}\n`;
+    const { appendFileSync } = await import("fs");
+    appendFileSync(join(homedir(), ".oracle", "feed.log"), feedLine);
+    // maw-log.jsonl entry
+    const logEntry = JSON.stringify({ ts, from: sender, to: target, msg: text.slice(0, 500), host: node, route: "federation/send" }) + "\n";
+    appendFileSync(join(homedir(), ".oracle", "maw-log.jsonl"), logEntry);
+  } catch { /* non-fatal — don't block message delivery */ }
+
   return { ok: true, target: resolved, text };
 });
 

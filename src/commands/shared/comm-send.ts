@@ -128,7 +128,7 @@ export async function cmdSend(query: string, message: string, force = false) {
   if (result?.type === "peer") {
     const res = await curlFetch(`${result.peerUrl}/api/federation/send`, {
       method: "POST",
-      body: JSON.stringify({ target: result.target, text: message }),
+      body: JSON.stringify({ target: result.target, text: message, from: `${resolveMyName(config)}@${config.node || "local"}` }),
     });
     if (res.ok && res.data?.ok) {
       const agentName = resolveMyName(config);
@@ -148,7 +148,7 @@ export async function cmdSend(query: string, message: string, force = false) {
   if (peerUrl) {
     const res = await curlFetch(`${peerUrl}/api/federation/send`, {
       method: "POST",
-      body: JSON.stringify({ target: query, text: message }),
+      body: JSON.stringify({ target: query, text: message, from: `${resolveMyName(config)}@${config.node || "local"}` }),
     });
     if (res.ok && res.data?.ok) {
       console.log(`\x1b[32mdelivered\x1b[0m ⚡ ${peerUrl} → ${res.data.target || query}: ${message}`);
