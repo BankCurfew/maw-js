@@ -85,6 +85,13 @@ uploadApi.get("/files/:name", ({ params, set }) => {
   return Bun.file(filePath);
 });
 
+/** GET /attachments/:name — v1 compat alias for file serving */
+uploadApi.get("/attachments/:name", ({ params, set }) => {
+  const filePath = join(ensureInbox(), basename(params.name));
+  if (!existsSync(filePath)) { set.status = 404; return { error: "not found" }; }
+  return Bun.file(filePath);
+});
+
 /** DELETE /files/:name — remove a file (moves to /tmp) */
 uploadApi.delete("/files/:name", ({ params, set }) => {
   const filePath = join(ensureInbox(), basename(params.name));
