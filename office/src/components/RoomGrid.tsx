@@ -55,12 +55,19 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     if (!agent.source || agent.source === "local") return false;
     const node = (agent as any).node as string | undefined;
     if (!node) return false;
-    // Match peer by node or name field (API returns "node", type has "name")
-    const peer = peers.find(p => p.node === node || p.name === node);
-    // Only gray out if we have peer data AND it's confirmed unreachable
-    // No peer data = don't assume offline (health check may not have run yet)
-    return peer ? !peer.reachable : false;
-  }, [peers]);
+    // Match by node/name field first
+    let peer = peers.find(p => p.node === node || p.name === node);
+    // Fallback: match via URL from config's namedPeers
+    if (!peer && configData?.namedPeers) {
+      const entries = Array.isArray(configData.namedPeers)
+        ? configData.namedPeers
+        : Object.entries(configData.namedPeers).map(([name, url]) => ({ name, url: url as string }));
+      const cfg = entries.find(p => p.name === node);
+      if (cfg) peer = peers.find(p => p.url === cfg.url);
+    }
+    // Peer found: use reachable flag. No peer in status = timed out = offline
+    return peer ? !peer.reachable : true;
+  }, [peers, configData]);
 
   useEffect(() => {
     // Load cached rooms first for instant render
