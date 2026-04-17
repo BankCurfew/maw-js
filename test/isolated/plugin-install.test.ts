@@ -158,9 +158,19 @@ describe("cmdPluginInstall — dir source", () => {
     expect(stdout).toContain("try: maw hello");
   });
 
-  test("replaces an existing install", async () => {
+  test("replaces an existing install (--force required, #403)", async () => {
     await capture(() => cmdPluginInstall([buildFixture({ version: "0.1.0" }).dir]));
-    await capture(() => cmdPluginInstall([buildFixture({ version: "0.2.0" }).dir]));
+
+    // #403 — without --force, second install MUST refuse (no silent overwrite).
+    const refused = await capture(() => cmdPluginInstall([buildFixture({ version: "0.2.0" }).dir]));
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stderr).toContain("refusing to overwrite plugin 'hello'");
+    // Original 0.1.0 still installed
+    const before = JSON.parse(readFileSync(join(pluginsDir(), "hello", "plugin.json"), "utf8"));
+    expect(before.version).toBe("0.1.0");
+
+    // With --force, replacement succeeds
+    await capture(() => cmdPluginInstall([buildFixture({ version: "0.2.0" }).dir, "--force"]));
     const m = JSON.parse(readFileSync(join(pluginsDir(), "hello", "plugin.json"), "utf8"));
     expect(m.version).toBe("0.2.0");
   });

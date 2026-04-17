@@ -3,7 +3,7 @@
  * installFromDir / installFromTarball / installFromUrl
  */
 
-import { existsSync, mkdtempSync, rmSync, statSync, symlinkSync } from "fs";
+import { existsSync, lstatSync, mkdtempSync, readlinkSync, rmSync, statSync, symlinkSync } from "fs";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
 import { basename, join } from "path";
@@ -12,7 +12,29 @@ import { installRoot, removeExisting } from "./install-source-detect";
 import { extractTarball, downloadTarball, verifyArtifactHash } from "./install-extraction";
 import { readManifest, printInstallSuccess } from "./install-manifest-helpers";
 
-export async function installFromDir(srcDir: string): Promise<void> {
+/**
+ * #403 Bug — refuse to overwrite an existing install unless --force.
+ * Surfaces what would be replaced (existing target + incoming source) so
+ * the operator can decide. Multi-agent fleets break silently when one
+ * agent overwrites a working symlink another depends on; this gate
+ * prevents that without giving up the override path.
+ */
+function refuseExistingInstall(dest: string, incoming: string, name: string): never {
+  let existingNote = dest;
+  try {
+    const st = lstatSync(dest);
+    if (st.isSymbolicLink()) existingNote = `${dest} → ${readlinkSync(dest)}`;
+    else if (st.isDirectory()) existingNote = `${dest} (real directory)`;
+  } catch { /* fall through with bare path */ }
+  throw new Error(
+    `refusing to overwrite plugin '${name}':\n` +
+    `  existing: ${existingNote}\n` +
+    `  incoming: ${incoming}\n` +
+    `  pass --force to overwrite (will replace the existing install silently)`
+  );
+}
+
+export async function installFromDir(srcDir: string, opts: { force?: boolean } = {}): Promise<void> {
   if (!existsSync(srcDir)) {
     throw new Error(`source not found: ${srcDir}`);
   }
@@ -29,6 +51,12 @@ export async function installFromDir(srcDir: string): Promise<void> {
   }
 
   const dest = join(installRoot(), manifest!.name);
+
+  // #403 — refuse silent overwrite unless --force.
+  if (existsSync(dest) && !opts.force) {
+    refuseExistingInstall(dest, srcDir, manifest!.name);
+  }
+
   removeExisting(dest);
   symlinkSync(srcDir, dest, "dir");
 
@@ -37,7 +65,7 @@ export async function installFromDir(srcDir: string): Promise<void> {
 
 export async function installFromTarball(
   tarballPath: string,
-  opts: { source: string },
+  opts: { source: string; force?: boolean },
 ): Promise<void> {
   if (!existsSync(tarballPath)) {
     throw new Error(`tarball not found: ${tarballPath}`);
@@ -72,6 +100,13 @@ export async function installFromTarball(
 
   // All gates passed — move staging into the install root.
   const dest = join(installRoot(), manifest!.name);
+
+  // #403 — refuse silent overwrite unless --force.
+  if (existsSync(dest) && !opts.force) {
+    rmSync(staging, { recursive: true, force: true });
+    refuseExistingInstall(dest, opts.source, manifest!.name);
+  }
+
   removeExisting(dest);
   // Use rename when the staging dir is on the same fs; otherwise copy-then-rm.
   try {
@@ -92,13 +127,13 @@ export async function installFromTarball(
   );
 }
 
-export async function installFromUrl(url: string): Promise<void> {
+export async function installFromUrl(url: string, opts: { force?: boolean } = {}): Promise<void> {
   const dl = await downloadTarball(url);
   if (!dl.ok) {
     throw new Error(dl.error);
   }
   try {
-    await installFromTarball(dl.path, { source: url });
+    await installFromTarball(dl.path, { source: url, force: opts.force });
   } finally {
     // Clean up the downloaded temp file.
     try {

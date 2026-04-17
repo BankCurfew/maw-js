@@ -43,22 +43,23 @@ export { installFromDir, installFromTarball, installFromUrl } from "./install-ha
  * similar). Matches the convention of sibling init-impl.ts / build-impl.ts.
  */
 export async function cmdPluginInstall(args: string[]): Promise<void> {
-  const flags = parseFlags(args, { "--link": Boolean }, 0);
+  const flags = parseFlags(args, { "--link": Boolean, "--force": Boolean }, 0);
   const src = flags._[0];
 
   if (!src || src === "--help" || src === "-h") {
-    throw new Error("usage: maw plugin install <dir | .tgz | URL> [--link]");
+    throw new Error("usage: maw plugin install <dir | .tgz | URL> [--link] [--force]");
   }
 
   ensureInstallRoot();
   const mode = detectMode(src);
+  const force = !!flags["--force"];
 
   // Dispatch on source type.
   if (mode.kind === "dir") {
-    await installFromDir(mode.src);
+    await installFromDir(mode.src, { force });
   } else if (mode.kind === "tarball") {
-    await installFromTarball(mode.src, { source: `./${basename(mode.src)}` });
+    await installFromTarball(mode.src, { source: `./${basename(mode.src)}`, force });
   } else {
-    await installFromUrl(mode.src);
+    await installFromUrl(mode.src, { force });
   }
 }
