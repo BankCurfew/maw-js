@@ -108,6 +108,15 @@ export async function startServer(port = +(process.env.MAW_PORT || loadConfig().
   // Hook workflow triggers into feed events
   setupTriggerListener(feedListeners);
 
+  // Start loop engine (cron-scheduled oracle tasks)
+  try {
+    const { loopEngine } = require("../api/loops");
+    loopEngine.start((msg: string) => engine.broadcast(msg));
+    console.log("[loops] engine started");
+  } catch (err) {
+    console.error("[loops] failed to start:", err);
+  }
+
   // Plugin system — built-in + user plugins
   try {
     const { PluginSystem, loadPlugins, reloadUserPlugins, watchUserPlugins } = require("../plugins/index");

@@ -42,16 +42,29 @@ function matchAgent(agent: AgentState, memberName: string): boolean {
 
 export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent, send }: RoomGridProps) {
   const [roomsData, setRoomsData] = useState<RoomsData | null>(null);
+  const [roomsLoaded, setRoomsLoaded] = useState(false);
   const [configData, setConfigData] = useState<{ node?: string; agents?: Record<string, string>; namedPeers?: Record<string, string> } | null>(null);
   const { isNarrow } = useDevice();
 
   useEffect(() => {
+    // Load cached rooms first for instant render
+    try {
+      const cached = localStorage.getItem("maw-rooms-cache");
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (data.rooms?.length > 0) setRoomsData(data);
+      }
+    } catch {}
     fetch("/api/rooms")
       .then((r) => r.json())
       .then((data) => {
-        if (data.rooms && data.rooms.length > 0) setRoomsData(data);
+        if (data.rooms && data.rooms.length > 0) {
+          setRoomsData(data);
+          try { localStorage.setItem("maw-rooms-cache", JSON.stringify(data)); } catch {}
+        }
+        setRoomsLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => setRoomsLoaded(true));
     fetch("/api/config")
       .then((r) => r.json())
       .then((data) => setConfigData(data))
@@ -138,6 +151,8 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
   // Group agents by room config
   const rooms = useMemo(() => {
     if (!roomsData || roomsData.rooms.length === 0) {
+      // Wait for rooms fetch before falling back to raw sessions
+      if (!roomsLoaded) return [];
       // Fallback: group by tmux session (original behavior)
       const map = new Map<string, AgentState[]>();
       for (const a of allAgents) {
@@ -196,7 +211,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     }
 
     return result;
-  }, [roomsData, sessions, allAgents]);
+  }, [roomsData, roomsLoaded, sessions, allAgents]);
 
   return (
     <div className="max-w-[1200px] mx-auto px-3 sm:px-4 md:px-6 pt-4 sm:pt-6 md:pt-8 pb-8 sm:pb-12">

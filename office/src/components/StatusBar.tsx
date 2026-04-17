@@ -18,11 +18,8 @@ interface StatusBarProps {
 const NAV_ITEMS = [
   { href: "#fleet", label: "Fleet", id: "fleet" },
   { href: "#office", label: "Office", id: "office" },
-  { href: "#orbital", label: "Orbital", id: "orbital" },
-  { href: "#board", label: "Board", id: "board" },
   { href: "#loops", label: "Loops", id: "loops" },
   { href: "#jarvis", label: "Jarvis", id: "jarvis" },
-  { href: "#fame", label: "Fame", id: "fame" },
   { href: "#heartbeats", label: "HB", id: "heartbeats" },
   { href: "#terminal", label: "Terminal", id: "terminal" },
   { href: "#chat", label: "Chat", id: "chat" },

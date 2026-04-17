@@ -339,21 +339,7 @@ export function App() {
     );
   }
 
-  if (route === "orbital") {
-    return (
-      <Layout activeView="orbital" {...layoutProps}>
-        <OrbitalView sessions={sessions} agents={agents} connected={connected} onSelectAgent={onSelectAgent} />
-      </Layout>
-    );
-  }
-
-  if (route === "board") {
-    return (
-      <Layout activeView="board" {...layoutProps}>
-        <BoardView connected={connected} send={send} agents={agents} />
-      </Layout>
-    );
-  }
+  // Orbital and Board views removed — cut from v2 nav (BoB decision 2026-04-17)
 
   if (route === "chat") {
     return (
@@ -387,7 +373,8 @@ export function App() {
     );
   }
 
-  if (route === "fame") {
+  // Fame view removed — cut from v2 nav (BoB decision 2026-04-17)
+  if (false && route === "fame") {
     return (
       <Layout activeView="fame" {...layoutProps}>
         <HallOfFameView />
