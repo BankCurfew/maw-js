@@ -20,6 +20,7 @@ const PROTECTED = new Set([
   "/api/send",
   "/api/talk",
   "/api/transport/send",
+  "/api/federation/send",
   "/api/triggers/fire",
   "/api/worktrees/cleanup",
 ]);

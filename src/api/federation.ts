@@ -14,6 +14,38 @@ export { hostedAgents };
 
 export const federationApi = new Elysia();
 
+/**
+ * POST /api/federation/send — receive a send from a remote peer.
+ * Unlike /api/send which uses resolveTarget (cross-node routing), this
+ * endpoint resolves the target locally via findWindow then sends directly.
+ * This is the endpoint v1 peers expect, and what v2 peers call during
+ * federation relay. HMAC-protected via federation-auth middleware.
+ */
+federationApi.post("/federation/send", async ({ body, set}) => {
+  const { target, text, from: senderName } = body as { target: string; text: string; from?: string };
+  if (!target || !text) { set.status = 400; return { error: "target and text required" }; }
+
+  const { listSessions, sendKeys } = await import("../core/transport/ssh");
+  const { findWindow } = await import("../core/runtime/find-window");
+  const { resolveFleetSession } = await import("../commands/shared/wake");
+
+  const sessions = await listSessions();
+  // Resolve oracle name → tmux target (e.g. "bob" → "01-bob:0")
+  let resolved = findWindow(sessions, target);
+  if (!resolved) {
+    // Try fleet config resolution (e.g. "bob" → session "01-bob")
+    const fleetSession = resolveFleetSession(target) || resolveFleetSession(target.replace(/-oracle$/, ""));
+    if (fleetSession) {
+      const filtered = sessions.filter(s => s.name === fleetSession);
+      resolved = findWindow(filtered, target) || (filtered.length ? `${fleetSession}:0` : null);
+    }
+  }
+  if (!resolved) { set.status = 404; return { error: `target not found: ${target}` }; }
+
+  await sendKeys(resolved, text);
+  return { ok: true, target: resolved, text };
+});
+
 // PUBLIC FEDERATION API (v1) — no auth. Shape is load-bearing for lens
 // clients; `peers[].node` and `peers[].agents` are optional (commit 9a0546d+).
 // See docs/federation.md before changing fields.

@@ -96,9 +96,9 @@ sessionsApi.post("/send", async ({ body, set}) => {
       return { ok: true, target: resolved.target, text, source: "local", lastLine };
     }
 
-    // Remote peer → federation HTTP
+    // Remote peer → federation HTTP (use /api/federation/send for v1+v2 compat)
     if (resolved?.type === "peer") {
-      const res = await curlFetch(`${resolved.peerUrl}/api/send`, {
+      const res = await curlFetch(`${resolved.peerUrl}/api/federation/send`, {
         method: "POST",
         body: JSON.stringify({ target: resolved.target, text }),
         timeout: 10000,

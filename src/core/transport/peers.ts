@@ -205,7 +205,7 @@ export async function findPeerForTarget(target: string, localSessions: Session[]
  */
 export async function sendKeysToPeer(peerUrl: string, target: string, text: string): Promise<boolean> {
   try {
-    const res = await curlFetch(`${peerUrl}/api/send`, {
+    const res = await curlFetch(`${peerUrl}/api/federation/send`, {
       method: "POST",
       body: JSON.stringify({ target, text }),
       timeout: cfgTimeout("http"),
