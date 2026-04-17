@@ -104,7 +104,18 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
         } as AgentState);
       }
     }
-    return [...agents, ...synthetic];
+    // Dedup: prefer local (no node) over remote/synthetic (has node) for same base name (#420)
+    // Prevents circular federation roundtrip duplicates (HQ→Echo→HQ "echo" appears twice)
+    const merged = [...agents, ...synthetic];
+    const deduped = new Map<string, AgentState>();
+    for (const a of merged) {
+      const key = a.name.toLowerCase().replace(/-oracle$/, "");
+      const existing = deduped.get(key);
+      if (!existing || (!a.node && existing.node)) {
+        deduped.set(key, a);
+      }
+    }
+    return [...deduped.values()];
   }, [agents, configData]);
 
   const busyCount = allAgents.filter((a) => a.status === "busy").length;
