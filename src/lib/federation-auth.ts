@@ -97,10 +97,24 @@ export function federationAuth(): MiddlewareHandler {
     // Not a protected path → pass (reads remain public so the Office UI works)
     if (!isProtected(path, c.req.method)) return next();
 
-    // Loopback (local CLI / browser on same machine) still trusted.
-    // SECURITY: only the TCP source address is authoritative (see #191).
+    // Check if loopback (local CLI / browser on same machine).
+    // SECURITY: only the TCP source address is authoritative — X-Forwarded-For
+    // and X-Real-IP are attacker-controlled headers and MUST NOT influence
+    // auth decisions. See #191 for the empirically-verified RCE vector
+    // (Test 3 on mba: POST /api/send to a non-loopback interface with
+    // `X-Forwarded-For: 127.0.0.1` bypassed HMAC entirely).
+    //
+    // Path B (local reverse-proxy sidecar forwarding to 127.0.0.1) is now
+    // operator-gated by `config.trustLoopback`:
+    //   - true (default, legacy): loopback still bypasses auth — load-bearing
+    //     for local CLI until it self-signs. Operators behind reverse proxies
+    //     MUST flip this to false or they're exposed to Path B.
+    //   - false: loopback requests must sign like any other peer. This is
+    //     the fully-hardened posture; requires CLI self-signing (follow-up).
     const clientIp = (c.env as any)?.server?.requestIP?.(c.req.raw)?.address;
-    if (isLoopback(clientIp)) return next();
+    const trustLoopback = config.trustLoopback !== false; // default true
+
+    if (trustLoopback && isLoopback(clientIp)) return next();
 
     // Peers-require-token invariant (Bloom federation-audit iteration 2):
     // If peers are configured, the server binds to 0.0.0.0 (see core/server.ts)
