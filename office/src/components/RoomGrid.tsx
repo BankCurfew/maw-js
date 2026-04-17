@@ -55,7 +55,7 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     if (!agent.source || agent.source === "local") return false;
     const node = (agent as any).node as string | undefined;
     if (!node) return false;
-    const peer = peers.find(p => p.name === node);
+    const peer = peers.find(p => p.name === node || (p as any).node === node);
     return peer ? !peer.reachable : true;
   }, [peers]);
 
