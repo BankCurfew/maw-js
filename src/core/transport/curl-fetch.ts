@@ -64,7 +64,10 @@ async function nativeFetch(url: string, opts: typeof curlFetch extends (u: strin
     });
     clearTimeout(timeout);
     const text = await res.text();
-    const data = text ? JSON.parse(text) : null;
+    let data: any = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch { data = text; }
+    }
     return { ok: res.ok, status: res.status, data };
   } catch (err) {
     // Surface the failure (#385 site 1). Previously this catch swallowed
@@ -94,7 +97,11 @@ async function curlSpawn(url: string, opts: typeof curlFetch extends (u: string,
     const text = await new Response(proc.stdout).text();
     const code = await proc.exited;
     if (code !== 0) return { ok: false, status: code, data: null };
-    return { ok: true, status: 200, data: text ? JSON.parse(text) : null };
+    let data: any = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch { data = text; }
+    }
+    return { ok: true, status: 200, data };
   } catch {
     return { ok: false, status: 0, data: null };
   }
