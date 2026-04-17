@@ -11,7 +11,7 @@
       "lead": "BoB-Oracle",
       "members": [
         "BoB-Oracle",
-        "DocCon-Oracle"
+        "Doc-Oracle"
       ],
       "accent": "#6C3BF5",
       "floor": "#1a1428",
@@ -125,7 +125,8 @@
       "description": "Cross-Node Agents",
       "lead": "Echo-Oracle",
       "members": [
-        "Echo-Oracle"
+        "Echo-Oracle",
+        "Nobi-Oracle"
       ],
       "accent": "#22D3EE",
       "floor": "#1a2228",
