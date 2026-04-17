@@ -23,7 +23,6 @@ const NAV_ITEMS = [
   { href: "#heartbeats", label: "HB", id: "heartbeats" },
   { href: "#terminal", label: "Terminal", id: "terminal" },
   { href: "#chat", label: "Chat", id: "chat" },
-  { href: "#federation", label: "Fed", id: "federation" },
   { href: "#config", label: "Config", id: "config" },
 ];
 
