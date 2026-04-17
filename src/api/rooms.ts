@@ -5,9 +5,24 @@
 
 import { Elysia } from "elysia";
 import { readFileSync, writeFileSync, existsSync } from "fs";
+import { execSync } from "child_process";
 import { join } from "path";
 
 const roomsPath = join(import.meta.dir, "../..", "rooms.json");
+
+// Safeguard: rooms.json is critical for dashboard layout — auto-restore if missing
+if (!existsSync(roomsPath)) {
+  console.warn("[rooms] ⚠️  rooms.json MISSING — dashboard will show raw tmux sessions!");
+  try {
+    const restored = execSync("git show HEAD:rooms.json", { cwd: join(import.meta.dir, "../.."), encoding: "utf-8" });
+    if (restored && restored.trim().startsWith("{")) {
+      writeFileSync(roomsPath, restored, "utf-8");
+      console.log("[rooms] ✓ Auto-restored rooms.json from git HEAD");
+    }
+  } catch {
+    console.error("[rooms] ✗ Could not auto-restore rooms.json from git — dashboard layout broken");
+  }
+}
 
 export const roomsApi = new Elysia();
 
