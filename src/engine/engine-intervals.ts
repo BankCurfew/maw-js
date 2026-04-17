@@ -44,7 +44,7 @@ export function startIntervals(
   }, cfgInterval("capture"));
 
   state.sessionInterval = setInterval(async () => {
-    state.sessionCache.sessions = await broadcastSessions(state.clients, state.sessionCache, state.peerSessionsCache);
+    state.sessionCache.sessions = await broadcastSessions(state.clients, state.sessionCache);
   }, cfgInterval("sessions"));
 
   state.peerInterval = setInterval(async () => {
@@ -117,9 +117,7 @@ export async function sendInitialSessions(
   if (state.peerSessionsCache.length === 0 && getPeers().length > 0) {
     state.peerSessionsCache = await getAggregatedSessions([]).catch(() => []);
   }
-  const all = state.peerSessionsCache.length > 0
-    ? [...local, ...state.peerSessionsCache]
-    : local;
-  ws.send(JSON.stringify({ type: "sessions", sessions: all }));
+  // Only send local sessions to dashboard WS — peer info comes from config.agents (synthetic entries)
+  ws.send(JSON.stringify({ type: "sessions", sessions: local }));
   sendBusyAgents(ws, local);
 }
