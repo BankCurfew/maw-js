@@ -23,6 +23,7 @@ import { pulseApi } from "./pulse";
 import { pluginsRouter } from "./plugins";
 import { uploadApi } from "./upload";
 import { roomsApi } from "./rooms";
+import { bobApi } from "./bob";
 import { discoverPackages, invokePlugin } from "../plugin/registry";
 import { federationAuth } from "../lib/elysia-auth";
 
@@ -59,7 +60,8 @@ export const api = new Elysia({ prefix: "/api" })
   .use(pulseApi)
   .use(pluginsRouter)
   .use(uploadApi)
-  .use(roomsApi);
+  .use(roomsApi)
+  .use(bobApi);
 
 // Auto-mount plugin API surfaces from manifests
 const bundledPlugins = discoverPackages();

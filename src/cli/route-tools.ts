@@ -109,6 +109,11 @@ export async function routeTools(cmd: string, args: string[]): Promise<boolean> 
     }
     return true;
   }
+  if (cmd === "sovereign") {
+    const { cmdSovereign } = await import("../commands/sovereign");
+    await cmdSovereign(args.slice(1));
+    return true;
+  }
   if (cmd === "serve") {
     // Reject unknown flags BEFORE starting the server — alpha.72 gate already
     // caught --help (hasHelpFlag). Anything else starting with "-" is a typo.
