@@ -118,7 +118,10 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
     return [...deduped.values()];
   }, [agents, configData]);
 
-  const busyCount = allAgents.filter((a) => a.status === "busy").length;
+  // Power level counts local agents only — federation agents are informational
+  const localAgents = allAgents.filter((a) => !a.node);
+  const busyCount = localAgents.filter((a) => a.status === "busy").length;
+  const localCount = localAgents.length;
 
   // --- Preview state (same pattern as FleetGrid) ---
   type PreviewInfo = { agent: AgentState; accent: string; label: string; pos: { x: number; y: number } };
@@ -248,13 +251,13 @@ export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{
-              width: `${Math.min(100, (busyCount / Math.max(1, allAgents.length)) * 100)}%`,
+              width: `${Math.min(100, (busyCount / Math.max(1, localCount)) * 100)}%`,
               background: busyCount > 5 ? "#ef5350" : busyCount > 2 ? "#ffa726" : "#4caf50",
             }}
           />
         </div>
         <span className="text-[10px] text-white/50 tabular-nums">
-          {busyCount}/{allAgents.length}
+          {busyCount}/{localCount}
         </span>
       </div>
 
