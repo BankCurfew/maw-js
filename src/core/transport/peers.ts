@@ -104,16 +104,22 @@ async function fetchPeerSessions(url: string): Promise<Session[]> {
  * Merge local sessions with peer sessions, tagging each with source
  */
 export async function getAggregatedSessions(localSessions: Session[]): Promise<(Session & { source?: string })[]> {
+  // Always tag local sessions with source — consistent regardless of peer config
+  const local: (Session & { source?: string })[] = localSessions.map(s => ({ ...s, source: "local" }));
+
   const peers = getPeers();
   if (peers.length === 0) {
-    return localSessions;
+    return local;
   }
 
-  const local: (Session & { source?: string })[] = localSessions.map(s => ({ ...s, source: "local" }));
+  // Helper: dedup peers against local — local sessions always win (#420)
+  const localNames = new Set(local.map(s => s.name));
+  const dedupAgainstLocal = (peerList: (Session & { source?: string })[]) =>
+    peerList.filter(s => !localNames.has(s.name));
 
   // Return cached peer sessions if fresh (#145)
   if (aggregatedCache && Date.now() - aggregatedCache.ts < CACHE_TTL) {
-    return [...local, ...aggregatedCache.peers];
+    return [...local, ...dedupAgainstLocal(aggregatedCache.peers)];
   }
 
   // Fetch sessions from all peers in parallel
@@ -132,7 +138,7 @@ export async function getAggregatedSessions(localSessions: Session[]): Promise<(
   });
   aggregatedCache = { peers: peerSessions, ts: Date.now() };
 
-  return [...local, ...peerSessions];
+  return [...local, ...dedupAgainstLocal(peerSessions)];
 }
 
 /**
