@@ -89,6 +89,10 @@ export interface MawConfig {
   hmacWindowSeconds?: number;
   /** PIN for web UI */
   pin?: string;
+  /** Custom header text for Office UI (e.g. "BoB Office") */
+  officeTitle?: string;
+  /** Inline room config for Office UI (legacy — prefer rooms.json) */
+  rooms?: Record<string, unknown>;
   /** Plugin source URLs — auto-installed on bootstrap (nuke → first run) */
   pluginSources?: string[];
   /** Plugin names to disable (skip during scanning and execution) */

@@ -123,6 +123,16 @@ function validateExtFields(
   if ("nanoclaw" in raw && raw.nanoclaw && typeof raw.nanoclaw === "object") {
     result.nanoclaw = raw.nanoclaw;
   }
+
+  // officeTitle: string (custom header text for Office UI, e.g. "BoB Office")
+  if ("officeTitle" in raw && typeof raw.officeTitle === "string") {
+    result.officeTitle = raw.officeTitle;
+  }
+
+  // rooms: pass through (inline room config for Office UI — legacy from BankCurfew v1)
+  if ("rooms" in raw && raw.rooms && typeof raw.rooms === "object") {
+    result.rooms = raw.rooms;
+  }
 }
 
 /** Validate config values, warn on invalid fields, return sanitized config */
