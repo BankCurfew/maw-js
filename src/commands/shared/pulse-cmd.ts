@@ -1,12 +1,26 @@
 import { hostExec } from "../../sdk";
+import { loadConfig } from "../../config";
 import { cmdWake } from "./wake";
 import {
   timePeriod, todayDate, todayLabel,
   findOrCreateDailyThread, addTaskToPeriodComment,
 } from "./pulse-thread";
 
+/** Resolve the pulse repo for task tracking.
+ *  Priority: config.pulseRepo > BankCurfew/{Oracle}-Oracle > laris-co/pulse-oracle */
+function resolvePulseRepo(oracle?: string): string {
+  const config = loadConfig();
+  if ((config as any).pulseRepo) return (config as any).pulseRepo;
+  // Map oracle name to BankCurfew repo if it exists
+  if (oracle) {
+    const name = oracle.charAt(0).toUpperCase() + oracle.slice(1).toLowerCase();
+    return `BankCurfew/${name}-Oracle`;
+  }
+  return "BankCurfew/Dev-Oracle"; // fallback to Dev-Oracle
+}
+
 export async function cmdPulseAdd(title: string, opts: { oracle?: string; priority?: string; wt?: string }) {
-  const repo = "laris-co/pulse-oracle";
+  const repo = resolvePulseRepo(opts.oracle);
   const projectNum = 6; // Master Board
   const period = timePeriod();
 
@@ -32,7 +46,8 @@ export async function cmdPulseAdd(title: string, opts: { oracle?: string; priori
 
   // 3. Add to Master Board
   try {
-    await hostExec(`gh project item-add ${projectNum} --owner laris-co --url '${issueUrl}'`);
+    const owner = repo.split("/")[0];
+    await hostExec(`gh project item-add ${projectNum} --owner ${owner} --url '${issueUrl}'`);
     console.log(`\x1b[32m+\x1b[0m added to Master Board (#${projectNum})`);
   } catch (e) {
     console.log(`\x1b[33mwarn:\x1b[0m could not add to project board: ${e}`);
@@ -53,7 +68,7 @@ export async function cmdPulseAdd(title: string, opts: { oracle?: string; priori
 }
 
 export async function cmdPulseLs(opts: { sync?: boolean }) {
-  const repo = "laris-co/pulse-oracle";
+  const repo = resolvePulseRepo();
 
   // Fetch all open issues
   const issuesJson = (await hostExec(

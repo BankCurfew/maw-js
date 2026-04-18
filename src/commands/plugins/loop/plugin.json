@@ -1,0 +1,14 @@
+{
+  "name": "loop",
+  "version": "1.0.0",
+  "entry": "./index.ts",
+  "sdk": "^1.0.0",
+  "description": "Manage recurring scheduled loops (add, list, trigger, remove, toggle).",
+  "author": "Dev-Oracle",
+  "cli": {
+    "command": "loop",
+    "aliases": ["loops"],
+    "help": "maw loop — list loops | maw loop add '{json}' | maw loop trigger <id> | maw loop rm <id> | maw loop toggle <id> [on|off]"
+  },
+  "weight": 10
+}
