@@ -34,9 +34,16 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
         const data = JSON.parse(e.data);
         if (data.type === "capture") {
           const out = outputRef.current;
-          const atBottom = out ? out.scrollHeight - out.scrollTop - out.clientHeight < 200 : true;
-          setCaptureHtml(ansiToHtml(data.content || "(empty)"));
-          if (atBottom) requestAnimationFrame(() => out?.scrollTo(0, out.scrollHeight));
+          if (out) {
+            const sel = window.getSelection();
+            const hasSelection = sel && sel.toString().length > 0 && out.contains(sel.anchorNode);
+            if (hasSelection) return; // preserve user's text selection
+            const atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 200;
+            setCaptureHtml(ansiToHtml(data.content || "(empty)"));
+            if (atBottom) requestAnimationFrame(() => out.scrollTo(0, out.scrollHeight));
+          } else {
+            setCaptureHtml(ansiToHtml(data.content || "(empty)"));
+          }
         }
       } catch {}
     };
@@ -232,8 +239,8 @@ export const TerminalView = memo(function TerminalView({ sessions, agents, conne
         {/* Output */}
         <div
           ref={outputRef}
-          className="flex-1 overflow-y-auto px-2 sm:px-3 py-2 font-mono text-[11px] sm:text-[13px] leading-[1.35]"
-          style={{ background: "#0a0a0f", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", color: "#aaa", overscrollBehavior: "contain", touchAction: "pan-y" }}
+          className="flex-1 overflow-y-auto px-2 sm:px-3 py-2 font-mono text-[11px] sm:text-[13px] leading-[1.35] select-text"
+          style={{ background: "#0a0a0f", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", color: "#aaa", overscrollBehavior: "contain", touchAction: "pan-y", userSelect: "text", cursor: "text" }}
         >
           {captureHtml ? (
             <div dangerouslySetInnerHTML={{ __html: linkifyHtml(captureHtml) }} />

@@ -207,9 +207,15 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
 
   // Auto-scroll to bottom — smooth when pinned, instant on hover
   const userScrolledRef = useRef(false);
+  // Update terminal content via ref — avoids dangerouslySetInnerHTML re-render
+  // which destroys text selection on every poll cycle.
   useEffect(() => {
     const el = termRef.current;
     if (!el) return;
+    const sel = window.getSelection();
+    const hasSelection = sel && sel.toString().length > 0 && el.contains(sel.anchorNode);
+    if (hasSelection) return; // preserve user's text selection
+    el.innerHTML = linkifyHtml(ansiToHtml(processCapture(content)));
     // If user scrolled up in pinned mode, don't force scroll
     if (pinned && userScrolledRef.current) return;
     if (pinned) {
@@ -521,8 +527,8 @@ export const HoverPreviewCard = memo(function HoverPreviewCard({
       <div className="relative flex-1" style={{ background: "#08080c" }}>
         <div
           ref={termRef}
-          className="absolute inset-0 px-3 py-2 overflow-y-auto overflow-x-hidden font-mono text-[10px] leading-[1.4] text-[#cdd6f4] whitespace-pre-wrap break-all"
-          dangerouslySetInnerHTML={{ __html: linkifyHtml(ansiToHtml(processCapture(content))) }}
+          className="absolute inset-0 px-3 py-2 overflow-y-auto overflow-x-hidden font-mono text-[10px] leading-[1.4] text-[#cdd6f4] whitespace-pre-wrap break-all select-text"
+          style={{ touchAction: "pan-y", overscrollBehavior: "contain", userSelect: "text", cursor: "text" }}
         />
         {pinned && send && (
           <div className="absolute bottom-3 right-3 flex flex-col gap-1 z-10">

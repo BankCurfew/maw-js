@@ -132,8 +132,12 @@ export const OracleSheet = memo(function OracleSheet({
           termHtmlRef.current = html;
           const el = termRef.current;
           if (el) {
-            el.innerHTML = html;
-            requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+            const sel = window.getSelection();
+            const hasSelection = sel && sel.toString().length > 0 && el.contains(sel.anchorNode);
+            if (!hasSelection) {
+              el.innerHTML = html;
+              requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+            }
           }
         }
       } catch {}
@@ -254,8 +258,8 @@ export const OracleSheet = memo(function OracleSheet({
           </div>
           <div
             ref={termRef}
-            className="flex-1 overflow-y-auto px-2 py-1 font-mono text-[9px] leading-[1.3] text-[#cdd6f4]"
-            style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", overscrollBehavior: "contain", touchAction: "pan-y" }}
+            className="flex-1 overflow-y-auto px-2 py-1 font-mono text-[9px] leading-[1.3] text-[#cdd6f4] select-text"
+            style={{ wordBreak: "break-word", whiteSpace: "pre-wrap", overscrollBehavior: "contain", touchAction: "pan-y", userSelect: "text", cursor: "text" }}
           />
         </div>
 
