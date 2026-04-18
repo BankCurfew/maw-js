@@ -151,7 +151,7 @@ export async function cmdTalkTo(target: string, message: string, force = false) 
   // Check if agent is running
   if (!force) {
     const cmd = await getPaneCommand(tmuxTarget);
-    const isAgent = /claude|codex|node/i.test(cmd);
+    const isAgent = /claude|codex|node|^\d+\.\d+\.\d+$/i.test(cmd);
     if (!isAgent) {
       if (threadResult) {
         console.log(`\x1b[32m✓\x1b[0m thread #${threadResult.thread_id} updated`);

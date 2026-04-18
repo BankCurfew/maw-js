@@ -32,7 +32,7 @@ export async function cmdList() {
     for (const w of s.windows) {
       const target = `${s.name}:${w.index}`;
       const info = infos[target] || { command: "", cwd: "" };
-      const isAgent = /claude|codex|node/i.test(info.command);
+      const isAgent = /claude|codex|node|^\d+\.\d+\.\d+$/i.test(info.command);
       const cwdBroken = info.cwd.includes("(deleted)") || info.cwd.includes("(dead)");
 
       let dot: string;

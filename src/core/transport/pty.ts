@@ -94,11 +94,16 @@ async function attach(ws: MawWS, target: string, cols: number, rows: number) {
     return;
   }
 
-  // Spawn PTY via script(1) — attach to our grouped session (not the original)
+  // Spawn PTY — attach to our grouped session (not the original)
+  // Linux: script -qfc (GNU coreutils)
+  // macOS: script -q /dev/null (BSD) with expect(1) for PTY allocation
   let args: string[];
   if (isLocalHost()) {
     const cmd = `stty rows ${r} cols ${c} 2>/dev/null; TERM=xterm-256color ${tmuxCmd()} attach-session -t '${ptySessionName}'`;
-    args = ["script", "-qfc", cmd, "/dev/null"];
+    const isMac = process.platform === "darwin";
+    args = isMac
+      ? ["expect", "-c", `spawn -noecho ${cmd.replace(/"/g, '\\"')}; interact`]
+      : ["script", "-qfc", cmd, "/dev/null"];
   } else {
     const host = process.env.MAW_HOST || loadConfig().host || "local";
     args = ["ssh", "-tt", host, `TERM=xterm-256color ${tmuxCmd()} attach-session -t '${ptySessionName}'`];

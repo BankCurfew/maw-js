@@ -34,7 +34,7 @@ const send: Handler = async (ws, data, engine) => {
   if (!data.force) {
     try {
       const cmd = await getPaneCommand(data.target);
-      if (!/claude|codex|node/i.test(cmd)) {
+      if (!/claude|codex|node|^\d+\.\d+\.\d+$/i.test(cmd)) {
         ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${data.target} (running: ${cmd})` }));
         return;
       }

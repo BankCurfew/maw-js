@@ -78,7 +78,7 @@ export async function sendBusyAgents(ws: MawWS, sessions: SessionInfo[]) {
   const allTargets = sessions.flatMap(s => s.windows.map(w => `${s.name}:${w.index}`));
   const cmds = await tmux.getPaneCommands(allTargets);
   const busy = allTargets
-    .filter(t => /claude|codex|node/i.test(cmds[t] || ""))
+    .filter(t => /claude|codex|node|^\d+\.\d+\.\d+$/i.test(cmds[t] || ""))
     .map(t => {
       const [session] = t.split(":");
       const s = sessions.find(x => x.name === session);
