@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from "fs";
 import { basename, dirname, join } from "path";
+import { homedir } from "os";
 
 // ─────────────────────────────────────────────────────────────
 // maw setup hooks — auto-generate .claude/settings.json
@@ -248,6 +249,57 @@ function mergeHookSchemas(a: HookSchema, b: HookSchema): HookSchema {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Statusline setup — auto-install on new nodes
+// ─────────────────────────────────────────────────────────────
+
+/** Install statusline-command.sh + add statusLine config to global settings. */
+export function setupStatusline(): { installed: boolean; configured: boolean } {
+  const home = homedir();
+  const claudeDir = join(home, ".claude");
+  const destScript = join(claudeDir, "statusline-command.sh");
+  const globalSettings = join(claudeDir, "settings.json");
+
+  // Find the bundled script relative to this module
+  // At runtime (built): dist/ → config/ is ../config/
+  // At dev (source): src/commands/ → config/ is ../../config/
+  const candidates = [
+    join(import.meta.dir, "..", "config", "statusline-command.sh"),
+    join(import.meta.dir, "..", "..", "config", "statusline-command.sh"),
+  ];
+  const srcScript = candidates.find(p => existsSync(p));
+
+  let installed = false;
+  let configured = false;
+
+  // Copy script if missing or outdated
+  if (srcScript && !existsSync(destScript)) {
+    if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+    copyFileSync(srcScript, destScript);
+    try { require("fs").chmodSync(destScript, 0o755); } catch {}
+    installed = true;
+  }
+
+  // Add statusLine config to global settings.json if not present
+  if (existsSync(destScript)) {
+    let settings: Record<string, any> = {};
+    if (existsSync(globalSettings)) {
+      try { settings = JSON.parse(readFileSync(globalSettings, "utf-8")); } catch { settings = {}; }
+    }
+    if (!settings.statusLine) {
+      settings.statusLine = {
+        type: "command",
+        command: destScript,
+      };
+      if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+      writeFileSync(globalSettings, JSON.stringify(settings, null, 2) + "\n");
+      configured = true;
+    }
+  }
+
+  return { installed, configured };
+}
+
+// ─────────────────────────────────────────────────────────────
 // CLI entry: `maw setup hooks [path] [--oracle NAME] [--force] [--dry-run]`
 // ─────────────────────────────────────────────────────────────
 export async function cmdSetupHooks(argv: string[]): Promise<void> {
@@ -263,6 +315,7 @@ export async function cmdSetupHooks(argv: string[]): Promise<void> {
   targetDir = targetDir || process.cwd();
 
   const r = setupHooks(targetDir, opts);
+  const sl = setupStatusline();
   const dim = "\x1b[2m", reset = "\x1b[0m", green = "\x1b[32m", yellow = "\x1b[33m", cyan = "\x1b[36m";
 
   console.log("");
@@ -286,5 +339,9 @@ export async function cmdSetupHooks(argv: string[]): Promise<void> {
       console.log(`  ${dim}dry-run${reset} — no changes written`);
       break;
   }
+  // Statusline results
+  if (sl.installed) console.log(`  ${green}✓ installed${reset} statusline-command.sh → ~/.claude/`);
+  if (sl.configured) console.log(`  ${green}✓ configured${reset} statusLine in ~/.claude/settings.json`);
+  if (!sl.installed && !sl.configured) console.log(`  ${dim}statusline${reset} — already configured`);
   console.log("");
 }
