@@ -40,7 +40,10 @@ function matchAgent(agent: AgentState, memberName: string): boolean {
   const m = memberName.toLowerCase();
   const aBase = a.replace(/-oracle$/, "");
   const mBase = m.replace(/-oracle$/, "");
-  return a === m || aBase === m || aBase === mBase || a === mBase || `${a}-oracle` === m;
+  if (a === m || aBase === m || aBase === mBase || a === mBase || `${a}-oracle` === m) return true;
+  // Fallback: match by tmux session prefix (e.g. "13-doc" → "doc" matches "Doc-Oracle")
+  const session = (agent.session || "").toLowerCase().replace(/^\d+-/, "");
+  return session === mBase || `${session}-oracle` === m;
 }
 
 export const RoomGrid = memo(function RoomGrid({ sessions, agents, onSelectAgent, send }: RoomGridProps) {
