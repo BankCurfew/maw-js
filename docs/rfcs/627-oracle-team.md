@@ -1,0 +1,121 @@
+# RFC #627 — oracle-team: persistent oracles as team members
+
+**Status:** draft · **Author:** rfc-team (for mawjs-oracle) · **Date:** 2026-04-19
+**Issue:** [Soul-Brews-Studio/maw-js#627](https://github.com/Soul-Brews-Studio/maw-js/issues/627)
+**Related:** #644 (consent phases), #623 (marketplace), #629 (peer identity), #642 (scoped routing)
+
+## 1. Problem statement
+
+`maw team spawn <team> <role>` creates ephemeral agents in tmux panes: a fresh Claude
+session, no ψ/ vault, no accumulated memory, identity dying with the pane. On 2026-04-19
+`mawjs` budded `mawjs-plugin-oracle`, handed it a research task via `maw hey`, received
+findings back, and watched the findings converge with independent parent research. That
+was a team member — persistent, named, memoried — but the team plugin has no way to
+*record* that relationship. `maw team invite` (shipped in #644 Phase 2) writes an
+`invitees[]` field to the manifest that nothing in the codebase ever reads. The team
+paradigm is bifurcated: ephemeral-agents work, oracle-members don't.
+
+## 2. Prior art in-repo
+
+- **`src/commands/plugins/team/team-invite.ts:78-105`** — `recordInvitee()` appends peer
+  entries to `manifest.invitees[]`; consent-gated via `MAW_CONSENT=1`. **Ghost write:**
+  `grep -r invitees src/` returns exactly one hit (the writer). No reader.
+- **`src/commands/plugins/team/team-lifecycle.ts:127-162`** — `cmdTeamCreate` writes the
+  manifest to `ψ/memory/mailbox/teams/<team>/manifest.json` plus a bridge stub at
+  `~/.claude/teams/<team>/config.json`. Manifest has `members: string[]`; invitees are a
+  parallel list currently unused.
+- **`src/commands/plugins/team/team-comms.ts:7-32`** — `cmdTeamSend` writes to tmux-inbox
+  if team is live, else to `ψ/memory/mailbox/<agent>/`. No branch for a remote peer
+  (`invitees[]`), no `maw hey` dispatch.
+- **`src/commands/plugins/team/team-lifecycle.ts:19-48`** — `mergeTeamKnowledge` copies
+  per-member inboxes + `*_findings.md` into each oracle's vault on `--shutdown --merge`.
+  Iterates `teammates` (local tmux members) only; invitees are skipped.
+- **`src/core/transport/peers.ts`**, **`src/core/routing.ts`** — `namedPeers` lookup and
+  message routing primitives. `maw team invite` already resolves peers through these.
+- **`~/.claude/skills/team-agents/SKILL.md`** — inter-session multi-oracle skill, prior
+  art for the "oracle as persistent member" shape (12.4K, predates plugin).
+- **`~/.claude/skills/work-with/SKILL.md`** — cross-oracle persistent collaboration skill
+  (36.9K). Auto-memory note `project_work_with_skill_shipped.md` confirms the pattern is
+  proven at the skill layer; the plugin layer is what's missing.
+
+## 3. Proposed shape
+
+**An oracle-team is a team manifest plus two kinds of members:**
+
+1. **Ephemeral members** (today's `members: string[]`) — tmux-pane agents, identity and
+   memory scoped to the team's life. Unchanged.
+2. **Oracle members** (today's `invitees[]`, repurposed) — named oracles with their own
+   ψ/ vault, reachable via `maw hey <node:oracle>`. Membership is durable across team
+   restarts; findings flow back via the oracle's own inbox, merged on shutdown.
+
+**Membership lifecycle.** Oracle members are added by `maw team invite <team> <oracle>`
+(already shipped, consent-gated). Removal is additive-only for v1: `maw team uninvite`
+is deferred — drop the whole team with `maw team shutdown --merge` to preserve knowledge.
+Ephemeral members continue to be added by `maw team spawn`.
+
+**Routing.** `maw team send <team> <name>` gains an invitees branch: if `<name>` matches
+`manifest.invitees[].name`, dispatch via `maw hey <peer.node:peer.name>` instead of the
+tmux inbox. Broadcast (`maw team hey <team> <msg>`) fans out to both kinds; oracle
+members receive the message in their own mailbox, reply via their own `maw hey` back to
+the team lead.
+
+**Federation.** Oracle members can live on any peer node in `namedPeers`. Same-node is
+the v1 target (validated path: mawjs → mawjs-plugin-oracle on 2026-04-19). Cross-node is
+enabled by the existing `maw hey node:agent` transport — no new wire format.
+
+**Identity.** Open — see §5 Q1. Working assumption: `peer.name` in `namedPeers` is
+treated as a stable enough ID for v1, same as `team-invite.ts:152` already does for the
+trust key. If rfc-identity (#629) lands with a stricter scheme, migrate at that time.
+
+**Container oracles.** Open — see §5 Q2. Working assumption: out of scope for v1;
+containers remain ephemeral members via `spawn`. Revisit once container-proto lands.
+
+## 4. First-PR cut (≤300 LOC target)
+
+**Goal: close the ghost-write loop.** Make `invitees[]` readable by one code path — the
+existing `cmdTeamSend`.
+
+Changes:
+
+1. **`team-comms.ts`** (+~40 LOC): before the live-team branch, check
+   `manifest.invitees[]`; if `<agent>` matches, build `<peer.node>:<peer.name>` and
+   invoke the `maw hey` plugin handler in-process. Fallback path unchanged.
+2. **`team-helpers.ts`** (+~15 LOC): tiny `loadManifest(teamName)` helper that reads the
+   ψ/ manifest (bridge stub is config-only, manifest has `invitees`). Used by
+   `team-comms` and `team-status`.
+3. **`team-status.ts`** (+~20 LOC): print an "Oracle members" section listing
+   `invitees[]` with `name`, `node`, `scope`, `invitedAt`. Visibility-only, no behavior.
+4. **Tests** (~80 LOC): unit-test the routing branch with a mocked `hey` dispatcher;
+   snapshot-test the status output.
+5. **Docs** (~30 LOC): update `docs/plugins/team.md` with the invite → send flow end-to-
+   end; add one-paragraph mention in `docs/federation.md`.
+
+**Non-goals for first PR:** broadcast (`maw team hey`), `--merge` for oracle members,
+`uninvite`, auto-bud of non-existing invitees, discovery/registry. Each is a follow-up
+RFC section or issue.
+
+**Ship criteria:** `maw team invite X Y && maw team send X Y "hello"` round-trips end-
+to-end between two local oracles; existing tmux-member tests still green.
+
+## 5. Open questions for Nat
+
+1. **Identity prereq.** Is stable peer identity (#629) a blocker, or is `namedPeers.name`
+   good enough for v1? `team-invite.ts` already ships under the looser assumption —
+   blessing this formally unblocks the first PR. (Ping sent to rfc-identity; will fold.)
+2. **Ephemeral/container boundary.** If container-proto lands container oracles, do they
+   appear as `invitees[]` (durable) or `members[]` (ephemeral)? Proposal: ephemeral
+   until they claim a persistent name — then promote via `invite`. (Ping sent to
+   container-proto; will fold.)
+3. **Broadcast semantics.** Should `maw team hey <team> <msg>` deliver to oracle members
+   via their personal `maw hey` inbox or a team-scoped inbox? Scoped is cleaner but
+   needs a new inbox path convention.
+4. **Multi-team membership.** Can one oracle belong to N teams? If yes, how does a
+   reply find its way back to the *correct* team's lead? Proposal: require reply to
+   carry `--team <name>`; punt on automatic threading.
+5. **Shutdown/merge for oracle members.** `mergeTeamKnowledge` is a no-op for invitees
+   today (they have their own vault). Should shutdown write a summary into each
+   oracle's mailbox ("team X ended, here's the roster + findings roll-up")? Low cost,
+   high audit value; candidate for PR #2.
+6. **Bud-on-invite.** Nat's sketch in #627 has `--member security-oracle` auto-budding
+   if absent. Proposal: explicit opt-in flag `--bud` on `invite`, defaults off — keeps
+   the low-risk first PR, avoids side-effects on a privileged command.
