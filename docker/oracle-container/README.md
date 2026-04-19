@@ -64,15 +64,16 @@ oracle-a http://oracle-a:3456     oracle-a  2026-04-19T…Z
 
 ```sh
 docker compose -f docker/oracle-container/compose.yml exec -u oracle oracle-a \
-  cat /home/oracle/.claude/identity.json
-# → {"schema": "0", "node": "oracle-a", "born": "…", "note": "…"}
+  cat /home/oracle/.maw/identity.json
+# → {"schema": "0-proto", "node": "oracle-a", "nickname": "oracle-a",
+#    "fingerprint": "stub-…", "born": "…", "note": "…"}
 
 docker compose -f docker/oracle-container/compose.yml down   # stops containers
 docker compose -f docker/oracle-container/compose.yml up -d  # brings them back
 
 docker compose -f docker/oracle-container/compose.yml exec -u oracle oracle-a \
-  cat /home/oracle/.claude/identity.json
-# → identical `node` and `born` — the identity survived the restart.
+  cat /home/oracle/.maw/identity.json
+# → identical node/nickname/fingerprint/born — identity survived the restart.
 ```
 
 ### 4. Run claude-code inside the container
@@ -98,18 +99,57 @@ full `up --build` isn't available in the environment.
 
 ## Identity model
 
-This prototype persists oracle identity as a **node name only**, stored at
-`/home/oracle/.claude/identity.json` inside the `oracle-a-claude` volume.
+Per rfc-identity feedback, identity persists at the **canonical maw path**
+`/home/oracle/.maw/identity.json` inside the `oracle-a-maw` volume — NOT
+under `.claude/` (that's for the claude-code CLI's own state). This makes
+the file `rsync`-portable to a host-side oracle without translation.
+
+File shape matches rfc-identity RFC §4 so Phase-1 keypair code can adopt
+it in place (schema bump to `"1"`, real fingerprint):
+
+```json
+{
+  "schema": "0-proto",
+  "node": "oracle-a",
+  "nickname": "oracle-a",
+  "fingerprint": "stub-<16-hex>",
+  "born": "2026-04-19T…Z",
+  "note": "prototype identity — Phase-1 keypair code will replace the stub…"
+}
+```
 
 Precedence on boot:
 
 1. `$ORACLE_NAME` env var (wins — lets the compose file pin the name)
-2. `node` field in `$CLAUDE_CONFIG_DIR/identity.json` (reused across restarts)
+2. `node` field in `$MAW_HOME/identity.json` (reused across restarts)
 3. Random `oracle-<6-char-stem>` (first-boot fallback)
 
-Full keypair-based identity (pubkey hash → node name, signed registrations)
-is out of scope for this prototype and is tracked under the rfc-identity
-RFC (#629). The current `identity.json` has a `note` field saying so.
+`nickname` (human display) and `fingerprint` (keypair-derived) are
+orthogonal — `ORACLE_NICKNAME` lets two containers share a stem on
+different hosts without collision. The stub fingerprint is deterministic
+per volume and prefixed `stub-` so audit tools can distinguish proto
+identities from Phase-1 ones.
+
+Full keypair-based identity (ed25519, signed registrations, revocation on
+rebuild) is out of scope for this prototype and is tracked under the
+rfc-identity RFC (#629).
+
+## RFC contract checklist
+
+Per **rfc-team** (#627), the minimum-viable team-member contract is:
+
+| # | MUST | Status |
+|---|------|--------|
+| 1 | Stable oracle ID across restarts | ✓ (identity.json on `oracle-a-maw` volume) |
+| 2 | GET /info returns that ID | ✓ (symmetric `maw serve 3456`) |
+| 3 | Register as peer on boot | ✓ (`maw peers add host --allow-unreachable`) |
+| 4 | Shows in `maw peers list` | ✓ (verified live, both directions) |
+| 5 | Responds to `maw hey <node:name>` | ✓ (inherited from `maw serve`) |
+| 6 | Writable inbox at `ψ/memory/mailbox/<self>/` | ✓ (`oracle-a-vault` volume, pre-created) |
+
+SHOULD-items deferred per rfc-team guidance: no liveness heartbeat (mailbox
+fallback is enough for v1 team model), no capability advertisement (teams
+discover via manifest, parked until registry RFC).
 
 ## What is NOT done
 

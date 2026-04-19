@@ -33,7 +33,7 @@ COPY . .
 RUN chmod +x src/cli.ts \
  && ln -sf /app/src/cli.ts /usr/local/bin/maw \
  && chown -R oracle:oracle /app \
- && mkdir -p /home/oracle/.claude /home/oracle/.maw \
+ && mkdir -p /home/oracle/.claude /home/oracle/.maw /home/oracle/vault/ψ/memory/mailbox \
  && chown -R oracle:oracle /home/oracle
 
 COPY docker/oracle-container/entrypoint.sh /entrypoint.sh
@@ -44,7 +44,9 @@ USER oracle
 ENV HOME=/home/oracle \
     MAW_HOME=/home/oracle/.maw \
     CLAUDE_CONFIG_DIR=/home/oracle/.claude \
+    MAILBOX_ROOT=/home/oracle/vault/ψ/memory/mailbox \
     ORACLE_NAME= \
+    ORACLE_NICKNAME= \
     HOST_MAW_URL=http://host-maw:3456 \
     HOST_MAW_ALIAS=host \
     IDLE_INTERVAL_SECONDS=60
