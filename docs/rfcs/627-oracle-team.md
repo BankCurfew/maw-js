@@ -1,6 +1,6 @@
 # RFC #627 — oracle-team: persistent oracles as team members
 
-**Status:** draft (rev1 — folded rfc-identity + container-proto) · **Author:** rfc-team (for mawjs-oracle) · **Date:** 2026-04-19
+**Status:** draft (rev2 — folded rfc-identity + container-proto + rfc-routing) · **Author:** rfc-team (for mawjs-oracle) · **Date:** 2026-04-19
 **Issue:** [Soul-Brews-Studio/maw-js#627](https://github.com/Soul-Brews-Studio/maw-js/issues/627)
 **Related:** #644 (consent phases), #623 (marketplace), #629 (peer identity), #642 (scoped routing)
 
@@ -53,11 +53,16 @@ paradigm is bifurcated: ephemeral-agents work, oracle-members don't.
 is deferred — drop the whole team with `maw team shutdown --merge` to preserve knowledge.
 Ephemeral members continue to be added by `maw team spawn`.
 
-**Routing.** `maw team send <team> <name>` gains an invitees branch: if `<name>` matches
-`manifest.invitees[].name`, dispatch via `maw hey <peer.node:peer.name>` instead of the
-tmux inbox. Broadcast (`maw team hey <team> <msg>`) fans out to both kinds; oracle
-members receive the message in their own mailbox, reply via their own `maw hey` back to
-the team lead.
+**Routing.** (folded from rfc-routing #642, 2026-04-19.) Team is a **first-class scope**
+(not per-pair trust): the manifest IS the scope record — one file, O(1) edit, O(1)
+revoke, one signature under #629 instead of N² pair-sigs. `maw team send <team> <name>`
+gains an invitees branch: if `<name>` matches `manifest.invitees[].name`, dispatch via
+the existing comm-send path addressed as `@<team>:<name>` per #642 §5 grammar. Broadcast
+(`maw team hey <team> <msg>`) fans out via `@<team>:*`; oracle members receive in their
+own mailbox, reply via their own `maw hey` back to the team lead. Path-alignment open
+with rfc-routing (see §5 Q7): manifest under `ψ/memory/mailbox/teams/<team>/` stays the
+source of truth; #642's scope reader points there rather than duplicating at
+`~/.maw/scopes/`.
 
 **Federation.** Oracle members can live on any peer node in `namedPeers`. Same-node is
 the v1 target (validated path: mawjs → mawjs-plugin-oracle on 2026-04-19). Cross-node is
@@ -128,3 +133,8 @@ to-end between two local oracles; existing tmux-member tests still green.
 6. **Bud-on-invite.** Nat's sketch in #627 has `--member security-oracle` auto-budding
    if absent. Proposal: explicit opt-in flag `--bud` on `invite`, defaults off — keeps
    the low-risk first PR, avoids side-effects on a privileged command.
+7. **Scope-record path alignment with #642.** rfc-routing's #642 proposes
+   `~/.maw/scopes/<team>.json` as the scope record; oracle-team's manifest already lives
+   at `ψ/memory/mailbox/teams/<team>/manifest.json` and is written by `team-invite`.
+   rfc-team's lean: single source of truth — #642 reader points at ψ/. Awaiting
+   rfc-routing's call.
