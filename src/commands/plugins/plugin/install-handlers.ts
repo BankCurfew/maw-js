@@ -201,9 +201,16 @@ export async function installFromTarball(
     throw new Error(selfHashResult.error);
   }
 
-  // Registry-pinned verification (#487 Option A). The expected hash comes from
-  // the operator-curated lockfile, not the tarball itself — this is what
-  // closes the MITM / CDN-swap threat.
+  // Registry-pinned verification (#487 Option A, #680 ask 2). The expected
+  // hash comes from the operator-curated lockfile, not the tarball itself —
+  // this is what closes the MITM / CDN-swap threat.
+  //
+  // Gate behavior (#680 ask 2):
+  //   • No entry for <name>  → proceed (writer agent, #680 ask 1, persists).
+  //   • Entry + sha matches  → proceed.
+  //   • Entry + sha differs  → refuse unless --force OR --pin.
+  //       --force: override, re-write lock to new sha.
+  //       --pin:   re-pin, same effect — semantically an explicit re-trust.
   let lock;
   try {
     lock = readLock();
@@ -213,12 +220,6 @@ export async function installFromTarball(
   }
   const pinned = lock.plugins[manifest!.name];
   if (!pinned) {
-    // #680 ask #1 — first install auto-initializes the lock entry (see
-    // recordInstall() below). No --pin required for TOFU: the self-hash
-    // check above already proved the tarball is internally consistent.
-    // --pin remains a no-op signal for now; kept as a flag for future
-    // "explicit trust handshake" UX that wants to distinguish first-pin
-    // from auto-pin in command output.
     void opts.pin;
   } else {
     if (pinned.version !== manifest!.version) {
@@ -229,11 +230,17 @@ export async function installFromTarball(
     }
     const pinnedResult = verifyArtifactHashAgainst(staging, manifest!, pinned.sha256);
     if (!pinnedResult.ok) {
-      rmSync(staging, { recursive: true, force: true });
-      throw new Error(
-        `plugin '${manifest!.name}' ${pinnedResult.error}\n` +
-        `  lockfile hash did not match — this is the real adversarial check (#487).`,
-      );
+      if (!opts.force && !opts.pin) {
+        rmSync(staging, { recursive: true, force: true });
+        const observed = manifest!.artifact?.sha256 ?? "(unknown)";
+        throw new Error(
+          `plugin '${manifest!.name}' sha256 mismatch — refusing to install.\n` +
+          `  plugins.lock: ${pinned.sha256}\n` +
+          `  tarball:      ${observed}\n` +
+          `  --force to override (updates lock), --pin to re-pin`,
+        );
+      }
+      // --force / --pin: operator re-trusted; recordInstall() below overwrites.
     }
   }
 
@@ -262,11 +269,8 @@ export async function installFromTarball(
     rmSync(staging, { recursive: true, force: true });
   }
 
-  // #680 ask #1 — persist lock entry on every successful tarball install.
-  // The manifest's artifact.sha256 has already been verified (self-hash +
-  // optional registry-pinned check above), so we can trust it here rather
-  // than re-hashing. --pin retains its semantic: explicit trust handshake
-  // for a first-time install; both paths land the same entry shape now.
+  // #680 — persist lock entry on every successful tarball install. TOFU on
+  // first install; overwrites on --force/--pin re-trust.
   recordInstall({
     name: manifest!.name,
     version: manifest!.version,
