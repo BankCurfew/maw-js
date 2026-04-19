@@ -1,7 +1,7 @@
 import { readdirSync } from "fs";
 import { execSync } from "child_process";
 import { tmux, FLEET_DIR, saveTabOrder, restoreTabOrder } from "../../sdk";
-import { loadConfig, buildCommand, getEnvVars } from "../../config";
+import { loadConfig, buildCommand, buildCommandInDir, getEnvVars } from "../../config";
 import { ensureSessionRunning } from "./wake";
 import { loadFleet } from "./fleet-load";
 import { respawnMissingWorktrees, resumeActiveItems } from "./fleet-resume";
@@ -87,7 +87,7 @@ export async function cmdWakeAll(opts: { kill?: boolean; all?: boolean; resume?:
 
     if (!sess.skip_command) {
       await new Promise(r => setTimeout(r, 300));
-      try { await tmux.sendText(`${sess.name}:${first.name}`, buildCommand(first.name)); } catch { /* ok */ }
+      try { await tmux.sendText(`${sess.name}:${first.name}`, buildCommandInDir(first.name, firstPath)); } catch { /* ok */ }
     }
     winCount++;
 
@@ -99,7 +99,7 @@ export async function cmdWakeAll(opts: { kill?: boolean; all?: boolean; resume?:
         await tmux.newWindow(sess.name, win.name, { cwd: winPath });
         if (!sess.skip_command) {
           await new Promise(r => setTimeout(r, 300));
-          await tmux.sendText(`${sess.name}:${win.name}`, buildCommand(win.name));
+          await tmux.sendText(`${sess.name}:${win.name}`, buildCommandInDir(win.name, winPath));
         }
         winCount++;
       } catch {
@@ -124,7 +124,13 @@ export async function cmdWakeAll(opts: { kill?: boolean; all?: boolean; resume?:
     let totalRetried = 0;
     for (const sess of sessions) {
       if (sess.skip_command) continue;
-      totalRetried += await ensureSessionRunning(sess.name);
+      // Build cwdMap so retries also cd into the correct repo
+      const cwdMap: Record<string, string> = {};
+      const ghqRoot = loadConfig().ghqRoot;
+      for (const win of sess.windows) {
+        cwdMap[win.name] = `${ghqRoot}/${win.repo}`;
+      }
+      totalRetried += await ensureSessionRunning(sess.name, undefined, cwdMap);
     }
     if (totalRetried > 0) {
       console.log(`  \x1b[33m${totalRetried} window(s) retried.\x1b[0m`);
