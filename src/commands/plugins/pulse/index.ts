@@ -27,6 +27,7 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       const flags = parseFlags(args.slice(1), {
         "--oracle": String,
         "--priority": String,
+        "--project": String,
         "--wt": String,
         "--worktree": "--wt",
       }, 0);
@@ -34,12 +35,13 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       const pulseOpts = {
         oracle: flags["--oracle"],
         priority: flags["--priority"],
+        project: flags["--project"],
         wt: flags["--wt"],
       };
       if (!title) {
         return {
           ok: false,
-          error: 'usage: maw pulse add "task title" --oracle <name> [--wt <repo>]',
+          error: 'usage: maw pulse add "task title" --oracle <name> [--project <id>] [--wt <repo>]',
         };
       }
       const { cmdPulseAdd } = await import("../../shared/pulse");

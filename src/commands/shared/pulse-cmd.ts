@@ -19,7 +19,25 @@ function resolvePulseRepo(oracle?: string): string {
   return "BankCurfew/Dev-Oracle"; // fallback to Dev-Oracle
 }
 
-export async function cmdPulseAdd(title: string, opts: { oracle?: string; priority?: string; wt?: string }) {
+const PROJECT_KEYWORDS: Record<string, string[]> = {
+  "ijourney": ["ijourney", "tts", "narration", "quiz", "scoring", "tier", "card"],
+  "seo": ["seo", "backlink", "crawl", "network"],
+  "daily-ops": ["briefing", "morning", "prescan", "crawl epos"],
+  "infra": ["deploy", "server", "oracle-env", "federation", "maw"],
+  "client": ["client", "presentation", "financial plan", "karn"],
+  "aia": ["aia", "epos", "follow-up", "policy", "insurance"],
+  "line-bot": ["line", "bot", "flex", "rich menu", "webhook"],
+};
+
+function detectProject(title: string): string | null {
+  const lower = title.toLowerCase();
+  for (const [project, keywords] of Object.entries(PROJECT_KEYWORDS)) {
+    if (keywords.some((kw) => lower.includes(kw))) return project;
+  }
+  return null;
+}
+
+export async function cmdPulseAdd(title: string, opts: { oracle?: string; priority?: string; project?: string; wt?: string }) {
   const repo = resolvePulseRepo(opts.oracle);
   const projectNum = 6; // Master Board
   const period = timePeriod();
@@ -27,11 +45,17 @@ export async function cmdPulseAdd(title: string, opts: { oracle?: string; priori
   // 0. Find or create daily thread
   const thread = await findOrCreateDailyThread(repo);
 
-  // 1. Create task issue
+  // 1. Resolve project label (explicit > auto-detect)
+  const project = opts.project || detectProject(title);
+
+  // 2. Create task issue
   const escaped = title.replace(/'/g, "'\\''");
   const labels: string[] = [];
   if (opts.oracle) labels.push(`oracle:${opts.oracle}`);
+  if (project) labels.push(`project:${project}`);
   const labelFlags = labels.length ? labels.map(l => `-l '${l}'`).join(" ") : "";
+
+  if (project) console.log(`\x1b[36m→\x1b[0m project: ${project}${opts.project ? "" : " (auto-detected)"}`);
 
   const issueUrl = (await hostExec(
     `gh issue create --repo ${repo} -t '${escaped}' ${labelFlags} -b 'Parent: #${thread.num}'`
