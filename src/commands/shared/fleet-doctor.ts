@@ -32,7 +32,9 @@ export { checkMissingRepos } from "./fleet-doctor-checks-repo";
 export { checkStalePeers } from "./fleet-doctor-stale-peers";
 export { autoFix } from "./fleet-doctor-fixer";
 
+import { join } from "path";
 import { loadConfig } from "../../config";
+import { getGhqRoot } from "../../config/ghq-root";
 import { listSessions } from "../../sdk";
 import { loadFleetEntries } from "./fleet-load";
 import {
@@ -76,7 +78,7 @@ export async function cmdFleetDoctor(opts: DoctorOptions = {}): Promise<void> {
   findings.push(...checkOrphanRoutes(agents, peers.map((p) => p.name), localNode));
   findings.push(...checkDuplicatePeers(peers));
   findings.push(...checkSelfPeer(peers, localNode, config.port));
-  findings.push(...checkMissingRepos(entries, config.ghqRoot));
+  findings.push(...checkMissingRepos(entries, join(getGhqRoot(), "github.com")));
 
   const { findings: staleFindings, identities } = await checkStalePeers(peers);
   findings.push(...staleFindings);

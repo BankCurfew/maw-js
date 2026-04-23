@@ -27,7 +27,7 @@ export function configExists(filePath: string): boolean {
 
 export interface BuildConfigInput {
   node: string;
-  ghqRoot: string;
+  ghqRoot?: string;
   token?: string;
   federate?: boolean;
   peers?: { name: string; url: string }[];
@@ -42,16 +42,18 @@ export function buildConfig(input: BuildConfigInput): Partial<MawConfig> {
   const env: Record<string, string> = {};
   if (input.token) env.CLAUDE_CODE_OAUTH_TOKEN = input.token;
 
+  // #680 — ghqRoot is resolved on demand; only persist when caller explicitly
+  // passes it (legacy override path; logs deprecation in cmdInit).
   const cfg: Partial<MawConfig> = {
     host: input.node,
     node: input.node,
     port: DEFAULT_PORT,
-    ghqRoot: input.ghqRoot,
     oracleUrl: DEFAULT_ORACLE_URL,
     env,
     commands: { default: DEFAULT_COMMAND },
     sessions: {},
   };
+  if (input.ghqRoot) cfg.ghqRoot = input.ghqRoot;
 
   if (input.federate) {
     cfg.federationToken = input.federationToken;

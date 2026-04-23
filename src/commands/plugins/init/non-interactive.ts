@@ -1,9 +1,9 @@
 import { parseFlags } from "../../../cli/parse-args";
-import { validateNodeName, validateGhqRoot, validatePeerUrl, validatePeerName } from "./prompts";
+import { validateNodeName, validatePeerUrl, validatePeerName, validateGhqRoot } from "./prompts";
 
 export interface NonInteractiveOpts {
   node: string;
-  ghqRoot: string;
+  ghqRoot?: string;
   token?: string;
   federate: boolean;
   peers: { name: string; url: string }[];
@@ -16,11 +16,12 @@ export type NonInteractiveResult =
   | { ok: true; opts: NonInteractiveOpts }
   | { ok: false; error: string };
 
-export function parseNonInteractive(args: string[], homedir: string, defaults: { node: string; ghqRoot: string }): NonInteractiveResult {
+export function parseNonInteractive(args: string[], homedir: string, defaults: { node: string }): NonInteractiveResult {
   // arg's String type collapses repeated flags; use [String] for arrays.
   const flags = parseFlags(args, {
     "--non-interactive": Boolean,
     "--node": String,
+    // #680 — --ghq-root honored as legacy override (validated + persisted); deprecation warn.
     "--ghq-root": String,
     "--token": String,
     "--federate": Boolean,
@@ -35,9 +36,15 @@ export function parseNonInteractive(args: string[], homedir: string, defaults: {
   const nodeErr = validateNodeName(node);
   if (nodeErr) return { ok: false, error: nodeErr };
 
-  const ghqRaw = flags["--ghq-root"] ?? defaults.ghqRoot;
-  const ghqV = validateGhqRoot(ghqRaw, homedir);
-  if (!ghqV.ok) return { ok: false, error: ghqV.err };
+  let ghqRoot: string | undefined;
+  if (flags["--ghq-root"]) {
+    const ghqV = validateGhqRoot(flags["--ghq-root"], homedir);
+    if (!ghqV.ok) return { ok: false, error: ghqV.err };
+    ghqRoot = ghqV.path;
+    process.stderr.write(
+      `[maw init] warning: --ghq-root is deprecated (#680) — honored as legacy override; prefer removing it and letting \`ghq root\` resolve on demand.\n`,
+    );
+  }
 
   const peerUrls = (flags["--peer"] ?? []) as string[];
   const peerNames = (flags["--peer-name"] ?? []) as string[];
@@ -58,7 +65,7 @@ export function parseNonInteractive(args: string[], homedir: string, defaults: {
     ok: true,
     opts: {
       node,
-      ghqRoot: ghqV.path,
+      ghqRoot,
       token: flags["--token"],
       federate,
       peers,

@@ -1,6 +1,4 @@
 import { readFileSync, writeFileSync } from "fs";
-import { join } from "path";
-import { execSync } from "child_process";
 import { CONFIG_FILE } from "../core/paths";
 import { refreshContext } from "../lib/context";
 import { verbose, info } from "../cli/verbosity";
@@ -8,27 +6,41 @@ import type { MawConfig } from "./types";
 import { D } from "./types";
 import { validateConfig } from "./validate-ext";
 
-function detectGhqRoot(): string {
-  try {
-    const root = execSync("ghq root", { encoding: "utf-8" }).trim();
-    // ghq may store repos under <root>/github.com/... — prefer that if it exists
-    const ghRoot = join(root, "github.com");
-    if (require("fs").existsSync(ghRoot)) return ghRoot;
-    return root;
-  } catch { return join(require("os").homedir(), "Code/github.com"); }
-}
-
+// #680 — ghqRoot is no longer resolved at config-load time. Callers that need
+// a filesystem path go through `getGhqRoot()` (src/config/ghq-root.ts), which
+// shells out to `ghq root` on demand. `config.ghqRoot` survives as a legacy
+// override; loadConfig() surfaces a one-shot deprecation warning below.
 const DEFAULTS: MawConfig = {
   host: "local",
   port: 3456,
-  ghqRoot: detectGhqRoot(),
   oracleUrl: "http://localhost:47779",
   env: {},
   commands: { default: "claude" },
   sessions: {},
 };
 
+let warnedGhqRoot = false;
+let warnedHostNormalized = false;
+
 let cached: MawConfig | null = null;
+
+/**
+ * Normalize `host` away from bind-address / loopback variants to the canonical
+ * local sentinel `"local"`. Downstream code only needs to recognize one form
+ * for self-connection (see #712: `0.0.0.0` as a target caused slow ssh-to-self
+ * instead of bare local tmux).
+ *
+ * This is a *normalization at read time* — the file on disk is left alone so
+ * the (misnamed) `0.0.0.0` write from bind-host.ts still round-trips, but no
+ * in-memory consumer ever sees it.
+ */
+function normalizeHost(host: string): string {
+  if (host === "0.0.0.0" || host === "::" || host === "" ||
+      host === "127.0.0.1" || host === "localhost") {
+    return "local";
+  }
+  return host;
+}
 
 export function loadConfig(): MawConfig {
   if (cached) return cached;
@@ -38,6 +50,29 @@ export function loadConfig(): MawConfig {
     cached = { ...DEFAULTS, ...validated };
   } catch {
     cached = { ...DEFAULTS };
+  }
+  // #712 — normalize bind-address sentinels to "local" for outbound-target use.
+  if (typeof cached.host === "string") {
+    const normalized = normalizeHost(cached.host);
+    if (normalized !== cached.host) {
+      if (!warnedHostNormalized) {
+        warnedHostNormalized = true;
+        process.stderr.write(
+          `[maw] config.host "${cached.host}" normalized to "local" at load time. ` +
+          `"${cached.host}" is a bind address, not a connection target. ` +
+          `(See #712 — split api.bind from host.)\n`,
+        );
+      }
+      cached.host = normalized;
+    }
+  }
+  // #680 — warn once if the (deprecated) ghqRoot override is set in config.
+  if (!warnedGhqRoot && typeof cached.ghqRoot === "string" && cached.ghqRoot.length > 0) {
+    warnedGhqRoot = true;
+    process.stderr.write(
+      `[maw] config.ghqRoot is deprecated — ghq root is resolved on demand via \`ghq root\`. ` +
+      `Remove "ghqRoot" from your maw.config.json (still honored as a legacy override).\n`,
+    );
   }
   // One-shot startup summary — fires unless --quiet/--silent (verbose-by-default).
   verbose(() => {
@@ -52,6 +87,8 @@ export function loadConfig(): MawConfig {
 /** Reset cached config (for hot-reload or testing) */
 export function resetConfig() {
   cached = null;
+  warnedGhqRoot = false;
+  warnedHostNormalized = false;
 }
 
 /** Write config to maw.config.json and reset cache */
