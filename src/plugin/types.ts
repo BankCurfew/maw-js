@@ -18,6 +18,8 @@
  */
 export type PluginTarget = "js" | "wasm";
 
+export type PluginTier = "core" | "standard" | "extra";
+
 /**
  * Plugin tier — explicit membership contract (#675).
  *
@@ -91,6 +93,7 @@ export interface PluginManifest {
   transport?: {
     peer?: boolean;     // enable maw hey plugin:<name>
   };
+  tier?: PluginTier;
 }
 
 export interface LoadedPlugin {
