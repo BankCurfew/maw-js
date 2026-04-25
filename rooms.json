@@ -6,11 +6,12 @@
     {
       "id": "command",
       "label": "Command",
-      "emoji": "🧿",
-      "description": "CEO Office — Boss + Conduct",
+      "emoji": "\ud83e\uddff",
+      "description": "CEO Office \u2014 Boss + Conduct",
       "lead": "BoB-Oracle",
       "members": [
-        "BoB-Oracle"
+        "BoB-Oracle",
+        "shell"
       ],
       "accent": "#6C3BF5",
       "floor": "#1a1428",
@@ -19,7 +20,7 @@
     {
       "id": "engineering",
       "label": "Engineering",
-      "emoji": "💻",
+      "emoji": "\ud83d\udcbb",
       "description": "Build, Design, Test",
       "lead": "Dev-Oracle",
       "members": [
@@ -35,7 +36,7 @@
     {
       "id": "studio",
       "label": "Studio",
-      "emoji": "📋",
+      "emoji": "\ud83d\udccb",
       "description": "Research, Write, Edit, People",
       "lead": "HR-Oracle",
       "members": [
@@ -52,7 +53,7 @@
     {
       "id": "data-lab",
       "label": "Data Lab",
-      "emoji": "🔬",
+      "emoji": "\ud83d\udd2c",
       "description": "Pipelines & Knowledge",
       "lead": "Data-Oracle",
       "members": [
@@ -65,8 +66,8 @@
     {
       "id": "aia-office",
       "label": "AIA Office",
-      "emoji": "🏢",
-      "description": "AIA Thailand — Insurance & Bot Operations",
+      "emoji": "\ud83c\udfe2",
+      "description": "AIA Thailand \u2014 Insurance & Bot Operations",
       "lead": "AIA-Oracle",
       "members": [
         "AIA-Oracle",
@@ -80,8 +81,8 @@
     {
       "id": "academy",
       "label": "Oracle Academy",
-      "emoji": "🎓",
-      "description": "Oracle creates Oracle — Community & Education",
+      "emoji": "\ud83c\udf93",
+      "description": "Oracle creates Oracle \u2014 Community & Education",
       "lead": "Creator-Oracle",
       "members": [
         "Creator-Oracle"
@@ -93,8 +94,8 @@
     {
       "id": "security",
       "label": "Security",
-      "emoji": "🛡️",
-      "description": "CISO & Data Guardian — Audit, PDPA, Secrets, Incident Response",
+      "emoji": "\ud83d\udee1\ufe0f",
+      "description": "CISO & Data Guardian \u2014 Audit, PDPA, Secrets, Incident Response",
       "lead": "Security-Oracle",
       "members": [
         "Security-Oracle"
@@ -106,8 +107,8 @@
     {
       "id": "executive",
       "label": "Executive Suite",
-      "emoji": "👔",
-      "description": "Personal Assistant — Calendar, Finance, Email",
+      "emoji": "\ud83d\udc54",
+      "description": "Personal Assistant \u2014 Calendar, Finance, Email",
       "lead": "PA-Oracle",
       "members": [
         "PA-Oracle",
@@ -121,7 +122,7 @@
     {
       "id": "federation",
       "label": "Federation",
-      "emoji": "🌐",
+      "emoji": "\ud83c\udf10",
       "description": "Cross-Node Agents",
       "lead": "Echo-Oracle",
       "members": [
