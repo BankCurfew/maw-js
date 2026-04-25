@@ -51,21 +51,21 @@ export async function pushPreviews(
   }
 }
 
-/** Broadcast local session list to all dashboard WS clients.
- *  Federation peer info reaches the dashboard via config.agents (synthetic entries).
+/** Broadcast local + peer sessions to all dashboard WS clients.
  *  cache.sessions always holds local-only sessions for status detection / busy-agent scanning.
  */
 export async function broadcastSessions(
   clients: Set<MawWS>,
   cache: { sessions: SessionInfo[]; json: string },
+  peerSessions?: SessionInfo[],
 ): Promise<SessionInfo[]> {
   if (clients.size === 0) return cache.sessions;
   try {
     const local = await tmux.listAll();
     cache.sessions = local;
     cache.json = JSON.stringify(local);
-    // Only send local sessions to dashboard WS — peer info comes from config.agents (synthetic entries)
-    const msg = JSON.stringify({ type: "sessions", sessions: local });
+    const allSessions = peerSessions ? [...local, ...peerSessions] : local;
+    const msg = JSON.stringify({ type: "sessions", sessions: allSessions });
     for (const ws of clients) ws.send(msg);
     return local;
   } catch {
