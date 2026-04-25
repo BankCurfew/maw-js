@@ -1,10 +1,13 @@
 import type { InvokeContext, InvokeResult } from "../../../plugin/types";
-import { cmdOracleList, cmdOracleAbout, cmdOracleScan } from "./impl";
+import { cmdOracleList, cmdOracleAbout, cmdOracleScan, cmdOracleScanStale } from "./impl";
+import { cmdOraclePrune } from "./impl-prune";
+import { cmdOracleRegister } from "./impl-register";
+import { cmdOracleSetNickname, cmdOracleGetNickname } from "./impl-nickname";
 import { parseFlags } from "../../../cli/parse-args";
 
 export const command = {
   name: ["oracle", "oracles"],
-  description: "Oracle management — list, scan, about (fleet deprecated → ls)",
+  description: "Oracle management — list, scan, about, prune, register",
 };
 
 // Shared spec for `ls` flags — used by both ls and the fleet alias.
@@ -51,20 +54,28 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
           "--local": Boolean,
           "--remote": Boolean,
           "--all": Boolean,
+          "--stale": Boolean,
           "--verbose": Boolean,
           "-v": "--verbose",
           "--quiet": Boolean,
           "-q": "--quiet",
         }, 1);
-        await cmdOracleScan({
-          json: flags["--json"],
-          force: flags["--force"],
-          local: flags["--local"],
-          remote: flags["--remote"],
-          all: flags["--all"],
-          verbose: flags["--verbose"],
-          quiet: flags["--quiet"],
-        });
+        if (flags["--stale"]) {
+          await cmdOracleScanStale({
+            json: flags["--json"],
+            all: flags["--all"],
+          });
+        } else {
+          await cmdOracleScan({
+            json: flags["--json"],
+            force: flags["--force"],
+            local: flags["--local"],
+            remote: flags["--remote"],
+            all: flags["--all"],
+            verbose: flags["--verbose"],
+            quiet: flags["--quiet"],
+          });
+        }
       } else if (subcmd === "fleet") {
         // Deprecated alias — warn then delegate to ls.
         console.error(
@@ -79,10 +90,39 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
           stale: flags["--stale"],
           path: flags["--path"],
         });
+      } else if (subcmd === "prune") {
+        const flags = parseFlags(args, {
+          "--stale": Boolean,
+          "--force": Boolean,
+          "--json": Boolean,
+        }, 1);
+        await cmdOraclePrune({
+          stale: flags["--stale"],
+          force: flags["--force"],
+          json: flags["--json"],
+        });
+      } else if (subcmd === "register") {
+        const name = args[1];
+        if (!name) return { ok: false, error: "usage: maw oracle register <name>" };
+        const flags = parseFlags(args, { "--json": Boolean }, 2);
+        await cmdOracleRegister(name, { json: flags["--json"] });
+      } else if (subcmd === "set-nickname") {
+        const name = args[1];
+        const nickname = args[2];
+        if (!name || nickname === undefined) {
+          return { ok: false, error: "usage: maw oracle set-nickname <oracle> \"<nickname>\"" };
+        }
+        const flags = parseFlags(args, { "--json": Boolean }, 3);
+        cmdOracleSetNickname(name, nickname, { json: flags["--json"] });
+      } else if (subcmd === "get-nickname") {
+        const name = args[1];
+        if (!name) return { ok: false, error: "usage: maw oracle get-nickname <oracle>" };
+        const flags = parseFlags(args, { "--json": Boolean }, 2);
+        cmdOracleGetNickname(name, { json: flags["--json"] });
       } else if (subcmd === "about" && args[1]) {
         await cmdOracleAbout(args[1]);
       } else {
-        return { ok: false, error: "usage: maw oracle [ls|scan|about <name>]" };
+        return { ok: false, error: "usage: maw oracle [ls|scan|prune|register <name>|set-nickname <name> <nickname>|get-nickname <name>|about <name>]" };
       }
     } else if (ctx.source === "api") {
       const query = ctx.args as Record<string, unknown>;
@@ -97,14 +137,21 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
           path: query.path as boolean | undefined,
         });
       } else if (sub === "scan") {
-        await cmdOracleScan({
-          json: query.json as boolean | undefined,
-          force: query.force as boolean | undefined,
-          local: query.local as boolean | undefined,
-          remote: query.remote as boolean | undefined,
-          all: query.all as boolean | undefined,
-          verbose: query.verbose as boolean | undefined,
-        });
+        if (query.stale) {
+          await cmdOracleScanStale({
+            json: query.json as boolean | undefined,
+            all: query.all as boolean | undefined,
+          });
+        } else {
+          await cmdOracleScan({
+            json: query.json as boolean | undefined,
+            force: query.force as boolean | undefined,
+            local: query.local as boolean | undefined,
+            remote: query.remote as boolean | undefined,
+            all: query.all as boolean | undefined,
+            verbose: query.verbose as boolean | undefined,
+          });
+        }
       } else if (sub === "fleet") {
         console.error(
           `\x1b[33m⚠  oracle.fleet is deprecated — use oracle.ls\x1b[0m`,
@@ -117,10 +164,31 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
           stale: query.stale as boolean | undefined,
           path: query.path as boolean | undefined,
         });
+      } else if (sub === "prune") {
+        await cmdOraclePrune({
+          stale: query.stale as boolean | undefined,
+          force: query.force as boolean | undefined,
+          json: query.json as boolean | undefined,
+        });
+      } else if (sub === "register") {
+        if (!query.name) return { ok: false, error: "usage: query.sub=register + query.name" };
+        await cmdOracleRegister(query.name as string, {
+          json: query.json as boolean | undefined,
+        });
+      } else if (sub === "set-nickname") {
+        const name = query.name as string | undefined;
+        const nickname = query.nickname as string | undefined;
+        if (!name || nickname === undefined) {
+          return { ok: false, error: "usage: query.sub=set-nickname + query.name + query.nickname" };
+        }
+        cmdOracleSetNickname(name, nickname, { json: query.json as boolean | undefined });
+      } else if (sub === "get-nickname") {
+        if (!query.name) return { ok: false, error: "usage: query.sub=get-nickname + query.name" };
+        cmdOracleGetNickname(query.name as string, { json: query.json as boolean | undefined });
       } else if (sub === "about" && query.name) {
         await cmdOracleAbout(query.name as string);
       } else {
-        return { ok: false, error: "usage: query.sub=[ls|scan|about] + query.name for about" };
+        return { ok: false, error: "usage: query.sub=[ls|scan|prune|register|set-nickname|get-nickname|about] + query.name" };
       }
     }
 

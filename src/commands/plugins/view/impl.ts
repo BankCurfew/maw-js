@@ -3,9 +3,69 @@ import { Tmux, tmuxCmd, resolveSocket } from "../../../sdk";
 import { loadConfig } from "../../../config";
 import { resolveSessionTarget } from "../../../core/matcher/resolve-target";
 import { logAnomaly } from "../../../core/fleet/audit";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { ttyAsk } from "../init/prompts";
 
-export async function cmdView(agent: string, windowHint?: string, clean = false) {
+/**
+ * Decide whether to offer a wake prompt on missing target. Extracted for
+ * testability — tests can stub `isTTY` and `wakeFlag` directly.
+ *
+ * #549 contract:
+ *  - --no-wake → never prompt, never wake (back-compat for scripts)
+ *  - --wake    → wake unconditionally, no prompt (force opt-in)
+ *  - non-TTY   → never prompt (CI/script safety, current behavior)
+ *  - TTY       → prompt y/N
+ */
+export type WakePromptDecision = "skip" | "force" | "ask";
+export function decideWakePrompt(opts: {
+  isTTY: boolean;
+  wake?: boolean;
+  noWake?: boolean;
+}): WakePromptDecision {
+  if (opts.noWake) return "skip";
+  if (opts.wake) return "force";
+  if (!opts.isTTY) return "skip";
+  return "ask";
+}
+
+export interface ViewOpts {
+  windowHint?: string;
+  clean?: boolean;
+  kill?: boolean;
+  splitAnchor?: string | true;
+  wake?: boolean;
+  noWake?: boolean;
+  /** Test seam: ask user yes/no. Default = ttyAsk via /dev/tty. */
+  ask?: (question: string) => Promise<string>;
+  /** Test seam: stand-in for cmdWake. Default = real cmdWake. */
+  wakeImpl?: (target: string) => Promise<void>;
+}
+
+export async function cmdView(
+  agent: string,
+  windowHintOrOpts?: string | ViewOpts,
+  clean = false,
+  kill = false,
+  splitAnchor?: string | true,
+  extraOpts: Pick<ViewOpts, "wake" | "noWake" | "ask" | "wakeImpl"> = {},
+) {
+  // Backward-compatible signature: callers pass either a windowHint string
+  // OR a full ViewOpts object as the second arg.
+  let windowHint: string | undefined;
+  if (typeof windowHintOrOpts === "object" && windowHintOrOpts !== null) {
+    windowHint = windowHintOrOpts.windowHint;
+    clean = windowHintOrOpts.clean ?? clean;
+    kill = windowHintOrOpts.kill ?? kill;
+    splitAnchor = windowHintOrOpts.splitAnchor ?? splitAnchor;
+    extraOpts = {
+      wake: windowHintOrOpts.wake,
+      noWake: windowHintOrOpts.noWake,
+      ask: windowHintOrOpts.ask,
+      wakeImpl: windowHintOrOpts.wakeImpl,
+    };
+  } else {
+    windowHint = windowHintOrOpts;
+  }
   // Find the session
   const sessions = await listSessions();
   const allWindows = sessions.flatMap(s => s.windows.map(w => ({ session: s.name, ...w })));
@@ -38,6 +98,57 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
     if (byWindow) sessionName = byWindow.name;
   }
   if (!sessionName) {
+    // #549 — offer to wake the missing target before erroring out.
+    // Decision matrix encoded in decideWakePrompt; see WakePromptDecision.
+    //
+    // Fleet-known oracles skip the y/N prompt — if the user typed `maw a <x>`
+    // and fleet configs pin <x>, we're confident this isn't a typo. Typos
+    // (unknown names) still hit the prompt as a guard against accidental wake.
+    let autoWake = extraOpts.wake;
+    if (!autoWake && !extraOpts.noWake) {
+      try {
+        const { resolveFleetSession } = await import("../../shared/wake-resolve");
+        if (resolveFleetSession(agent)) {
+          console.log(`\x1b[36m⚡\x1b[0m '${agent}' is fleet-known — auto-wake`);
+          autoWake = true;
+        }
+      } catch { /* fleet check best-effort — fall through to prompt */ }
+    }
+    const decision = decideWakePrompt({
+      isTTY: Boolean(process.stdin.isTTY),
+      wake: autoWake,
+      noWake: extraOpts.noWake,
+    });
+
+    if (decision !== "skip") {
+      let proceed = decision === "force";
+      if (decision === "ask") {
+        const ask = extraOpts.ask ?? ttyAsk;
+        try {
+          const answer = (await ask(
+            `\x1b[36m?\x1b[0m Oracle '${agent}' is not running. Wake it now? [y/N]`,
+          )).trim().toLowerCase();
+          proceed = answer === "y" || answer === "yes";
+        } catch (e) {
+          // /dev/tty unavailable — fall through to the existing error.
+          proceed = false;
+        }
+      }
+
+      if (proceed) {
+        const wakeImpl =
+          extraOpts.wakeImpl ??
+          (async (target: string) => {
+            const { cmdWake } = await import("../../shared/wake-cmd");
+            await cmdWake(target, { attach: true });
+          });
+        console.log(`\x1b[36m⚡\x1b[0m waking '${agent}'...`);
+        await wakeImpl(agent);
+        // cmdWake({ attach: true }) handles the attach itself, so we're done.
+        return;
+      }
+    }
+
     if (resolved.kind === "none" && resolved.hints?.length) {
       console.error(`  \x1b[90mdid you mean:\x1b[0m`);
       for (const h of resolved.hints) {
@@ -49,6 +160,7 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
   }
 
   const t = new Tmux();
+  // #713: with bind/host split, config.host is never a bind address (0.0.0.0 etc.)
   const host = process.env.MAW_HOST || loadConfig().host || "local";
   const isLocal = host === "local" || host === "localhost";
   const socket = resolveSocket();
@@ -83,6 +195,14 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
     if (clean) {
       await t.set(sessionName, "status", "off");
     }
+    if (splitAnchor !== undefined) {
+      const { cmdSplit } = await import("../split/impl");
+      const anchorPane = typeof splitAnchor === "string"
+        ? await resolveAnchorPane(splitAnchor)
+        : undefined;
+      await cmdSplit(sessionName, { anchorPane });
+      return;
+    }
     console.log(`\x1b[36mattach\x1b[0m  → ${sessionName}${clean ? " (clean)" : ""}`);
     if (isLocal && process.env.TMUX) {
       await t.switchClient(sessionName);
@@ -91,13 +211,8 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
       );
       return;
     }
-    const directCmd = isLocal
-      ? socket
-        ? `tmux -S ${socket} attach-session -t ${sessionName}`
-        : `tmux attach-session -t ${sessionName}`
-      : `ssh -tt ${host} "${tmuxCmd()} attach-session -t '${sessionName}'"`;
     try {
-      execSync(directCmd, { stdio: "inherit" });
+      attachViaTmux({ isLocal, socket, host, target: sessionName });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\x1b[33mwarn\x1b[0m: attach exited non-zero — ${msg}`);
@@ -112,12 +227,15 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
   const viewBase = sessionName.replace(/^\d+-/, "");
   const viewName = `${viewBase}-view${windowHint ? `-${windowHint}` : ""}`;
 
-  // Kill existing view with same name
-  await t.killSession(viewName);
-
-  // Create grouped session
-  await t.newGroupedSession(sessionName, viewName, { cols: 200, rows: 50 });
-  console.log(`\x1b[36mcreated\x1b[0m → ${viewName} (grouped with ${sessionName})`);
+  // Reuse existing view if present — killing it would evict anyone else
+  // already attached (e.g. a second terminal on the same view).
+  const viewExists = await t.hasSession(viewName);
+  if (!viewExists) {
+    await t.newGroupedSession(sessionName, viewName, { windowSize: "largest" });
+    console.log(`\x1b[36mcreated\x1b[0m → ${viewName} (grouped with ${sessionName})`);
+  } else {
+    console.log(`\x1b[36mreuse\x1b[0m   → ${viewName} (existing grouped session — ${sessionName})`);
+  }
 
   // Select specific window if requested
   if (windowHint) {
@@ -141,6 +259,18 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
     await t.set(viewName, "status", "off");
   }
 
+  // --split[=<anchor>]: open the view in a new tmux pane instead of
+  // detaching+attaching the whole client. Explicit anchor breaks the
+  // active-pane-drift that caused the fractal-split cascade (#545/#546).
+  if (splitAnchor !== undefined) {
+    const { cmdSplit } = await import("../split/impl");
+    const anchorPane = typeof splitAnchor === "string"
+      ? await resolveAnchorPane(splitAnchor)
+      : undefined;
+    await cmdSplit(viewName, { anchorPane });
+    return;
+  }
+
   // Attach interactively
   console.log(`\x1b[36mattach\x1b[0m  → ${viewName}${clean ? " (clean)" : ""}`);
 
@@ -156,19 +286,14 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
     return;
   }
 
-  // Use execSync (not Bun.spawn) for the blocking attach — Bun.spawn with
+  // Use execFileSync (not Bun.spawn) for the blocking attach — Bun.spawn with
   // stdin:"inherit" has TTY handoff issues that can propagate SIGHUP up to
   // the parent SSH session when tmux detaches, closing the whole terminal.
-  // execSync + stdio:"inherit" matches the proven pattern in wake.ts
-  // (attachToSession helper, e07b7e9).
-  const attachCmd = isLocal
-    ? socket
-      ? `tmux -S ${socket} attach-session -t ${viewName}`
-      : `tmux attach-session -t ${viewName}`
-    : `ssh -tt ${host} "${tmuxCmd()} attach-session -t '${viewName}'"`;
-
+  // execFileSync + stdio:"inherit" matches the proven pattern in wake.ts
+  // (attachToSession helper, e07b7e9). argv form avoids local shell
+  // interpretation of session names (js/indirect-command-line-injection, #474).
   try {
-    execSync(attachCmd, { stdio: "inherit" });
+    attachViaTmux({ isLocal, socket, host, target: viewName });
   } catch (err) {
     // tmux exits non-zero when attach fails (session gone, socket missing,
     // etc). Log but do NOT re-throw — a failed attach should not cascade
@@ -177,9 +302,64 @@ export async function cmdView(agent: string, windowHint?: string, clean = false)
     console.error(`\x1b[33mwarn\x1b[0m: attach exited non-zero — ${msg}`);
   }
 
-  // Cleanup: kill grouped session after detach (or after failed attach)
-  await t.killSession(viewName);
-  console.log(`\x1b[90mcleaned\x1b[0m → ${viewName}`);
-  // Normal return — no process.exit. Letting the event loop drain naturally
-  // is safer than forcing an exit code that can race with parent shell state.
+  // #420: no auto-cleanup on detach. The view is grouped (shares state with
+  // the oracle session), so keeping it idle is cheap — and killing it here
+  // forces the next `maw a <agent>` to pay the create cost again. Stale
+  // views are reaped by `maw cleanup --zombie-agents` (#400/#418) or by
+  // explicit `--kill` on this command.
+  if (kill) {
+    await t.killSession(viewName);
+    console.log(`\x1b[90mcleaned\x1b[0m → ${viewName}`);
+  }
+}
+
+/**
+ * Resolve a `--split=<anchor>` argument to a tmux pane selector for cmdSplit.
+ *   - "session:window"  → passed through (tmux resolves to that window's active pane)
+ *   - bare name         → find <name>-view; auto-bootstrap via newGroupedSession
+ *                         if it doesn't exist yet; return "<name>-view:0"
+ */
+async function resolveAnchorPane(anchor: string): Promise<string> {
+  if (anchor.includes(":")) return anchor;
+  const t = new Tmux();
+  const viewName = `${anchor.replace(/-view$/, "")}-view`;
+  if (!(await t.hasSession(viewName))) {
+    const sessions = await listSessions();
+    const candidates = sessions.filter(
+      s => !/-view$/.test(s.name) && !/-view-view$/.test(s.name),
+    );
+    const r = resolveSessionTarget(anchor, candidates);
+    if (r.kind !== "exact" && r.kind !== "fuzzy") {
+      throw new Error(`--split=${anchor}: no matching session or existing view`);
+    }
+    await t.newGroupedSession(r.match.name, viewName, { windowSize: "largest" });
+  }
+  return `${viewName}:0`;
+}
+
+// Reject tmux session names that contain anything a remote shell could parse.
+// Tmux itself accepts only a restricted set, and our fleet validators
+// (src/core/fleet/validate.ts) tighten that further — but defense in depth
+// protects the ssh branch, where the remote command is shell-interpreted.
+const SAFE_SESSION_NAME = /^[A-Za-z0-9._-]+$/;
+
+function attachViaTmux(opts: {
+  isLocal: boolean;
+  socket: string | undefined;
+  host: string;
+  target: string;
+}): void {
+  const { isLocal, socket, host, target } = opts;
+  if (isLocal) {
+    const args = socket
+      ? ["-S", socket, "attach-session", "-t", target]
+      : ["attach-session", "-t", target];
+    execFileSync("tmux", args, { stdio: "inherit" });
+    return;
+  }
+  if (!SAFE_SESSION_NAME.test(target)) {
+    throw new Error(`refusing ssh attach: unsafe session name '${target}'`);
+  }
+  const remoteCmd = `${tmuxCmd()} attach-session -t '${target}'`;
+  execFileSync("ssh", ["-tt", host, remoteCmd], { stdio: "inherit" });
 }

@@ -36,6 +36,31 @@ function validateExtFields(
     }
   }
 
+  // allowPeersWithoutToken: boolean, explicit opt-in to legacy open posture.
+  // Without this passthrough the field is silently stripped in production
+  // (review feedback from mawjs on #396), making the escape hatch unreachable
+  // via maw.config.json while still reachable in tests — a UX bug where
+  // runtime posture is stricter-than-advertised.
+  if ("allowPeersWithoutToken" in raw) {
+    if (typeof raw.allowPeersWithoutToken === "boolean") {
+      result.allowPeersWithoutToken = raw.allowPeersWithoutToken;
+    } else {
+      warn("allowPeersWithoutToken", "must be a boolean");
+    }
+  }
+
+  // trustLoopback: boolean. Defaults to `true` if unset (preserves legacy
+  // behavior — local CLI calls work without signing). Operators who run
+  // behind a local reverse proxy MUST set this to false (closes Path B
+  // from #191). See src/config/types.ts for the full threat model.
+  if ("trustLoopback" in raw) {
+    if (typeof raw.trustLoopback === "boolean") {
+      result.trustLoopback = raw.trustLoopback;
+    } else {
+      warn("trustLoopback", "must be a boolean");
+    }
+  }
+
   // pin: string if present
   if ("pin" in raw) {
     if (typeof raw.pin === "string") {

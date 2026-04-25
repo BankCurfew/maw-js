@@ -1,5 +1,5 @@
 {
-  "name": "@maw/sdk",
+  "name": "@maw-js/sdk",
   "version": "1.0.0-alpha.1",
   "description": "maw-js plugin SDK — stable typed API for plugin authors.",
   "license": "BUSL-1.1",
@@ -25,6 +25,9 @@
       "types": "./plugin.d.ts",
       "default": "./plugin.ts"
     }
+  },
+  "scripts": {
+    "prepublishOnly": "bun test packages/sdk/"
   },
   "files": [
     "index.ts",

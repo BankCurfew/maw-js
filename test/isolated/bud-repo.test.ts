@@ -25,8 +25,9 @@ import { tmpdir } from "os";
 
 interface ExecResponse {
   match?: RegExp;        // cmd substring/regex to match
-  result?: string;       // string to resolve with
+  result?: string | (() => string); // static string or dynamic callback (for state-dependent stubs)
   error?: string;        // message to reject with
+  sideEffect?: () => void; // run before resolving (e.g. mkdirSync to simulate `ghq get` landing)
 }
 
 let execCalls: string[] = [];
@@ -37,11 +38,19 @@ const mockExec = async (cmd: string): Promise<string> => {
   for (const r of execResponses) {
     if (r.match && r.match.test(cmd)) {
       if (r.error) throw new Error(r.error);
-      return r.result ?? "";
+      r.sideEffect?.();
+      return typeof r.result === "function" ? r.result() : (r.result ?? "");
     }
   }
   return "";
 };
+
+// Helper: stub `ghq list --exact --full-path` to reflect whether the clone
+// has happened yet. Returns `path` once `path` exists on disk, empty before.
+// Mirrors how real ghq behaves — it only lists repos it knows about.
+function stubGhqListTracking(path: string): ExecResponse {
+  return { match: /^ghq list /, result: () => existsSync(path) ? `${path}\n` : "" };
+}
 
 mock.module(join(import.meta.dir, "../../src/sdk"), () => ({
   hostExec: mockExec,
@@ -90,7 +99,9 @@ describe("ensureBudRepo — gh repo view pre-check", () => {
   test("view returns matching repo name → skips create, still clones via ghq", async () => {
     const missingPath = join(tmpBase, "view-hit");
     execResponses = [
+      stubGhqListTracking(missingPath),
       { match: /^gh repo view /, result: `{"name":"view-hit-oracle"}` },
+      { match: /^ghq get /, sideEffect: () => mkdirSync(missingPath, { recursive: true }) },
     ];
 
     await ensureBudRepo(
@@ -110,8 +121,10 @@ describe("ensureBudRepo — gh repo view pre-check", () => {
   test("view throws (.catch swallows) → proceeds to create → then ghq get", async () => {
     const missingPath = join(tmpBase, "view-miss");
     execResponses = [
+      stubGhqListTracking(missingPath),
       { match: /^gh repo view /, error: "not found" },
       // No response for `gh repo create` → default "" which means "success".
+      { match: /^ghq get /, sideEffect: () => mkdirSync(missingPath, { recursive: true }) },
     ];
 
     await ensureBudRepo(
@@ -140,7 +153,9 @@ describe("ensureBudRepo — gh repo view pre-check", () => {
     // repo payload must NOT be treated as a hit.
     const missingPath = join(tmpBase, "view-other");
     execResponses = [
+      stubGhqListTracking(missingPath),
       { match: /^gh repo view /, result: `{"name":"some-other-repo"}` },
+      { match: /^ghq get /, sideEffect: () => mkdirSync(missingPath, { recursive: true }) },
     ];
 
     await ensureBudRepo(
@@ -158,8 +173,10 @@ describe("ensureBudRepo — gh repo create error branches", () => {
   test('"already exists" error is swallowed, ghq get still runs', async () => {
     const missingPath = join(tmpBase, "create-already");
     execResponses = [
+      stubGhqListTracking(missingPath),
       { match: /^gh repo view /, error: "not found" },
       { match: /^gh repo create /, error: "repository already exists on remote" },
+      { match: /^ghq get /, sideEffect: () => mkdirSync(missingPath, { recursive: true }) },
     ];
 
     await ensureBudRepo(
@@ -259,7 +276,9 @@ describe("ensureBudRepo — ghq clone command shape", () => {
   test("clone command is always `ghq get github.com/<slug>` (regression guard)", async () => {
     const missingPath = join(tmpBase, "clone-shape");
     execResponses = [
+      stubGhqListTracking(missingPath),
       { match: /^gh repo view /, error: "not found" },
+      { match: /^ghq get /, sideEffect: () => mkdirSync(missingPath, { recursive: true }) },
     ];
 
     await ensureBudRepo(

@@ -1,4 +1,4 @@
-// Barrel — re-exports everything so all existing import paths remain unchanged.
+// Barrel — re-exports from split config modules.
 export type { TriggerEvent, TriggerConfig, PeerConfig, MawIntervals, MawTimeouts, MawLimits, MawConfig } from "./config/types";
 export { D } from "./config/types";
 export { validateConfigShape } from "./config/validate";

@@ -52,7 +52,23 @@ export interface MawLimits {
 export interface MawConfig {
   host: string;
   port: number;
-  ghqRoot: string;
+  /**
+   * API server bind address (#713). When present, the HTTP/WS server binds to
+   * this address instead of deriving it from `host`. This separates the
+   * "listen on all interfaces for federation" concern from the "outbound
+   * connection target" concern that `host` represents.
+   *
+   * Typical value: `"0.0.0.0"` (federation) or `"127.0.0.1"` (local only).
+   * When absent, the server falls back to `resolveBindHost()` heuristic.
+   */
+  bind?: string;
+  /**
+   * @deprecated (#680) — ghq root is resolved on demand via `ghq root`. If
+   * present, this value is honored as a legacy override (normalized to the
+   * BARE shape — trailing `/github.com` stripped). Prefer removing it from
+   * config and letting `getGhqRoot()` resolve at runtime.
+   */
+  ghqRoot?: string;
   oracleUrl: string;
   env: Record<string, string>;
   commands: Record<string, string>;
@@ -61,6 +77,35 @@ export interface MawConfig {
   peers?: string[];
   idleTimeoutMinutes?: number;
   federationToken?: string;
+  /**
+   * Explicit opt-in to legacy "peers configured but no token" behavior.
+   * When `true`, HMAC is NOT required on protected writes from non-loopback
+   * peers even when peers are configured. Default `false` (fail-closed).
+   * Setting this to `true` is operator opt-in to the pre-#396 default-
+   * insecure-open posture — only use when migrating a legacy mesh.
+   */
+  allowPeersWithoutToken?: boolean;
+  /**
+   * Trust loopback connections without HMAC (legacy default: true).
+   *
+   * When `true` (default), requests arriving with TCP source 127.0.0.1
+   * bypass the HMAC check — this is load-bearing for the local CLI,
+   * which doesn't sign its own calls yet. BUT: a local reverse proxy
+   * (cloudflared, nginx, sidecar) forwarding external traffic to
+   * 127.0.0.1 ALSO gets trusted, which is "Path B" from #191 — a
+   * foothold an attacker on a compromised local process can use to
+   * bypass federation auth entirely.
+   *
+   * When `false`, loopback requests are required to sign like any
+   * other peer. Operators who run `maw serve` behind any local
+   * reverse proxy, tunnel, or sidecar MUST set this to `false`.
+   * Until CLI self-signing ships, setting this to `false` will
+   * break interactive CLI commands; use with care.
+   *
+   * See ψ/lab/federation-audit/paladin-forensic.md (F3/Path B) for
+   * the full threat model.
+   */
+  trustLoopback?: boolean;
   autoRestart?: boolean;
   triggers?: TriggerConfig[];
   /** Node identity (e.g. "white", "mba") */

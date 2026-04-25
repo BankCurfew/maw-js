@@ -74,6 +74,7 @@ export function writeShutdownRequest(teamName: string, memberName: string, reaso
     timestamp: new Date().toISOString(),
     read: false,
   });
+  // lgtm[js/file-system-race] — PRIVATE-PATH: inbox under ~/.maw/teams/<team>/inboxes/, see docs/security/file-system-race-stance.md
   writeFileSync(inboxPath, JSON.stringify(messages, null, 2));
 }
 
@@ -94,8 +95,8 @@ export function writeMessage(teamName: string, memberName: string, from: string,
     timestamp: new Date().toISOString(),
     read: false,
   });
-  const dir = join(TEAMS_DIR, teamName, "inboxes");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  mkdirSync(join(TEAMS_DIR, teamName, "inboxes"), { recursive: true });
+  // lgtm[js/file-system-race] — PRIVATE-PATH: inbox under ~/.maw/teams/<team>/inboxes/, see docs/security/file-system-race-stance.md
   writeFileSync(inboxPath, JSON.stringify(messages, null, 2));
 }
 

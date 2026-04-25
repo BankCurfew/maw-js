@@ -1,6 +1,4 @@
 import { readFileSync, writeFileSync } from "fs";
-import { join } from "path";
-import { execSync } from "child_process";
 import { CONFIG_FILE } from "../core/paths";
 import { refreshContext } from "../lib/context";
 import { verbose, info } from "../cli/verbosity";
@@ -8,27 +6,26 @@ import type { MawConfig } from "./types";
 import { D } from "./types";
 import { validateConfig } from "./validate-ext";
 
-function detectGhqRoot(): string {
-  try {
-    const root = execSync("ghq root", { encoding: "utf-8" }).trim();
-    // ghq may store repos under <root>/github.com/... — prefer that if it exists
-    const ghRoot = join(root, "github.com");
-    if (require("fs").existsSync(ghRoot)) return ghRoot;
-    return root;
-  } catch { return join(require("os").homedir(), "Code/github.com"); }
-}
-
+// #680 — ghqRoot is no longer resolved at config-load time. Callers that need
+// a filesystem path go through `getGhqRoot()` (src/config/ghq-root.ts), which
+// shells out to `ghq root` on demand. `config.ghqRoot` survives as a legacy
+// override; loadConfig() surfaces a one-shot deprecation warning below.
 const DEFAULTS: MawConfig = {
   host: "local",
   port: 3456,
-  ghqRoot: detectGhqRoot(),
   oracleUrl: "http://localhost:47779",
   env: {},
   commands: { default: "claude" },
   sessions: {},
 };
 
+let warnedGhqRoot = false;
+let warnedHostMigrated = false;
+
 let cached: MawConfig | null = null;
+
+/** Bind-address values that should never appear as an outbound target (#713). */
+const BIND_ADDRESSES = new Set(["0.0.0.0", "::", "", "127.0.0.1", "localhost"]);
 
 export function loadConfig(): MawConfig {
   if (cached) return cached;
@@ -38,6 +35,31 @@ export function loadConfig(): MawConfig {
     cached = { ...DEFAULTS, ...validated };
   } catch {
     cached = { ...DEFAULTS };
+  }
+  // #713 — migrate bind-address values out of `host` into `bind`.
+  // If `host` is a bind address (0.0.0.0, ::, 127.0.0.1, localhost, ""),
+  // move it to `bind` (if not already set) and reset `host` to "local".
+  if (typeof cached.host === "string" && BIND_ADDRESSES.has(cached.host)) {
+    if (!cached.bind) {
+      cached.bind = cached.host;
+    }
+    if (!warnedHostMigrated) {
+      warnedHostMigrated = true;
+      process.stderr.write(
+        `[maw] config.host "${cached.host}" is a bind address, not a connection target. ` +
+        `Migrated to config.bind; host reset to "local". ` +
+        `(#713 — set "bind" in maw.config.json to silence this warning.)\n`,
+      );
+    }
+    cached.host = "local";
+  }
+  // #680 — warn once if the (deprecated) ghqRoot override is set in config.
+  if (!warnedGhqRoot && typeof cached.ghqRoot === "string" && cached.ghqRoot.length > 0) {
+    warnedGhqRoot = true;
+    process.stderr.write(
+      `[maw] config.ghqRoot is deprecated — ghq root is resolved on demand via \`ghq root\`. ` +
+      `Remove "ghqRoot" from your maw.config.json (still honored as a legacy override).\n`,
+    );
   }
   // One-shot startup summary — fires unless --quiet/--silent (verbose-by-default).
   verbose(() => {
@@ -52,6 +74,8 @@ export function loadConfig(): MawConfig {
 /** Reset cached config (for hot-reload or testing) */
 export function resetConfig() {
   cached = null;
+  warnedGhqRoot = false;
+  warnedHostMigrated = false;
 }
 
 /** Write config to maw.config.json and reset cache */

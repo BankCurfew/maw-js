@@ -21,18 +21,40 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
   };
 
   try {
-    const args = ctx.source === "cli" ? (ctx.args as string[]) : [];
+    const rawArgs = ctx.source === "cli" ? (ctx.args as string[]) : [];
 
-    if (!args[0]) {
+    // --split accepts both a bare form (`--split`, caller's active pane) and
+    // a valued form (`--split=<anchor>`, anchor at another oracle's view).
+    // Scan explicitly — the handler below uses includes()/filter() rather
+    // than an arg parser, and the valued form needs an extra pass anyway.
+    let splitAnchor: string | true | undefined = undefined;
+    const scanned: string[] = [];
+    for (const a of rawArgs) {
+      const m = /^--split=(.+)$/.exec(a);
+      if (m) {
+        splitAnchor = m[1]!;
+      } else if (a === "--split") {
+        splitAnchor = true;
+      } else {
+        scanned.push(a);
+      }
+    }
+
+    if (!scanned[0]) {
       return {
         ok: false,
-        error: "usage: maw view <agent> [window] [--clean]",
+        error: "usage: maw view <agent> [window] [--clean] [--kill] [--split[=<anchor>]]",
       };
     }
 
-    const clean = args.includes("--clean");
-    const filtered = args.filter(a => a !== "--clean");
-    await cmdView(filtered[0], filtered[1], clean);
+    const clean = scanned.includes("--clean");
+    const kill = scanned.includes("--kill");
+    const wake = scanned.includes("--wake");
+    const noWake = scanned.includes("--no-wake");
+    const filtered = scanned.filter(
+      a => a !== "--clean" && a !== "--kill" && a !== "--wake" && a !== "--no-wake",
+    );
+    await cmdView(filtered[0], filtered[1], clean, kill, splitAnchor, { wake, noWake });
     return { ok: true, output: logs.join("\n") || undefined };
   } catch (e: any) {
     return { ok: false, error: logs.join("\n") || e.message, output: logs.join("\n") || undefined };

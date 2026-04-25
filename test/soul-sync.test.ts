@@ -1,6 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
+// #712 — static import (not require()) to sidestep bun 1.3.x CJS/ESM interop bug.
+import { resolveProjectSlug } from "../src/commands/plugins/soul-sync/impl";
 
 // Test the core sync logic directly (no ssh/tmux mocking needed)
 // We test findParent, findChildren, and the syncDir logic
@@ -116,7 +118,7 @@ describe("soul-sync", () => {
     });
 
     test("resolveProjectSlug handles github.com-rooted ghqRoot (#193)", () => {
-      const { resolveProjectSlug } = require("../src/commands/plugins/soul-sync/impl");
+      // #712 — static import (top of file) instead of require() to sidestep bun 1.3.x CJS/ESM re-export interop
       const ghqRoot = "/home/neo/Code/github.com";
       expect(
         resolveProjectSlug("/home/neo/Code/github.com/Soul-Brews-Studio/maw-js", ghqRoot)
@@ -124,7 +126,7 @@ describe("soul-sync", () => {
     });
 
     test("resolveProjectSlug handles bare ghq root (#193 — was dropping repo segment)", () => {
-      const { resolveProjectSlug } = require("../src/commands/plugins/soul-sync/impl");
+      // #712 — static import (top of file) instead of require() to sidestep bun 1.3.x CJS/ESM re-export interop
       const ghqRoot = "/home/neo/Code";
       // Before the fix this returned "github.com/Soul-Brews-Studio" (org-only) —
       // slice(0, 2) was grabbing [host, org] instead of [org, repo].
@@ -134,7 +136,7 @@ describe("soul-sync", () => {
     });
 
     test("resolveProjectSlug strips worktree suffix (#193)", () => {
-      const { resolveProjectSlug } = require("../src/commands/plugins/soul-sync/impl");
+      // #712 — static import (top of file) instead of require() to sidestep bun 1.3.x CJS/ESM re-export interop
       const ghqRoot = "/home/neo/Code/github.com";
       expect(
         resolveProjectSlug("/home/neo/Code/github.com/Soul-Brews-Studio/maw-js.wt-issue-193", ghqRoot)
@@ -142,14 +144,14 @@ describe("soul-sync", () => {
     });
 
     test("resolveProjectSlug returns null when repoRoot is outside ghqRoot (#193)", () => {
-      const { resolveProjectSlug } = require("../src/commands/plugins/soul-sync/impl");
+      // #712 — static import (top of file) instead of require() to sidestep bun 1.3.x CJS/ESM re-export interop
       expect(
         resolveProjectSlug("/tmp/somewhere-else", "/home/neo/Code/github.com")
       ).toBeNull();
     });
 
     test("resolveProjectSlug returns null when path has no repo segment (#193)", () => {
-      const { resolveProjectSlug } = require("../src/commands/plugins/soul-sync/impl");
+      // #712 — static import (top of file) instead of require() to sidestep bun 1.3.x CJS/ESM re-export interop
       // Sitting at the org directory, no repo to resolve.
       expect(
         resolveProjectSlug("/home/neo/Code/github.com/Soul-Brews-Studio", "/home/neo/Code/github.com")
@@ -213,6 +215,67 @@ describe("soul-sync", () => {
         { name: "06-floodboy", windows: [], sync_peers: [] },
       ];
       expect(findPeersForTest("floodboy", fleet)).toEqual([]);
+    });
+  });
+
+  // #363 phase 1 — canonical collaboration docs (treaty-class) must ride
+  // through soul-sync so child oracles inherit them, not just learnings/
+  // retros/traces. Regression guard against dropping the subdir.
+  describe("collaborations propagation (#363 phase 1)", () => {
+    test("parent's memory/collaborations/ propagates to bud via syncOracleVaults", () => {
+      const { syncOracleVaults } = require("../src/commands/plugins/soul-sync/sync-helpers");
+
+      const budRoot = join(TEST_DIR, "bud-oracle");
+      const parentRoot = join(TEST_DIR, "mawjs-oracle");
+      const parentCollab = join(parentRoot, "ψ/memory/collaborations/white-wormhole/topics");
+
+      mkdirSync(parentCollab, { recursive: true });
+      writeFileSync(
+        join(parentCollab, "claim-chain-and-sync-protocol.md"),
+        "# ACCEPT primitive — 11 ratified agreements",
+      );
+      mkdirSync(budRoot, { recursive: true });
+
+      const result = syncOracleVaults(parentRoot, budRoot, "mawjs", "bud");
+
+      const budFile = join(budRoot, "ψ/memory/collaborations/white-wormhole/topics/claim-chain-and-sync-protocol.md");
+      expect(existsSync(budFile)).toBe(true);
+      expect(readFileSync(budFile, "utf-8")).toContain("ACCEPT primitive");
+      expect(result.synced["memory/collaborations"]).toBe(1);
+      expect(result.total).toBe(1);
+    });
+
+    test("collaborations sync skips files already present in bud (new-files-only)", () => {
+      const { syncOracleVaults } = require("../src/commands/plugins/soul-sync/sync-helpers");
+
+      const budRoot = join(TEST_DIR, "bud-oracle");
+      const parentRoot = join(TEST_DIR, "mawjs-oracle");
+      const parentCollab = join(parentRoot, "ψ/memory/collaborations/peer-x/topics");
+      const budCollab = join(budRoot, "ψ/memory/collaborations/peer-x/topics");
+
+      mkdirSync(parentCollab, { recursive: true });
+      mkdirSync(budCollab, { recursive: true });
+      writeFileSync(join(parentCollab, "treaty.md"), "# PARENT TREATY");
+      writeFileSync(join(budCollab, "treaty.md"), "# BUD-LOCAL EDIT — must not be overwritten");
+
+      const result = syncOracleVaults(parentRoot, budRoot, "mawjs", "bud");
+
+      expect(readFileSync(join(budCollab, "treaty.md"), "utf-8")).toContain("BUD-LOCAL EDIT");
+      expect(result.total).toBe(0);
+    });
+
+    test("no memory/collaborations on parent → bud sync is a no-op (no error)", () => {
+      const { syncOracleVaults } = require("../src/commands/plugins/soul-sync/sync-helpers");
+
+      const budRoot = join(TEST_DIR, "bud-oracle");
+      const parentRoot = join(TEST_DIR, "mawjs-oracle");
+      mkdirSync(join(parentRoot, "ψ/memory/learnings"), { recursive: true });
+      mkdirSync(budRoot, { recursive: true });
+
+      const result = syncOracleVaults(parentRoot, budRoot, "mawjs", "bud");
+
+      expect(existsSync(join(budRoot, "ψ/memory/collaborations"))).toBe(false);
+      expect(result.synced["memory/collaborations"]).toBeUndefined();
     });
   });
 });

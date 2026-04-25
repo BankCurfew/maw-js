@@ -3,14 +3,40 @@
  * installFromDir / installFromTarball / installFromUrl
  */
 
-import { existsSync, lstatSync, mkdtempSync, readlinkSync, rmSync, statSync, symlinkSync } from "fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
-import { basename, join } from "path";
+import { basename, join, resolve } from "path";
 import { formatSdkMismatchError, runtimeSdkVersion, satisfies } from "../../../plugin/registry";
 import { installRoot, removeExisting } from "./install-source-detect";
-import { extractTarball, downloadTarball, verifyArtifactHash } from "./install-extraction";
+import { extractTarball, downloadTarball, verifyArtifactHash, verifyArtifactHashAgainst } from "./install-extraction";
 import { readManifest, printInstallSuccess } from "./install-manifest-helpers";
+import { readLock, recordInstall } from "./lock";
+import { createHash } from "crypto";
+
+/**
+ * #404 — preserve category across replace. Category is derived from `weight`
+ * (core <10, standard <50, extra >=50). When `install --link` replaces a
+ * plugin whose new plugin.json omits `weight`, the default-50 would silently
+ * reclassify it. Before removing the prior install we capture its weight
+ * into ~/.maw/plugins/.overrides.json, where the loader picks it up so the
+ * category is preserved. An explicit `weight` on the incoming manifest
+ * always wins; an `explicit` weight (e.g. --category flag) always wins.
+ */
+function preserveWeightOnReplace(
+  name: string, incoming: number | undefined, dest: string, explicit?: number,
+): void {
+  const path = join(installRoot(), ".overrides.json");
+  let overrides: Record<string, number> = {};
+  try { overrides = JSON.parse(readFileSync(path, "utf8")); } catch { /* absent or corrupt */ }
+  let effective = explicit;
+  if (effective === undefined && incoming === undefined) {
+    try { effective = readManifest(dest)?.weight; } catch { /* no prior manifest */ }
+  }
+  if (effective !== undefined) overrides[name] = effective;
+  else if (incoming !== undefined) delete overrides[name]; // incoming is explicit → drop stale override
+  writeFileSync(path, JSON.stringify(overrides, null, 2) + "\n", "utf8");
+}
 
 /**
  * #403 Bug — refuse to overwrite an existing install unless --force.
@@ -34,7 +60,57 @@ function refuseExistingInstall(dest: string, incoming: string, name: string): ne
   );
 }
 
-export async function installFromDir(srcDir: string, opts: { force?: boolean } = {}): Promise<void> {
+/**
+ * #641 — Auto-link `maw-js` into the plugin source's `node_modules/` on
+ * `--link` install so `import "maw-js/sdk"` resolves without per-repo setup.sh.
+ *
+ * Resolution chain for the maw-js root:
+ *   1. `$MAW_JS_PATH` env override (used by tests + unusual layouts)
+ *   2. Walk up from this file (src/commands/plugins/plugin/) four levels →
+ *      the running maw-js repo root. That's where `package.json#name="maw-js"`
+ *      with `exports["./sdk"]` lives, which is what bun needs to resolve.
+ *
+ * Idempotent: if `<srcDir>/node_modules/maw-js` is already a symlink to the
+ * resolved root, no-op. If it points elsewhere, replace. If it's a real
+ * directory or file, leave it alone — the operator put something there
+ * intentionally.
+ */
+function resolveMawJsRoot(): string {
+  if (process.env.MAW_JS_PATH) return process.env.MAW_JS_PATH;
+  // this file: <mawJsRoot>/src/commands/plugins/plugin/install-handlers.ts
+  return resolve(import.meta.dir, "..", "..", "..", "..");
+}
+
+export function ensurePluginMawJsLink(srcDir: string): void {
+  const mawJsRoot = resolveMawJsRoot();
+  const nodeModulesDir = join(srcDir, "node_modules");
+  const target = join(nodeModulesDir, "maw-js");
+
+  let existing: import("fs").Stats | undefined;
+  try { existing = lstatSync(target); } catch { /* absent */ }
+
+  if (existing) {
+    if (existing.isSymbolicLink()) {
+      try {
+        const linkTarget = readlinkSync(target);
+        const resolved = resolve(nodeModulesDir, linkTarget);
+        if (resolved === mawJsRoot) return; // already correct
+      } catch { /* dangling — fall through to replace */ }
+      unlinkSync(target);
+    } else {
+      // Real directory or file — respect operator intent, don't clobber.
+      return;
+    }
+  }
+
+  mkdirSync(nodeModulesDir, { recursive: true });
+  symlinkSync(mawJsRoot, target, "dir");
+}
+
+export async function installFromDir(
+  srcDir: string,
+  opts: { force?: boolean; weight?: number } = {},
+): Promise<void> {
   if (!existsSync(srcDir)) {
     throw new Error(`source not found: ${srcDir}`);
   }
@@ -57,15 +133,39 @@ export async function installFromDir(srcDir: string, opts: { force?: boolean } =
     refuseExistingInstall(dest, srcDir, manifest!.name);
   }
 
+  // #404 — capture prior weight before the replace so category survives.
+  const replacing = existsSync(dest);
+  if (replacing || opts.weight !== undefined) {
+    preserveWeightOnReplace(manifest!.name, manifest!.weight, dest, opts.weight);
+  }
+
   removeExisting(dest);
   symlinkSync(srcDir, dest, "dir");
+
+  // #641 — arrange `maw-js/sdk` resolution from the plugin's perspective so
+  // the author never has to run a per-repo setup.sh.
+  ensurePluginMawJsLink(srcDir);
+
+  // #680 ask #1 — persist lock entry for --link installs. sha256 is of the
+  // plugin.json content (stable identity; the symlinked source isn't a
+  // sealed artifact so there's no tarball hash to record).
+  const absSrc = resolve(srcDir);
+  const pluginJsonBytes = readFileSync(join(absSrc, "plugin.json"));
+  const sha = `sha256:${createHash("sha256").update(pluginJsonBytes).digest("hex")}`;
+  recordInstall({
+    name: manifest!.name,
+    version: manifest!.version,
+    sha256: sha,
+    source: `link:${absSrc}`,
+    linked: true,
+  });
 
   printInstallSuccess(manifest!, dest, "linked (dev)");
 }
 
 export async function installFromTarball(
   tarballPath: string,
-  opts: { source: string; force?: boolean },
+  opts: { source: string; force?: boolean; weight?: number; pin?: boolean },
 ): Promise<void> {
   if (!existsSync(tarballPath)) {
     throw new Error(`tarball not found: ${tarballPath}`);
@@ -92,10 +192,56 @@ export async function installFromTarball(
     throw new Error(formatSdkMismatchError(manifest!.name, manifest!.sdk, runtime));
   }
 
-  const hashResult = verifyArtifactHash(staging, manifest!);
-  if (!hashResult.ok) {
+  // Defense-in-depth fencepost (#487 §8 Phase 1): manifest-embedded hash still
+  // catches transport corruption and hand-edited tarballs before we touch
+  // ~/.maw/plugins. It is NOT the adversarial check — plugins.lock is.
+  const selfHashResult = verifyArtifactHash(staging, manifest!);
+  if (!selfHashResult.ok) {
     rmSync(staging, { recursive: true, force: true });
-    throw new Error(hashResult.error);
+    throw new Error(selfHashResult.error);
+  }
+
+  // Registry-pinned verification (#487 Option A, #680 ask 2). The expected
+  // hash comes from the operator-curated lockfile, not the tarball itself —
+  // this is what closes the MITM / CDN-swap threat.
+  //
+  // Gate behavior (#680 ask 2):
+  //   • No entry for <name>  → proceed (writer agent, #680 ask 1, persists).
+  //   • Entry + sha matches  → proceed.
+  //   • Entry + sha differs  → refuse unless --force OR --pin.
+  //       --force: override, re-write lock to new sha.
+  //       --pin:   re-pin, same effect — semantically an explicit re-trust.
+  let lock;
+  try {
+    lock = readLock();
+  } catch (e: any) {
+    rmSync(staging, { recursive: true, force: true });
+    throw e;
+  }
+  const pinned = lock.plugins[manifest!.name];
+  if (!pinned) {
+    void opts.pin;
+  } else {
+    if (pinned.version !== manifest!.version) {
+      rmSync(staging, { recursive: true, force: true });
+      throw new Error(
+        `plugin '${manifest!.name}' version mismatch: plugins.lock=${pinned.version} tarball=${manifest!.version}`,
+      );
+    }
+    const pinnedResult = verifyArtifactHashAgainst(staging, manifest!, pinned.sha256);
+    if (!pinnedResult.ok) {
+      if (!opts.force && !opts.pin) {
+        rmSync(staging, { recursive: true, force: true });
+        const observed = manifest!.artifact?.sha256 ?? "(unknown)";
+        throw new Error(
+          `plugin '${manifest!.name}' sha256 mismatch — refusing to install.\n` +
+          `  plugins.lock: ${pinned.sha256}\n` +
+          `  tarball:      ${observed}\n` +
+          `  --force to override (updates lock), --pin to re-pin`,
+        );
+      }
+      // --force / --pin: operator re-trusted; recordInstall() below overwrites.
+    }
   }
 
   // All gates passed — move staging into the install root.
@@ -105,6 +251,11 @@ export async function installFromTarball(
   if (existsSync(dest) && !opts.force) {
     rmSync(staging, { recursive: true, force: true });
     refuseExistingInstall(dest, opts.source, manifest!.name);
+  }
+
+  // #404 — capture prior weight before the replace so category survives.
+  if (existsSync(dest) || opts.weight !== undefined) {
+    preserveWeightOnReplace(manifest!.name, manifest!.weight, dest, opts.weight);
   }
 
   removeExisting(dest);
@@ -118,6 +269,15 @@ export async function installFromTarball(
     rmSync(staging, { recursive: true, force: true });
   }
 
+  // #680 — persist lock entry on every successful tarball install. TOFU on
+  // first install; overwrites on --force/--pin re-trust.
+  recordInstall({
+    name: manifest!.name,
+    version: manifest!.version,
+    sha256: manifest!.artifact!.sha256!,
+    source: opts.source,
+  });
+
   const sourceNote = opts.source.startsWith("http") ? `from ${opts.source}` : "";
   printInstallSuccess(
     manifest!,
@@ -127,13 +287,16 @@ export async function installFromTarball(
   );
 }
 
-export async function installFromUrl(url: string, opts: { force?: boolean } = {}): Promise<void> {
+export async function installFromUrl(
+  url: string,
+  opts: { force?: boolean; weight?: number; pin?: boolean } = {},
+): Promise<void> {
   const dl = await downloadTarball(url);
   if (!dl.ok) {
     throw new Error(dl.error);
   }
   try {
-    await installFromTarball(dl.path, { source: url, force: opts.force });
+    await installFromTarball(dl.path, { source: url, force: opts.force, weight: opts.weight, pin: opts.pin });
   } finally {
     // Clean up the downloaded temp file.
     try {

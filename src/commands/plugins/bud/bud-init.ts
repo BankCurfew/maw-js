@@ -8,7 +8,7 @@ export function initVault(budRepoPath: string): string {
   const psiDir = join(budRepoPath, "ψ");
   const psiDirs = [
     "memory/learnings", "memory/retrospectives", "memory/traces",
-    "memory/resonance", "inbox", "outbox", "plans",
+    "memory/resonance", "memory/collaborations", "inbox", "outbox", "plans",
   ];
   for (const d of psiDirs) {
     mkdirSync(join(psiDir, d), { recursive: true });
@@ -28,6 +28,7 @@ export function generateClaudeMd(budRepoPath: string, name: string, parentName: 
   const lineageField = parentName
     ? `- **Budded from**: ${parentName}`
     : `- **Origin**: root (no parent)`;
+  // lgtm[js/file-system-race] — PRIVATE-PATH: scaffold dest is user-owned, see docs/security/file-system-race-stance.md
   writeFileSync(claudeMd, `# ${name}-oracle
 
 ${lineageHeader}

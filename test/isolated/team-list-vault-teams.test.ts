@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { _setDirs } from "../../src/commands/plugins/team/impl";
@@ -17,7 +17,7 @@ let originalCwd: string;
 
 beforeEach(() => {
   originalCwd = process.cwd();
-  testDir = join(tmpdir(), `maw-bugB-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  testDir = mkdtempSync(join(tmpdir(), "maw-bugB-"));
   toolTeamsDir = join(testDir, "tool-teams");
   tasksDir = join(testDir, "tasks");
   oracleRoot = join(testDir, "oracle");
@@ -146,5 +146,44 @@ describe("listVaultOnlyTeams + cmdTeamList — #393 Bug B", () => {
 
     const { cmdTeamList } = await import("../../src/commands/plugins/team/impl");
     await expect(cmdTeamList()).resolves.toBeUndefined();
+  });
+});
+
+describe("cmdTeamCreate bridge — #393 Bug B extension", () => {
+  test("create writes stub config.json to tool store", async () => {
+    const { cmdTeamCreate } = await import("../../src/commands/plugins/team/impl");
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      cmdTeamCreate("bridge-test", { description: "testing bridge" });
+    } finally {
+      console.log = origLog;
+    }
+    // Vault manifest exists
+    const vaultManifest = join(oracleRoot, "ψ/memory/mailbox/teams/bridge-test/manifest.json");
+    expect(existsSync(vaultManifest)).toBe(true);
+    // Tool store stub also exists
+    const toolConfig = join(toolTeamsDir, "bridge-test/config.json");
+    expect(existsSync(toolConfig)).toBe(true);
+    const config = JSON.parse(readFileSync(toolConfig, "utf-8"));
+    expect(config.name).toBe("bridge-test");
+    expect(config.members).toEqual([]);
+  });
+
+  test("spawn syncs member to tool store config", async () => {
+    const { cmdTeamCreate, cmdTeamSpawn } = await import("../../src/commands/plugins/team/impl");
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      cmdTeamCreate("spawn-bridge", { description: "spawn test" });
+      cmdTeamSpawn("spawn-bridge", "researcher", { model: "sonnet" });
+    } finally {
+      console.log = origLog;
+    }
+    // Tool store config should have the member
+    const toolConfig = join(toolTeamsDir, "spawn-bridge/config.json");
+    expect(existsSync(toolConfig)).toBe(true);
+    const config = JSON.parse(readFileSync(toolConfig, "utf-8"));
+    expect(config.members.some((m: any) => m.name === "researcher")).toBe(true);
   });
 });

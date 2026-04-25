@@ -272,7 +272,7 @@ describe("signHeaders — outgoing HTTP header production", () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe("federationAuth() middleware — bypass branches", () => {
-  test("no federationToken configured → all requests pass (backwards compat)", async () => {
+  test("no federationToken AND no peers → requests pass (local-only single-node OK)", async () => {
     configStore = {};
     const app = makeApp();
     const res = await fire(app, "http://host/api/send", { method: "POST" }, "8.8.8.8");
@@ -306,6 +306,165 @@ describe("federationAuth() middleware — bypass branches", () => {
     const app = makeApp();
     const res = await fire(app, "http://host/api/feed", { method: "GET" }, "8.8.8.8");
     expect(res.status).toBe(200);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Hono middleware — peers-require-token invariant (Bloom #federation-audit)
+// ════════════════════════════════════════════════════════════════════════════
+// Non-loopback bind (hasPeers) without federationToken is default-insecure-open
+// in pre-fix code: server.ts only logs a warning, middleware happily admits
+// anonymous writes. These tests codify the new invariant:
+//
+//   hasPeers && !federationToken  →  protected endpoints 401
+//   unless explicit opt-out (config.allowPeersWithoutToken: true)
+//
+// Attack-twin scenario (see ψ/lab/federation-audit/paladin-forensic.md §
+// "Bypass #1"): a malicious peer reaches a fresh-install node whose operator
+// never configured a token; today it gets unauthenticated RCE via /api/send.
+
+describe("federationAuth() middleware — peers-require-token invariant", () => {
+  const PEER = { name: "white", url: "http://10.0.0.1:3456" } as any;
+
+  test("peers configured, no token, non-loopback POST /api/send → 401 federation_token_required", async () => {
+    configStore = { peers: [PEER] };
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "8.8.8.8");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: "federation auth required",
+      reason: "federation_token_required",
+    });
+  });
+
+  test("peers configured, no token, loopback POST /api/send → pass (loopback still trusted)", async () => {
+    configStore = { peers: [PEER] };
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "127.0.0.1");
+    expect(res.status).toBe(200);
+  });
+
+  test("peers configured, no token, GET /api/sessions → pass (reads remain public)", async () => {
+    configStore = { peers: [PEER] };
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/sessions", { method: "GET" }, "8.8.8.8");
+    expect(res.status).toBe(200);
+  });
+
+  test("explicit opt-out (allowPeersWithoutToken: true) → legacy behavior preserved", async () => {
+    configStore = { peers: [PEER], allowPeersWithoutToken: true };
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "8.8.8.8");
+    expect(res.status).toBe(200);
+  });
+
+  test("validateConfig passes allowPeersWithoutToken through (mawjs review #396)", async () => {
+    // Review caught that the config field was silently stripped by
+    // validateConfig() because it wasn't in the validator allowlist. Without
+    // this validator test the operator-facing escape hatch was reachable
+    // from the test store (which bypasses validation) but NOT from
+    // maw.config.json in production. That mismatch is the UX bug mawjs
+    // flagged.
+    const { validateConfig } = await import("../../src/config/validate-ext");
+    expect(validateConfig({ allowPeersWithoutToken: true }).allowPeersWithoutToken).toBe(true);
+    expect(validateConfig({ allowPeersWithoutToken: false }).allowPeersWithoutToken).toBe(false);
+    // Non-boolean values are dropped with a warning (not coerced).
+    expect(validateConfig({ allowPeersWithoutToken: "yes" } as Record<string, unknown>).allowPeersWithoutToken).toBeUndefined();
+  });
+
+  test("namedPeers also triggers invariant (hasPeers is peers OR namedPeers)", async () => {
+    configStore = { namedPeers: [{ name: "bo", url: "http://clubs:3456" }] } as any;
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "8.8.8.8");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: "federation auth required",
+      reason: "federation_token_required",
+    });
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Hono middleware — trustLoopback gate (Path B from #191, D#4)
+// ════════════════════════════════════════════════════════════════════════════
+// When config.trustLoopback is explicitly false, loopback bypass is closed.
+// This is the operator-facing lever to shut Path B (local reverse-proxy
+// sidecar forwarding to 127.0.0.1). See src/config/types.ts + paladin-forensic.md
+// (F3). Default (undefined/true) preserves legacy behavior — necessary
+// until CLI self-signing ships, because without it flipping trustLoopback
+// to false would break local `maw send`, `maw talk`, etc.
+
+describe("federationAuth() middleware — trustLoopback gate (Path B)", () => {
+  test("trustLoopback=true (explicit) + loopback → pass (legacy behavior)", async () => {
+    configStore = { federationToken: TOKEN, trustLoopback: true } as any;
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "127.0.0.1");
+    expect(res.status).toBe(200);
+  });
+
+  test("trustLoopback unset (default) + loopback → pass (legacy default)", async () => {
+    configStore = { federationToken: TOKEN };
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "127.0.0.1");
+    expect(res.status).toBe(200);
+  });
+
+  test("trustLoopback=false + loopback + no signature → 401 missing_signature (Path B CLOSED)", async () => {
+    configStore = { federationToken: TOKEN, trustLoopback: false } as any;
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "127.0.0.1");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      error: "federation auth required",
+      reason: "missing_signature",
+    });
+  });
+
+  test("trustLoopback=false + loopback + VALID signed request → 200 (loopback caller signs)", async () => {
+    configStore = { federationToken: TOKEN, trustLoopback: false } as any;
+    const app = makeApp();
+    const now = Math.floor(Date.now() / 1000);
+    const signature = sign(TOKEN, "POST", "/api/send", now);
+    const res = await fire(
+      app,
+      "http://host/api/send",
+      {
+        method: "POST",
+        headers: { "X-Maw-Timestamp": String(now), "X-Maw-Signature": signature },
+      },
+      "127.0.0.1",
+    );
+    expect(res.status).toBe(200);
+  });
+
+  test("trustLoopback=false + loopback + bad signature → 401 signature_invalid", async () => {
+    configStore = { federationToken: TOKEN, trustLoopback: false } as any;
+    const app = makeApp();
+    const now = Math.floor(Date.now() / 1000);
+    const res = await fire(
+      app,
+      "http://host/api/send",
+      {
+        method: "POST",
+        headers: { "X-Maw-Timestamp": String(now), "X-Maw-Signature": "0".repeat(64) },
+      },
+      "127.0.0.1",
+    );
+    expect(res.status).toBe(401);
+  });
+
+  test("trustLoopback=false + ::1 IPv6 loopback + no signature → 401 (Path B closed for v6 too)", async () => {
+    configStore = { federationToken: TOKEN, trustLoopback: false } as any;
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "::1");
+    expect(res.status).toBe(401);
+  });
+
+  test("trustLoopback=false + non-loopback still requires signature (unchanged)", async () => {
+    configStore = { federationToken: TOKEN, trustLoopback: false } as any;
+    const app = makeApp();
+    const res = await fire(app, "http://host/api/send", { method: "POST" }, "8.8.8.8");
+    expect(res.status).toBe(401);
   });
 });
 

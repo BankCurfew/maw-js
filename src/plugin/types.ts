@@ -18,6 +18,8 @@
  */
 export type PluginTarget = "js" | "wasm";
 
+export type PluginTier = "core" | "standard" | "extra";
+
 /**
  * Built-plugin artifact descriptor. Present on compiled plugins written
  * by `maw plugin build`. `sha256: null` means "unbuilt" — the loader
@@ -32,6 +34,7 @@ export interface PluginManifest {
   name: string;           // unique id, slug-safe /^[a-z0-9-]+$/
   version: string;        // semver e.g. "1.0.0"
   weight?: number;        // execution order: lower = first (default 50, like Drupal)
+  tier?: PluginTier;      // membership contract: "core" | "standard" | "extra" (#675)
   wasm?: string;          // relative path to .wasm (WASM plugin)
   entry?: string;         // relative path to .ts/.js (TS plugin)
   sdk: string;            // semver range e.g. "^1.0.0"
@@ -91,4 +94,10 @@ export interface InvokeResult {
   ok: boolean;
   output?: string;
   error?: string;
+  /**
+   * Non-zero exit code for `ok: false` results. When unset, the CLI
+   * defaults to exit 1 on failure. Plugins use this to distinguish
+   * failure modes for scripts (e.g. handshake vs DNS vs refused).
+   */
+  exitCode?: number;
 }

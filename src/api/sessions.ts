@@ -1,5 +1,6 @@
 import { Elysia, t} from "elysia";
 import { listSessions, capture, sendKeys, selectWindow } from "../core/transport/ssh";
+import { checkPaneIdle } from "../commands/shared/comm-send";
 import { findWindow } from "../core/runtime/find-window";
 import { getAggregatedSessions, findPeerForTarget, sendKeysToPeer } from "../core/transport/peers";
 import { loadConfig } from "../config";
@@ -10,6 +11,35 @@ import { resolveFleetSession } from "../commands/shared/wake";
 import { WakeBody, SleepBody, SendBody } from "../lib/schemas";
 
 export const sessionsApi = new Elysia();
+
+/**
+ * Dedupe windows within each session by window name (#732).
+ *
+ * When `config.agents` lists the same repo across multiple tmux windows,
+ * `session.windows` can contain repeated entries with the same name. UI
+ * consumers (mawui federation viz) iterate `session.windows` to render
+ * one row per oracle — duplicates cause React key collisions.
+ *
+ * We keep the first occurrence per name, preferring the active window
+ * when present so the "live" one wins. Shape is unchanged.
+ */
+export function dedupeSessionWindows<T extends { windows: { name: string; active?: boolean }[] }>(
+  sessions: T[],
+): T[] {
+  return sessions.map(s => {
+    const seen = new Map<string, typeof s.windows[number]>();
+    for (const w of s.windows) {
+      const existing = seen.get(w.name);
+      if (!existing) {
+        seen.set(w.name, w);
+      } else if (!existing.active && w.active) {
+        // Prefer the active window over an earlier non-active one
+        seen.set(w.name, w);
+      }
+    }
+    return { ...s, windows: [...seen.values()] };
+  });
+}
 
 /** Resolve oracle name → tmux target, same logic as local peek (#273). */
 function resolveCapture(query: string, sessions: { name: string }[]): string {
@@ -32,10 +62,10 @@ sessionsApi.get("/sessions", async ({ query }) => {
   // Filter out non-oracle sessions (0-overview pages, shell, synthetic entries)
   const local = raw.filter(s => /^\d{2}-/.test(s.name));
   if (query.local === "true") {
-    return local.map(s => ({ ...s, source: "local" }));
+    return dedupeSessionWindows(local.map(s => ({ ...s, source: "local" })));
   }
   const aggregated = await getAggregatedSessions(local);
-  return aggregated;
+  return dedupeSessionWindows(aggregated);
 }, {
   query: t.Object({
     local: t.Optional(t.String()),
@@ -75,7 +105,7 @@ sessionsApi.get("/mirror", async ({ query, set}) => {
 
 sessionsApi.post("/send", async ({ body, set}) => {
   try {
-    const { target, text } = body;
+    const { target, text, force } = body;
 
     const config = loadConfig();
     const local = await listSessions();
@@ -91,6 +121,18 @@ sessionsApi.post("/send", async ({ body, set}) => {
 
     // Local or self-node → send via tmux
     if (resolved?.type === "local" || resolved?.type === "self-node") {
+      // #405: idle guard — reject if user has in-progress input on the prompt line
+      if (!force) {
+        let idleCheck = await checkPaneIdle(resolved.target);
+        if (!idleCheck.idle) {
+          await Bun.sleep(500);
+          idleCheck = await checkPaneIdle(resolved.target);
+          if (!idleCheck.idle) {
+            set.status = 409;
+            return { ok: false, error: "pane not idle", target: resolved.target, lastInput: idleCheck.lastInput };
+          }
+        }
+      }
       await sendKeys(resolved.target, text);
       await Bun.sleep(150);
       let lastLine = "";

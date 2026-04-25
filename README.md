@@ -1,6 +1,16 @@
 # maw
 
-> Multi-Agent Workflow — wake oracles, talk across machines, see the mesh.
+[![CI](https://github.com/Soul-Brews-Studio/maw-js/actions/workflows/ci.yml/badge.svg)](https://github.com/Soul-Brews-Studio/maw-js/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-BUSL--1.1-blue)](./LICENSE) [![CalVer](https://img.shields.io/badge/calver-v26.4.18--alpha.19-blue)](https://calver.org) [![Bun](https://img.shields.io/badge/runtime-Bun%201.3%2B-f9f1e1)](https://bun.sh)
+
+> Multi-Agent Workflow — wake agents, talk across machines, see the mesh.
+
+**maw is a CLI for running multiple AI agents across machines.** You wake
+an agent in a tmux window, send it tasks, watch its screen, and see what
+it cost — all from one terminal. One node or twenty; same commands. Built
+on [Bun](https://bun.sh) and [Claude Code](https://claude.com/claude-code).
+
+<!-- TODO: record via scripts/record-demo.sh after this lands (see #453) -->
+![maw demo](docs/demo.svg)
 
 ## Install
 
@@ -14,6 +24,20 @@ bun add -g github:Soul-Brews-Studio/maw-js
 # Or from source:
 ghq get Soul-Brews-Studio/maw-js && cd "$(ghq root)/github.com/Soul-Brews-Studio/maw-js" && bun install && bun link
 ```
+
+> **Versioning**: `maw-js` uses [CalVer](https://calver.org) — `v{yy}.{m}.{d}[-alpha.{hour}]` (e.g. `v26.4.18-alpha.19`). Migrated from SemVer alpha on 2026-04-18. Cutting a release? See [CONTRIBUTING.md → Versioning](./CONTRIBUTING.md#versioning). Background: [CHANGELOG](./CHANGELOG.md#versioning--calver-since-2026-04-18) · umbrella [#526](https://github.com/Soul-Brews-Studio/maw-js/issues/526).
+
+## Recovering from `maw: command not found`
+
+If `maw` vanishes unexpectedly (see [#531](https://github.com/Soul-Brews-Studio/maw-js/issues/531) — root cause: npm name collision, fixed in #557 via rename to `maw-js`), recovery paths:
+
+1. **One-shot reinstall**: `bun add -g github:Soul-Brews-Studio/maw-js`
+2. **Self-heal command**: `bunx -p github:Soul-Brews-Studio/maw-js maw doctor` — auto-detects + restores
+3. **Shell hook**: source `scripts/maw-heal.sh` from your `.bashrc` / `.zshrc` — checks on every shell init
+
+Defense-in-depth: `maw update` stashes the binary to `~/.bun/bin/maw.prev` before any destructive `bun remove` and restores on retry-fail (#551). `maw doctor` remains useful if the binary disappears for other reasons (older alpha, manual `bun remove`, disk full, etc.).
+
+Full runbook: [`docs/install-recovery.md`](docs/install-recovery.md).
 
 ## Quick Start
 
@@ -78,7 +102,9 @@ maw bud myname --from neo                # bud from an existing oracle
 Talk across machines with HMAC-SHA256 signing.
 
 ```bash
-maw hey white:neo "hello"                # send to oracle on another node
+maw hey neo "hello"                      # bare name — exact local match (errors on ambiguity)
+maw hey white:neo "hello"                # canonical form — remote node, window 1
+maw hey white:neo:3 "hello hermes"       # pick a specific tmux window (#410)
 maw peek white:neo                       # see their screen
 maw ping                                 # check peer connectivity
 
@@ -161,3 +187,29 @@ Mar 2026   maw-js + maw-ui        Backend/frontend split
 Apr 2026   v2.0.0-alpha.66        Plugin OS, 896 commits, 57 commands,
                                    19 API endpoints, 1043 tests
 ```
+
+## Federation testing
+
+Peer handshake regressions hide on a single host. The Docker harness
+spins up two `maw-js:test` containers on a shared network and runs
+`maw peers probe` both directions as a round-trip smoke test.
+
+```bash
+bash scripts/test-docker-federation.sh   # build + up + probe + teardown
+bash scripts/dev-federation.sh up        # leave the 2-node stack running
+```
+
+CI runs the same script via `.github/workflows/federation-docker.yml`
+on any PR that touches `docker/**`, `src/transports/**`, or the peers
+plugin. Full runbook: [`docs/federation/docker-testing.md`](docs/federation/docker-testing.md).
+
+Onboarding a new node? Use `maw pair generate` / `maw pair <url> <code>`
+for a 6-char ephemeral handshake — see
+[`docs/federation/pair-code.md`](docs/federation/pair-code.md).
+
+## Marketplace
+
+Plugins can be discovered and installed peer-to-peer (Shape A, no central
+registry required). See
+[`docs/plugins/shape-a-demo.md`](docs/plugins/shape-a-demo.md) for a
+7-step walkthrough — peers, federated search, `@peer` install, consent.

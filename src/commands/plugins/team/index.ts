@@ -163,9 +163,64 @@ export default async function handler(ctx: InvokeContext): Promise<InvokeResult>
       if (!args[1]) { return { ok: false, error: "usage: maw team delete <team-name>" }; }
       await cmdTeamDelete(args[1]);
 
+    } else if (sub === "invite") {
+      // maw team invite <team> <peer> [--scope <scope>] [--lead <lead>]
+      const { cmdTeamInvite } = await import("./team-invite");
+      const flags = parseFlags(args, {
+        "--scope": String,
+        "--lead": String,
+      }, 1);
+      const team = flags._[0];
+      const peer = flags._[1];
+      if (!team || !peer) {
+        logs.push("usage: maw team invite <team> <peer> [--scope <scope>] [--lead <lead>]");
+        return { ok: false, error: "team and peer required", output: logs.join("\n") };
+      }
+      await cmdTeamInvite(team, peer, {
+        scope: flags["--scope"] as string | undefined,
+        lead: flags["--lead"] as string | undefined,
+      });
+
+    } else if (sub === "oracle-invite") {
+      // maw team oracle-invite <oracle-name> [--team <team>] [--role <role>]
+      const { cmdOracleInvite } = await import("./oracle-members");
+      const flags = parseFlags(args, {
+        "--team": String,
+        "--role": String,
+      }, 1);
+      const oracleName = flags._[0];
+      if (!oracleName) {
+        logs.push("usage: maw team oracle-invite <oracle-name> [--team <team>] [--role <role>]");
+        return { ok: false, error: "oracle name required", output: logs.join("\n") };
+      }
+      const team = (flags["--team"] as string | undefined) || resolveTeamFromContext();
+      const role = flags["--role"] as string | undefined;
+      cmdOracleInvite(team, oracleName, { role });
+
+    } else if (sub === "oracle-remove") {
+      // maw team oracle-remove <oracle-name> [--team <team>]
+      const { cmdOracleRemove } = await import("./oracle-members");
+      const flags = parseFlags(args, { "--team": String }, 1);
+      const oracleName = flags._[0];
+      if (!oracleName) {
+        logs.push("usage: maw team oracle-remove <oracle-name> [--team <team>]");
+        return { ok: false, error: "oracle name required", output: logs.join("\n") };
+      }
+      const team = (flags["--team"] as string | undefined) || resolveTeamFromContext();
+      cmdOracleRemove(team, oracleName);
+
+    } else if (sub === "members") {
+      // maw team members [--team <team>]
+      const { cmdOracleMembers } = await import("./oracle-members");
+      const flags = parseFlags(args, { "--team": String }, 1);
+      const team = (flags["--team"] as string | undefined)
+        || flags._[0]
+        || resolveTeamFromContext();
+      cmdOracleMembers(team);
+
     } else {
       logs.push(`unknown team subcommand: ${sub}`);
-      logs.push("usage: maw team <create|spawn|send|shutdown|resume|lives|list|status|add|tasks|done|assign|delete>");
+      logs.push("usage: maw team <create|spawn|send|shutdown|resume|lives|list|status|add|tasks|done|assign|delete|invite|oracle-invite|oracle-remove|members>");
       return { ok: false, error: `unknown subcommand: ${sub}`, output: logs.join("\n") };
     }
 
