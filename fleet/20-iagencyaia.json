@@ -1,0 +1,14 @@
+{
+  "name": "20-iagencyaia",
+  "windows": [
+    {
+      "name": "iAgencyAIA-Oracle",
+      "repo": "BankCurfew/iAgencyAIA-Oracle"
+    }
+  ],
+  "sync_peers": [
+    "bob",
+    "aia",
+    "botdev"
+  ]
+}
