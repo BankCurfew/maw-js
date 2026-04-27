@@ -486,6 +486,18 @@ export async function cmdWakeAll(opts: { kill?: boolean; all?: boolean; resume?:
     console.log(`  \x1b[32m●\x1b[0m ${sess.name} — ${sess.windows.length} windows`);
   }
 
+  // Ensure "shell" tmux session for แบงค์ Command room
+  try {
+    const shellCheck = (await ssh("tmux has-session -t shell 2>/dev/null && echo yes || echo no")).trim();
+    if (shellCheck === "no") {
+      await ssh("tmux new-session -d -s shell");
+      await ssh('tmux send-keys -t shell "claude --dangerously-skip-permissions" Enter');
+      console.log("  \x1b[32m●\x1b[0m shell — Claude Code session created");
+    } else {
+      console.log("  \x1b[90m●\x1b[0m shell — already running");
+    }
+  } catch { /* shell creation is best-effort */ }
+
   console.log(`\n  \x1b[32m${sessCount} sessions, ${winCount} windows woke up.\x1b[0m\n`);
 
   if (opts.resume) {
