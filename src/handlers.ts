@@ -42,22 +42,41 @@ const select: Handler = (_ws, data) => {
 };
 
 const send: Handler = async (ws, data, engine) => {
-  // Check for active Claude session before sending (#17)
+  const target: string = data.target;
+  const text: string = data.text;
+
+  // Cross-node routing: "dreams:nobi" → federation API (early return, no tmux)
+  if (target.includes(":")) {
+    try {
+      const { crossNodeSend } = await import("./lib/peers");
+      const result = await crossNodeSend(target, text);
+      if (!result.ok) {
+        ws.send(JSON.stringify({ type: "error", error: result.error || `cross-node send failed` }));
+      } else {
+        ws.send(JSON.stringify({ type: "sent", ok: true, target, text, forwarded: true }));
+      }
+    } catch (e: any) {
+      ws.send(JSON.stringify({ type: "error", error: `cross-node error: ${e.message}` }));
+    }
+    return; // NEVER falls through to sendKeys
+  }
+
+  // Local target — check for active Claude session before sending (#17)
   if (!data.force) {
     try {
       const cmd = await Promise.race([
-        getPaneCommand(data.target),
+        getPaneCommand(target),
         new Promise<string>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
       ]);
       if (!/claude|codex|node/i.test(cmd)) {
-        ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${data.target} (running: ${cmd})` }));
+        ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${target} (running: ${cmd})` }));
         return;
       }
     } catch { /* pane check failed or timed out, proceed anyway */ }
   }
-  sendKeys(data.target, data.text)
+  sendKeys(target, text)
     .then(() => {
-      ws.send(JSON.stringify({ type: "sent", ok: true, target: data.target, text: data.text }));
+      ws.send(JSON.stringify({ type: "sent", ok: true, target, text }));
       setTimeout(() => engine.pushCapture(ws), 300);
     })
     .catch(e => ws.send(JSON.stringify({ type: "error", error: e.message })));
