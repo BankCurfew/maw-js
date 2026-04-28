@@ -1,5 +1,6 @@
 import { sendKeys, selectWindow, ssh, getPaneCommand } from "./ssh";
-import { buildCommand } from "./config";
+import { buildCommand, loadConfig } from "./config";
+import { crossNodeSend } from "./lib/peers";
 import type { MawWS, Handler, MawEngine } from "./types";
 import {
   fetchBoardData,
@@ -42,22 +43,58 @@ const select: Handler = (_ws, data) => {
 };
 
 const send: Handler = async (ws, data, engine) => {
-  // Check for active Claude session before sending (#17)
+  const target: string = data.target;
+  const text: string = data.text;
+
+  // Cross-node routing: "dreams:nobi" → forward via federation API
+  if (target.includes(":")) {
+    try {
+      const result = await crossNodeSend(target, text);
+      if (!result.ok) {
+        ws.send(JSON.stringify({ type: "error", error: result.error || `cross-node send to ${target} failed` }));
+        return;
+      }
+      ws.send(JSON.stringify({ type: "sent", ok: true, target, text, forwarded: true }));
+    } catch (e: any) {
+      ws.send(JSON.stringify({ type: "error", error: `cross-node error: ${e.message}` }));
+    }
+    return;
+  }
+
+  // Agent name → node lookup (bare name like "nobi" not local → route cross-node)
+  const config = loadConfig() as any;
+  const agentNode = config.agents?.[target] || config.agents?.[target.replace(/-oracle$/, "")];
+  const localNode = config.node || "local";
+  if (agentNode && agentNode !== localNode) {
+    try {
+      const result = await crossNodeSend(`${agentNode}:${target}`, text);
+      if (!result.ok) {
+        ws.send(JSON.stringify({ type: "error", error: result.error || `cross-node send to ${agentNode}:${target} failed` }));
+        return;
+      }
+      ws.send(JSON.stringify({ type: "sent", ok: true, target, text, forwarded: true }));
+    } catch (e: any) {
+      ws.send(JSON.stringify({ type: "error", error: `cross-node error: ${e.message}` }));
+    }
+    return;
+  }
+
+  // Local send — check for active Claude session before sending (#17)
   if (!data.force) {
     try {
       const cmd = await Promise.race([
-        getPaneCommand(data.target),
+        getPaneCommand(target),
         new Promise<string>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
       ]);
       if (!/claude|codex|node/i.test(cmd)) {
-        ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${data.target} (running: ${cmd})` }));
+        ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${target} (running: ${cmd})` }));
         return;
       }
     } catch { /* pane check failed or timed out, proceed anyway */ }
   }
-  sendKeys(data.target, data.text)
+  sendKeys(target, text)
     .then(() => {
-      ws.send(JSON.stringify({ type: "sent", ok: true, target: data.target, text: data.text }));
+      ws.send(JSON.stringify({ type: "sent", ok: true, target, text }));
       setTimeout(() => engine.pushCapture(ws), 300);
     })
     .catch(e => ws.send(JSON.stringify({ type: "error", error: e.message })));
