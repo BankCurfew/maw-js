@@ -1316,10 +1316,15 @@ app.post("/api/attach", async (c) => {
     const fullPath = join(attachDir, id);
     writeFileSync(fullPath, Buffer.from(buf));
 
+    // Also copy to ~/.maw/inbox/ with original filename so oracles can read by path
+    const inboxDir = join(homedir(), ".maw", "inbox");
+    mkdirSync(inboxDir, { recursive: true });
+    const inboxPath = join(inboxDir, file.name);
+    writeFileSync(inboxPath, Buffer.from(buf));
+
     const url = `/api/attachments/${id}`;
-    const port = +(process.env.MAW_PORT || loadConfig().port || 3456);
-    const localUrl = `http://localhost:${port}${url}`;
-    return c.json({ ok: true, id, url, localUrl, name: file.name, size: file.size, mimeType: file.type });
+    const localPath = inboxPath; // file path for Claude Code to read directly
+    return c.json({ ok: true, id, url, localUrl: localPath, name: file.name, size: file.size, mimeType: file.type });
   } catch (e: any) {
     return c.json({ error: e.message }, 400);
   }
