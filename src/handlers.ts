@@ -42,22 +42,43 @@ const select: Handler = (_ws, data) => {
 };
 
 const send: Handler = async (ws, data, engine) => {
-  // Check for active Claude session before sending (#17)
+  const target: string = data.target;
+  const text: string = data.text;
+
+  // Cross-node routing: only if prefix matches a KNOWN federation peer
+  // e.g. "dreams:nobi" → cross-node, but "01-bob:0" → local tmux
+  if (target.includes(":")) {
+    const [prefix] = target.split(":");
+    try {
+      const { getNamedPeers, crossNodeSend } = await import("./lib/peers");
+      const peerNames = getNamedPeers().map(p => p.name);
+      if (peerNames.includes(prefix)) {
+        const result = await crossNodeSend(target, text);
+        ws.send(JSON.stringify(result.ok
+          ? { type: "sent", ok: true, target, text, forwarded: true }
+          : { type: "error", error: result.error || "cross-node send failed" }
+        ));
+        return; // cross-node handled, skip local sendKeys
+      }
+    } catch { /* peers module unavailable, fall through to local */ }
+  }
+
+  // Local tmux target — unchanged from original
   if (!data.force) {
     try {
       const cmd = await Promise.race([
-        getPaneCommand(data.target),
+        getPaneCommand(target),
         new Promise<string>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
       ]);
       if (!/claude|codex|node/i.test(cmd)) {
-        ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${data.target} (running: ${cmd})` }));
+        ws.send(JSON.stringify({ type: "error", error: `no active Claude session in ${target} (running: ${cmd})` }));
         return;
       }
     } catch { /* pane check failed or timed out, proceed anyway */ }
   }
-  sendKeys(data.target, data.text)
+  sendKeys(target, text)
     .then(() => {
-      ws.send(JSON.stringify({ type: "sent", ok: true, target: data.target, text: data.text }));
+      ws.send(JSON.stringify({ type: "sent", ok: true, target, text }));
       setTimeout(() => engine.pushCapture(ws), 300);
     })
     .catch(e => ws.send(JSON.stringify({ type: "error", error: e.message })));
