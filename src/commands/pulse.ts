@@ -105,8 +105,8 @@ async function addTaskToPeriodComment(repo: string, threadNum: number, period: s
 }
 
 export async function cmdPulseAdd(title: string, opts: { oracle?: string; priority?: string; wt?: string }) {
-  const repo = "laris-co/pulse-oracle";
-  const projectNum = 6; // Master Board
+  const repo = "BankCurfew/pulse-oracle";
+  const projectNum = 1; // Master Board
   const period = timePeriod();
 
   // 0. Find or create daily thread
@@ -131,7 +131,7 @@ export async function cmdPulseAdd(title: string, opts: { oracle?: string; priori
 
   // 3. Add to Master Board
   try {
-    await ssh(`gh project item-add ${projectNum} --owner laris-co --url '${issueUrl}'`);
+    await ssh(`gh project item-add ${projectNum} --owner BankCurfew --url '${issueUrl}'`);
     console.log(`\x1b[32m+\x1b[0m added to Master Board (#${projectNum})`);
   } catch (e) {
     console.log(`\x1b[33mwarn:\x1b[0m could not add to project board: ${e}`);
@@ -154,7 +154,7 @@ export async function cmdPulseAdd(title: string, opts: { oracle?: string; priori
 }
 
 export async function cmdPulseLs(opts: { sync?: boolean }) {
-  const repo = "laris-co/pulse-oracle";
+  const repo = "BankCurfew/pulse-oracle";
 
   // Fetch all open issues
   const issuesJson = (await ssh(
