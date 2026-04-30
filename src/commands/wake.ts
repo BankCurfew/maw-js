@@ -110,7 +110,7 @@ export function resolveFleetSession(oracle: string): string | null {
     for (const file of readdirSync(fleetDir).filter(f => f.endsWith(".json") && !f.endsWith(".disabled"))) {
       const config = JSON.parse(readFileSync(join(fleetDir, file), "utf-8"));
       const hasOracleWindow = (config.windows || []).some(
-        (w: any) => w.name === `${oracle}-oracle` || w.name === oracle
+        (w: any) => w.name.toLowerCase() === `${oracle.toLowerCase()}-oracle` || w.name.toLowerCase() === oracle.toLowerCase()
       );
       if (hasOracleWindow) return config.name;
     }
