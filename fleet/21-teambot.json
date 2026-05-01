@@ -1,0 +1,13 @@
+{
+  "name": "21-teambot",
+  "windows": [
+    {
+      "name": "TeamBot-Oracle",
+      "repo": "BankCurfew/TeamBot-Oracle"
+    }
+  ],
+  "sync_peers": [
+    "bob",
+    "iagencyaia"
+  ]
+}
